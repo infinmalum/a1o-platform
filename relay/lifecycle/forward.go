@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/infinmalum/one-gateway/common/client"
+	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/relay/billing"
@@ -97,19 +98,14 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 		var primaryErr *HTTPError
 		var selected Channel
 		candidates := append([]native.Protocol{upstreamProtocol}, input.FallbackUpstreamProtocols...)
-		for _, candidate := range candidates {
-			candidateChannel, err := selectInitial(input, candidate)
-			if err == nil {
-				selected = candidateChannel
-				upstreamProtocol = candidate
-				break
-			}
-			if primaryErr == nil {
-				primaryErr = err
-				if err.Status != http.StatusServiceUnavailable && !(input.Principal.SpecificChannel && err.Status == http.StatusBadRequest) {
-					return err
-				}
-			}
+		source := InitialSource()
+		selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, candidates, source)
+		if selected.ID == 0 && primaryErr != nil && primaryErr.Status == http.StatusServiceUnavailable &&
+			source == model.ChannelSourceSubscriptionOnly &&
+			config.UpstreamRoutingPolicy == config.RoutingPolicySubscriptionThenAPI {
+			// No eligible subscription exists; the explicit fallback policy
+			// allows this request to run on API channels.
+			selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, candidates, model.ChannelSourceAPIOnly)
 		}
 		if selected.ID == 0 {
 			return primaryErr
@@ -410,10 +406,34 @@ func SelectForRequest(input Request, upstreamProtocol native.Protocol) (Channel,
 		}
 		input.Principal.Group = group
 	}
-	return selectInitial(input, upstreamProtocol)
+	channel, selectErr := selectInitial(input, upstreamProtocol, InitialSource())
+	if selectErr != nil {
+		return Channel{}, selectErr
+	}
+	return channel, nil
 }
 
-func selectInitial(input Request, upstreamProtocol native.Protocol) (Channel, *HTTPError) {
+// selectInitialForProtocols tries each candidate protocol once and returns
+// the first selection that succeeds. Non-availability errors surface
+// immediately except for a pinned channel's protocol mismatch.
+func selectInitialForProtocols(input Request, candidates []native.Protocol, source model.ChannelSource) (Channel, native.Protocol, *HTTPError) {
+	var primaryErr *HTTPError
+	for _, candidate := range candidates {
+		channel, err := selectInitial(input, candidate, source)
+		if err == nil {
+			return channel, candidate, nil
+		}
+		if primaryErr == nil {
+			primaryErr = err
+			if err.Status != http.StatusServiceUnavailable && !(input.Principal.SpecificChannel && err.Status == http.StatusBadRequest) {
+				return Channel{}, candidate, err
+			}
+		}
+	}
+	return Channel{}, "", primaryErr
+}
+
+func selectInitial(input Request, upstreamProtocol native.Protocol, source model.ChannelSource) (Channel, *HTTPError) {
 	requiredType := requiredChannelType(upstreamProtocol)
 	if requiredType < 0 {
 		return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "unsupported native protocol"}
@@ -425,7 +445,7 @@ func selectInitial(input Request, upstreamProtocol native.Protocol) (Channel, *H
 			return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "invalid channel ID"}
 		}
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: requiredType, SpecificID: specificID})
+	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: requiredType, SpecificID: specificID, Source: source})
 	if selectErr != nil {
 		if selectErr.Status == http.StatusServiceUnavailable {
 			label := "OpenAI"
@@ -476,18 +496,23 @@ func selectRetry(ctx context.Context, input Request, failed Channel, tried map[i
 	if *remaining <= 0 || ctx.Err() != nil || input.Principal.SpecificChannel {
 		return Channel{}, false
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried})
-	if selectErr != nil {
-		return Channel{}, false
+	// Candidates come from the routing policy's retry preference order, for
+	// example remaining subscriptions before API channels.
+	for _, source := range RetrySources() {
+		selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried, Source: source})
+		if selectErr != nil {
+			continue
+		}
+		next, err := channelFromModel(selected)
+		if err != nil {
+			logger.Errorf(ctx, "failed to load retry channel %d: %v", selected.Id, err)
+			return Channel{}, false
+		}
+		*remaining = *remaining - 1
+		logger.Infof(ctx, "retrying request on channel %d after channel %d", next.ID, failed.ID)
+		return next, true
 	}
-	next, err := channelFromModel(selected)
-	if err != nil {
-		logger.Errorf(ctx, "failed to load retry channel %d: %v", selected.Id, err)
-		return Channel{}, false
-	}
-	*remaining = *remaining - 1
-	logger.Infof(ctx, "retrying request on channel %d after channel %d", next.ID, failed.ID)
-	return next, true
+	return Channel{}, false
 }
 
 func channelFromModel(channel *model.Channel) (Channel, error) {

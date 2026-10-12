@@ -13,22 +13,43 @@ import (
 	"github.com/infinmalum/one-gateway/common/utils"
 )
 
+// ChannelSource filters channel candidates by their credential source. The
+// zero value keeps the historical API-key-only behavior.
+type ChannelSource int
+
+const (
+	ChannelSourceAPIOnly ChannelSource = iota
+	ChannelSourceSubscriptionOnly
+	ChannelSourceAny
+)
+
+// applyChannelSource narrows a channels query to the requested source.
+func applyChannelSource(query *gorm.DB, source ChannelSource) *gorm.DB {
+	switch source {
+	case ChannelSourceAPIOnly:
+		return query.Where("upstream_account_id IS NULL")
+	case ChannelSourceSubscriptionOnly:
+		return query.Where("upstream_account_id IS NOT NULL")
+	}
+	return query
+}
+
 // GetRandomSatisfiedChannelByType selects a channel that can receive a native
 // protocol request. A mixed-provider group must not randomly choose a channel
 // that requires an unimplemented cross-protocol conversion.
 func GetRandomSatisfiedChannelByType(group, model string, channelType int, ignoreFirstPriority bool) (*Channel, error) {
-	return GetRandomSatisfiedChannelByTypeExcluding(group, model, channelType, ignoreFirstPriority, nil)
+	return GetRandomSatisfiedChannelByTypeExcluding(group, model, channelType, ignoreFirstPriority, nil, ChannelSourceAPIOnly)
 }
 
 // GetRandomSatisfiedChannelExcluding serves protocol-neutral retries for
 // legacy routes, whose provider type is selected from all compatible channels.
-func GetRandomSatisfiedChannelExcluding(group, model string, ignoreFirstPriority bool, excluded map[int]bool) (*Channel, error) {
-	return GetRandomSatisfiedChannelByTypeExcluding(group, model, -1, ignoreFirstPriority, excluded)
+func GetRandomSatisfiedChannelExcluding(group, model string, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
+	return GetRandomSatisfiedChannelByTypeExcluding(group, model, -1, ignoreFirstPriority, excluded, source)
 }
 
 // GetRandomSatisfiedChannelByTypeExcluding chooses a compatible channel that
 // has not already failed during the current native request.
-func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType int, ignoreFirstPriority bool, excluded map[int]bool) (*Channel, error) {
+func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType int, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
 	var abilities []Ability
 	groupColumn := "`group`"
 	if common.UsingPostgreSQL {
@@ -49,6 +70,7 @@ func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType i
 	if channelType >= 0 {
 		query = query.Where("type = ?", channelType)
 	}
+	query = applyChannelSource(query, source)
 	if err := query.Find(&channels).Error; err != nil {
 		return nil, err
 	}
@@ -84,37 +106,6 @@ type Ability struct {
 	ChannelId int    `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool   `json:"enabled"`
 	Priority  *int64 `json:"priority" gorm:"bigint;default:0;index"`
-}
-
-func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
-	ability := Ability{}
-	groupCol := "`group`"
-	trueVal := "1"
-	if common.UsingPostgreSQL {
-		groupCol = `"group"`
-		trueVal = "true"
-	}
-
-	var err error = nil
-	var channelQuery *gorm.DB
-	if ignoreFirstPriority {
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-	} else {
-		maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal+" and priority = (?)", group, model, maxPrioritySubQuery)
-	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
-		err = channelQuery.Order("RANDOM()").First(&ability).Error
-	} else {
-		err = channelQuery.Order("RAND()").First(&ability).Error
-	}
-	if err != nil {
-		return nil, err
-	}
-	channel := Channel{}
-	channel.Id = ability.ChannelId
-	err = DB.First(&channel, "id = ?", ability.ChannelId).Error
-	return &channel, err
 }
 
 func (channel *Channel) AddAbilities() error {

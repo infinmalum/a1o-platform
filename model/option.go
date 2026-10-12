@@ -1,6 +1,8 @@
 package model
 
 import (
+	"fmt"
+
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/common/logger"
 	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
@@ -75,6 +77,7 @@ func InitOptionMap() {
 	config.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(config.QuotaPerUnit, 'f', -1, 64)
 	config.OptionMap["RetryTimes"] = strconv.Itoa(config.RetryTimes)
 	config.OptionMap["Theme"] = config.Theme
+	config.OptionMap["UpstreamRoutingPolicy"] = config.UpstreamRoutingPolicy
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -239,6 +242,12 @@ func updateOptionMap(key string, value string) (err error) {
 		config.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "Theme":
 		config.Theme = value
+	case "UpstreamRoutingPolicy":
+		if !config.ValidUpstreamRoutingPolicies[value] {
+			err = fmt.Errorf("invalid upstream routing policy: %s", value)
+		} else {
+			config.UpstreamRoutingPolicy = value
+		}
 	}
 	return err
 }
