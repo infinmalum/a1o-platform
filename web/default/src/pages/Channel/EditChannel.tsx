@@ -48,12 +48,14 @@ const EditChannel = () => {
     system_prompt: '',
     models: [],
     groups: ['default'],
+    upstream_account_id: 0,
   };
   const [batch, setBatch] = useState(false);
   const [inputs, setInputs] = useState(originInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [accountOptions, setAccountOptions] = useState([]);
   const [basicModels, setBasicModels] = useState([]);
   const [fullModels, setFullModels] = useState([]);
   const [customModel, setCustomModel] = useState('');
@@ -101,7 +103,10 @@ const EditChannel = () => {
           2
         );
       }
-      setInputs(data);
+      setInputs({
+        ...data,
+        upstream_account_id: data.upstream_account_id || 0,
+      });
       if (data.config !== '') {
         setConfig(JSON.parse(data.config));
       }
@@ -142,6 +147,23 @@ const EditChannel = () => {
     }
   };
 
+  const fetchUpstreamAccounts = async () => {
+    try {
+      let res = await API.get(`/api/upstream_account/?p=0`);
+      if (res.data.success) {
+        setAccountOptions(
+          res.data.data.map((account) => ({
+            key: account.id,
+            text: `${account.name}（${account.profile}）`,
+            value: account.id,
+          }))
+        );
+      }
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+
   useEffect(() => {
     let localModelOptions = [...originModelOptions];
     inputs.models.forEach((model) => {
@@ -165,6 +187,7 @@ const EditChannel = () => {
     }
     fetchModels().then();
     fetchGroups().then();
+    fetchUpstreamAccounts().then();
   }, []);
 
   const submit = async () => {
@@ -179,7 +202,11 @@ const EditChannel = () => {
         inputs.key = `${config.region}|${config.vertex_ai_project_id}|${config.vertex_ai_adc}`;
       }
     }
-    if (!isEdit && (inputs.name === '' || inputs.key === '')) {
+    if (!isEdit && inputs.name === '') {
+      showInfo(t('channel.edit.messages.name_required'));
+      return;
+    }
+    if (!isEdit && inputs.key === '' && !(inputs.upstream_account_id > 0)) {
       showInfo(t('channel.edit.messages.name_required'));
       return;
     }
@@ -210,6 +237,12 @@ const EditChannel = () => {
       models: localInputs.models.join(','),
       group: localInputs.groups.join(','),
       config: JSON.stringify(config),
+      // 0 means an ordinary API-key channel; the backend rejects 0 as a
+      // binding, so send null to leave the channel unbound.
+      upstream_account_id:
+        localInputs.upstream_account_id > 0
+          ? localInputs.upstream_account_id
+          : null,
     };
     if (isEdit) {
       res = await API.put(`/api/channel/`, {
@@ -299,6 +332,29 @@ const EditChannel = () => {
               />
             </Form.Field>
             {renderChannelTip(inputs.type)}
+
+            <Form.Field>
+              <Form.Select
+                label={t('channel.edit.upstream_account')}
+                name='upstream_account_id'
+                search
+                options={[
+                  {
+                    key: 0,
+                    text: t('channel.edit.upstream_account_none'),
+                    value: 0,
+                  },
+                  ...accountOptions,
+                ]}
+                value={inputs.upstream_account_id || 0}
+                onChange={handleInputChange}
+              />
+            </Form.Field>
+            {inputs.upstream_account_id > 0 && (
+              <Message info>
+                {t('channel.edit.upstream_account_tip')}
+              </Message>
+            )}
 
             {/* Azure OpenAI specific fields */}
             {inputs.type === 3 && (

@@ -72,6 +72,7 @@ func providerChannel(metadata *meta.Meta) lifecycle.Channel {
 		BaseURL: metadata.BaseURL, APIKey: metadata.APIKey,
 		ModelMapping: metadata.ModelMapping, SystemPrompt: metadata.ForcedSystemPrompt,
 		APIVersion: metadata.Config.APIVersion, Config: metadata.Config,
+		UpstreamAccountID: metadata.UpstreamAccountID,
 	}
 }
 

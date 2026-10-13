@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -98,8 +99,9 @@ func TestAPIOnlyDefaultIgnoresSubscriptionChannels(t *testing.T) {
 
 func TestSubscriptionOnlySelectsBoundChannels(t *testing.T) {
 	setupPolicyDB(t)
-	accountID := 1
-	subChannel := insertChannel(t, "sub", &accountID)
+	creds := withTestCredentials(t)
+	account := creds.insertAccount(t, "sub-account", testOAuthDocument(t, testToken(t, "access"), time.Now().Add(time.Hour)))
+	subChannel := insertChannel(t, "sub", &account.Id)
 
 	selected, httpErr := SelectChannel(Selection{Group: "default", Model: "gpt-5", Type: -1, Source: model.ChannelSourceSubscriptionOnly})
 	require.Nil(t, httpErr)
@@ -111,9 +113,10 @@ func TestSubscriptionOnlySelectsBoundChannels(t *testing.T) {
 
 func TestMixedSourceSeesBothKinds(t *testing.T) {
 	setupPolicyDB(t)
+	creds := withTestCredentials(t)
+	account := creds.insertAccount(t, "sub-account", testOAuthDocument(t, testToken(t, "access"), time.Now().Add(time.Hour)))
 	apiChannel := insertChannel(t, "api", nil)
-	accountID := 1
-	subChannel := insertChannel(t, "sub", &accountID)
+	subChannel := insertChannel(t, "sub", &account.Id)
 
 	seen := map[int]bool{}
 	for i := 0; i < 40; i++ {
@@ -128,9 +131,10 @@ func TestMixedSourceSeesBothKinds(t *testing.T) {
 func TestSourceFilterAppliesToTypedSelection(t *testing.T) {
 	setupPolicyDB(t)
 	withPolicy(t, config.RoutingPolicyAPIOnly)
+	creds := withTestCredentials(t)
+	account := creds.insertAccount(t, "sub-account", testOAuthDocument(t, testToken(t, "access"), time.Now().Add(time.Hour)))
 	apiChannel := insertChannel(t, "api", nil)
-	accountID := 1
-	subChannel := insertChannel(t, "sub", &accountID)
+	subChannel := insertChannel(t, "sub", &account.Id)
 
 	// A typed selection (native OpenAI protocol path) also stays API-only.
 	selected, httpErr := SelectChannel(Selection{Group: "default", Model: "gpt-5", Type: 1})

@@ -2,6 +2,7 @@
   "header": {
     "home": "首页",
     "channel": "渠道",
+    "upstreamAccount": "订阅账号",
     "token": "令牌",
     "redemption": "兑换",
     "topup": "充值",
@@ -98,6 +99,9 @@
       "group": "分组",
       "group_placeholder": "请选择可以使用该渠道的分组",
       "group_addition": "请在系统设置页面编辑分组倍率以添加新的分组：",
+      "upstream_account": "绑定订阅账号",
+      "upstream_account_none": "不绑定（普通 API Key 渠道）",
+      "upstream_account_tip": "该渠道已绑定订阅账号：请求将使用账号的订阅凭据转发，渠道密钥不会被使用。",
       "models": "模型",
       "models_placeholder": "请选择该渠道所支持的模型",
       "model_mapping": "模型重定向",
@@ -292,6 +296,74 @@
     "messages": {
       "update_success": "兑换码更新成功！",
       "create_success": "兑换码创建成功！"
+    }
+  },
+  "upstreamAccount": {
+    "title": "订阅账号管理",
+    "table": {
+      "id": "ID",
+      "name": "名称",
+      "profile": "Profile",
+      "status": "状态",
+      "externalId": "外部标识",
+      "credentialExpiry": "凭据到期",
+      "concurrencyLimit": "并发上限",
+      "createdTime": "创建时间",
+      "actions": "操作",
+      "unlimited": "不限",
+      "unknown": "未知"
+    },
+    "status": {
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "reauthRequired": "需要重新连接",
+      "unknown": "未知状态"
+    },
+    "buttons": {
+      "connect": "连接 ChatGPT 账号",
+      "reconnect": "重新连接",
+      "enable": "启用",
+      "disable": "禁用",
+      "edit": "编辑",
+      "delete": "删除",
+      "confirmDelete": "确认删除",
+      "refresh": "刷新"
+    },
+    "edit": {
+      "title": "编辑订阅账号",
+      "name": "名称",
+      "namePlaceholder": "请输入名称",
+      "concurrencyLimit": "并发上限",
+      "concurrencyPlaceholder": "0 表示不限制",
+      "submit": "提交",
+      "cancel": "取消"
+    },
+    "wizard": {
+      "titleConnect": "连接 ChatGPT 订阅账号",
+      "titleReconnect": "重新连接账号",
+      "name": "账号名称",
+      "namePlaceholder": "可选，默认使用账号邮箱",
+      "generate": "生成授权链接",
+      "regenerate": "重新生成授权链接",
+      "openAuthorize": "打开授权页面",
+      "copyLink": "复制链接",
+      "copySuccess": "授权链接已复制",
+      "step1": "点击下方按钮打开授权页面，并在浏览器中完成 ChatGPT 登录与授权",
+      "step2": "登录后浏览器会跳转到本机回调地址（页面可能显示无法访问，属正常现象）",
+      "step3": "复制浏览器地址栏中的完整 URL，粘贴到下方完成连接",
+      "expiresIn": "授权链接 {{minutes}} 分钟内有效",
+      "callbackLabel": "粘贴回调地址",
+      "callbackPlaceholder": "把浏览器跳转到的 http://127.0.0.1:1455/auth/callback?... 完整地址粘贴到这里",
+      "callbackRequired": "请先粘贴回调地址",
+      "complete": "完成连接",
+      "cancel": "取消",
+      "success": "账号连接成功",
+      "reconnectSuccess": "账号重新连接成功"
+    },
+    "messages": {
+      "updateSuccess": "订阅账号更新成功！",
+      "deleteSuccess": "订阅账号删除成功！",
+      "invalidConcurrency": "并发上限必须是不小于 0 的整数"
     }
   },
   "log": {

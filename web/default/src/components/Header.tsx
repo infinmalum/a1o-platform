@@ -31,6 +31,12 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     admin: true,
   },
   {
+    name: 'header.upstreamAccount',
+    to: '/upstream_account',
+    icon: 'plug',
+    admin: true,
+  },
+  {
     name: 'header.token',
     to: '/token',
     icon: 'key',

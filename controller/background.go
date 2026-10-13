@@ -39,7 +39,7 @@ func startBackgroundResponses(c *gin.Context, model string, maxOutputTokens int6
 			ID: metadata.ChannelId, Type: metadata.ChannelType,
 			BaseURL: metadata.BaseURL, APIKey: metadata.APIKey,
 			ModelMapping: metadata.ModelMapping, SystemPrompt: metadata.ForcedSystemPrompt,
-			APIVersion: metadata.Config.APIVersion,
+			APIVersion: metadata.Config.APIVersion, UpstreamAccountID: metadata.UpstreamAccountID,
 		},
 		Principal: lifecycle.Principal{
 			UserID: metadata.UserId, TokenID: metadata.TokenId,

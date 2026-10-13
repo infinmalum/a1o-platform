@@ -1,8 +1,9 @@
 // Package upstream describes transport profiles: how a request reaches a
-// provider and with which credential kind. The profile registry is data only;
-// request execution stays owned by the relay lifecycle. Unbound channels use
-// the builtin api_key profile, which is the compatibility path for every
-// existing API-key channel.
+// provider and with which credential kind. The profile registry is data plus
+// per-profile hooks (credential refreshers and request validators); request
+// execution stays owned by the relay lifecycle. Unbound channels use the
+// builtin api_key profile, which is the compatibility path for every existing
+// API-key channel.
 package upstream
 
 import (

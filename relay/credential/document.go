@@ -30,6 +30,8 @@ type Document struct {
 type OAuthDocument struct {
 	AccessToken       string   `json:"access_token"`
 	RefreshToken      string   `json:"refresh_token,omitempty"`
+	IDToken           string   `json:"id_token,omitempty"` // retained for reconnect hints (id_token_hint)
+	Email             string   `json:"email,omitempty"`
 	ExpiresAt         int64    `json:"expires_at,omitempty"` // unix seconds
 	Scopes            []string `json:"scopes,omitempty"`
 	RegistrationID    string   `json:"registration_id,omitempty"`

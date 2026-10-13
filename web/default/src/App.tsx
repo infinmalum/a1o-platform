@@ -16,6 +16,7 @@ import PasswordResetConfirm from './components/PasswordResetConfirm';
 import { UserContext } from './context/User';
 import { StatusContext } from './context/Status';
 import Channel from './pages/Channel';
+import UpstreamAccount from './pages/UpstreamAccount';
 import Token from './pages/Token';
 import EditToken from './pages/Token/EditToken';
 import EditChannel from './pages/Channel/EditChannel';
@@ -107,6 +108,14 @@ function App() {
         element={
           <PrivateRoute>
             <Channel />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/upstream_account'
+        element={
+          <PrivateRoute>
+            <UpstreamAccount />
           </PrivateRoute>
         }
       />

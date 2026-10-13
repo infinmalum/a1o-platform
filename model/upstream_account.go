@@ -1,7 +1,10 @@
 package model
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"sync"
 
 	"github.com/infinmalum/one-gateway/common/helper"
 	"gorm.io/gorm"
@@ -194,4 +197,36 @@ func InsertUpstreamAccountCooldown(accountId int, modelName string, reason strin
 		CreatedTime: helper.GetTimestamp(),
 	}
 	return DB.Create(&cooldown).Error
+}
+
+// UpstreamOAuthHostIDKey stores the gateway host identifier in the option
+// table without registering it in the user-facing OptionMap.
+const UpstreamOAuthHostIDKey = "UpstreamOAuthHostID"
+
+var upstreamOAuthHostIDMu sync.Mutex
+
+// GetOrCreateUpstreamOAuthHostID returns the stable host identifier sent as
+// ext_agent_host_id on Sign in with ChatGPT registrations. The provider
+// requires one persistent identifier per host; it is created once and reused
+// for every later sign-in of this gateway.
+func GetOrCreateUpstreamOAuthHostID() (string, error) {
+	upstreamOAuthHostIDMu.Lock()
+	defer upstreamOAuthHostIDMu.Unlock()
+	var option Option
+	err := DB.Where(&Option{Key: UpstreamOAuthHostIDKey}).First(&option).Error
+	if err == nil && option.Value != "" {
+		return option.Value, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	hostID := "ogw-" + hex.EncodeToString(buf)
+	if err := DB.Save(&Option{Key: UpstreamOAuthHostIDKey, Value: hostID}).Error; err != nil {
+		return "", err
+	}
+	return hostID, nil
 }

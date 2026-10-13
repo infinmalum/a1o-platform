@@ -140,6 +140,10 @@ var UpstreamRoutingPolicy = env.String("UPSTREAM_ROUTING_POLICY", RoutingPolicyA
 // 0 disables the cap.
 var UpstreamMaxInflight = env.Int("UPSTREAM_MAX_INFLIGHT", 100)
 
+// UpstreamLeaseWaitSeconds bounds how long a subscription attempt waits for
+// account capacity before failing over to another channel. 0 fails fast.
+var UpstreamLeaseWaitSeconds = env.Int("UPSTREAM_LEASE_WAIT_SECONDS", 3)
+
 var Theme = env.String("THEME", "default")
 var ValidThemes = map[string]bool{
 	"default": true,

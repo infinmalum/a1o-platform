@@ -24,6 +24,7 @@ func Get(c *gin.Context) *meta.Meta {
 		OriginModelName:    c.GetString(ctxkey.RequestModel),
 		BaseURL:            c.GetString(ctxkey.BaseURL),
 		APIKey:             strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer "),
+		UpstreamAccountID:  c.GetInt(ctxkey.UpstreamAccountID),
 		RequestURLPath:     c.Request.URL.String(),
 		ForcedSystemPrompt: c.GetString(ctxkey.SystemPrompt), StartTime: time.Now(),
 	}

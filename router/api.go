@@ -91,6 +91,8 @@ func SetApiRouter(router *gin.Engine) {
 			upstreamAccountRoute.GET("/:id", controller.GetUpstreamAccount)
 			upstreamAccountRoute.POST("/", controller.AddUpstreamAccount)
 			upstreamAccountRoute.PUT("/", controller.UpdateUpstreamAccount)
+			upstreamAccountRoute.POST("/oauth/session", controller.StartUpstreamAccountOAuth)
+			upstreamAccountRoute.POST("/oauth/complete", controller.CompleteUpstreamAccountOAuth)
 			upstreamAccountRoute.PUT("/credential", controller.UpdateUpstreamAccountCredential)
 			upstreamAccountRoute.DELETE("/:id", controller.DeleteUpstreamAccount)
 		}

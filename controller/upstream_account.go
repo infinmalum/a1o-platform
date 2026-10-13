@@ -55,10 +55,14 @@ func GetUpstreamAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": dto})
 }
 
+// credentialStoreForWrite resolves the credential store for write paths;
+// tests replace it to inject a store without touching the environment.
+var credentialStoreForWrite = credential.DefaultStore
+
 // storeForWrite returns the configured credential store or rejects the
 // request with an actionable message.
 func storeForWrite(c *gin.Context) (*credential.Store, bool) {
-	store, err := credential.DefaultStore()
+	store, err := credentialStoreForWrite()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "凭据加密密钥配置无效：" + err.Error()})
 		return nil, false

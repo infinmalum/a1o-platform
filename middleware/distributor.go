@@ -60,6 +60,11 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.Channel, channel.Type)
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.Name)
+	if channel.UpstreamAccountID != nil {
+		// Subscription channels resolve their credential per attempt; the
+		// account ID travels with the request into the relay lifecycle.
+		c.Set(ctxkey.UpstreamAccountID, *channel.UpstreamAccountID)
+	}
 	if channel.SystemPrompt != nil && *channel.SystemPrompt != "" {
 		c.Set(ctxkey.SystemPrompt, *channel.SystemPrompt)
 	}
