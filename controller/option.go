@@ -53,6 +53,14 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "UpstreamRoutingPolicy":
+		if !config.ValidUpstreamRoutingPolicies[option.Value] {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无效的上游路由策略",
+			})
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && config.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

@@ -84,6 +84,18 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.DELETE("/disabled", controller.DeleteDisabledChannel)
 			channelRoute.DELETE("/:id", controller.DeleteChannel)
 		}
+		upstreamAccountRoute := apiRouter.Group("/upstream_account")
+		upstreamAccountRoute.Use(middleware.AdminAuth())
+		{
+			upstreamAccountRoute.GET("/", controller.GetAllUpstreamAccounts)
+			upstreamAccountRoute.GET("/:id", controller.GetUpstreamAccount)
+			upstreamAccountRoute.POST("/", controller.AddUpstreamAccount)
+			upstreamAccountRoute.PUT("/", controller.UpdateUpstreamAccount)
+			upstreamAccountRoute.POST("/oauth/session", controller.StartUpstreamAccountOAuth)
+			upstreamAccountRoute.POST("/oauth/complete", controller.CompleteUpstreamAccountOAuth)
+			upstreamAccountRoute.PUT("/credential", controller.UpdateUpstreamAccountCredential)
+			upstreamAccountRoute.DELETE("/:id", controller.DeleteUpstreamAccount)
+		}
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{

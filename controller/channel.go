@@ -1,14 +1,31 @@
 package controller
 
 import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/common/helper"
 	"github.com/infinmalum/one-gateway/model"
-	"net/http"
-	"strconv"
-	"strings"
 )
+
+// validateChannelAccountBinding rejects references to accounts that do not
+// exist so a subscription channel never points at a stale account ID.
+func validateChannelAccountBinding(channel *model.Channel) error {
+	if channel.UpstreamAccountID == nil {
+		return nil
+	}
+	if *channel.UpstreamAccountID <= 0 {
+		return fmt.Errorf("无效的上游账号 Id")
+	}
+	if _, err := model.GetUpstreamAccountById(*channel.UpstreamAccountID, false); err != nil {
+		return fmt.Errorf("绑定的上游账号不存在：%d", *channel.UpstreamAccountID)
+	}
+	return nil
+}
 
 func GetAllChannels(c *gin.Context) {
 	p, _ := strconv.Atoi(c.Query("p"))
@@ -84,6 +101,10 @@ func AddChannel(c *gin.Context) {
 		})
 		return
 	}
+	if err := validateChannelAccountBinding(&channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	channel.CreatedTime = helper.GetTimestamp()
 	keys := strings.Split(channel.Key, "\n")
 	channels := make([]model.Channel, 0, len(keys))
@@ -153,6 +174,10 @@ func UpdateChannel(c *gin.Context) {
 			"success": false,
 			"message": err.Error(),
 		})
+		return
+	}
+	if err := validateChannelAccountBinding(&channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	err = channel.Update()

@@ -21,6 +21,9 @@ type Meta struct {
 	APIType  int
 	Config   model.ChannelConfig
 	IsStream bool
+	// UpstreamAccountID is set when the selected channel is bound to an
+	// administrator-connected subscription account.
+	UpstreamAccountID int
 	// OriginModelName is the model name from the raw user request
 	OriginModelName string
 	// ActualModelName is the model name after mapping

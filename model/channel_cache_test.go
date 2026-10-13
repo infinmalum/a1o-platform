@@ -65,19 +65,19 @@ func TestChannelChangesReflectImmediatelyWithoutRedis(t *testing.T) {
 
 	channel := Channel{Name: "test", Status: ChannelStatusEnabled, Group: "default", Models: "old-model"}
 	require.NoError(t, channel.Insert())
-	selected, err := CacheGetRandomSatisfiedChannel("default", "old-model", false)
+	selected, err := CacheGetRandomSatisfiedChannel("default", "old-model", false, ChannelSourceAPIOnly)
 	require.NoError(t, err)
 	require.Equal(t, channel.Id, selected.Id)
 
 	channel.Models = "new-model"
 	require.NoError(t, channel.Update())
-	_, err = CacheGetRandomSatisfiedChannel("default", "old-model", false)
+	_, err = CacheGetRandomSatisfiedChannel("default", "old-model", false, ChannelSourceAPIOnly)
 	require.Error(t, err)
-	_, err = CacheGetRandomSatisfiedChannel("default", "new-model", false)
+	_, err = CacheGetRandomSatisfiedChannel("default", "new-model", false, ChannelSourceAPIOnly)
 	require.NoError(t, err)
 
 	UpdateChannelStatusById(channel.Id, ChannelStatusManuallyDisabled)
-	_, err = CacheGetRandomSatisfiedChannel("default", "new-model", false)
+	_, err = CacheGetRandomSatisfiedChannel("default", "new-model", false, ChannelSourceAPIOnly)
 	require.Error(t, err)
 }
 
@@ -104,9 +104,9 @@ func TestChannelCacheReloadsAfterAnotherInstanceChangesChannels(t *testing.T) {
 	group2model2channels, channelCacheVersion = staleChannels, staleVersion
 	channelSyncLock.Unlock()
 
-	selected, err := CacheGetRandomSatisfiedChannel("default", "second", false)
+	selected, err := CacheGetRandomSatisfiedChannel("default", "second", false, ChannelSourceAPIOnly)
 	require.NoError(t, err)
 	require.Equal(t, channel.Id, selected.Id)
-	_, err = CacheGetRandomSatisfiedChannel("default", "first", false)
+	_, err = CacheGetRandomSatisfiedChannel("default", "first", false, ChannelSourceAPIOnly)
 	require.Error(t, err)
 }

@@ -41,6 +41,9 @@ type Channel struct {
 	Priority           *int64  `json:"priority" gorm:"bigint;default:0"`
 	Config             string  `json:"config"`
 	SystemPrompt       *string `json:"system_prompt" gorm:"type:text"`
+	// UpstreamAccountID optionally binds the channel to a subscription
+	// account instead of a per-channel API key; nil keeps plain API-key use.
+	UpstreamAccountID *int `json:"upstream_account_id"`
 }
 
 type ChannelConfig struct {

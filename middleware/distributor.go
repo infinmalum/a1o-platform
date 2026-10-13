@@ -24,6 +24,7 @@ func Distribute() func(c *gin.Context) {
 		userId := c.GetInt(ctxkey.Id)
 		userGroup, _ := model.CacheGetUserGroup(userId)
 		c.Set(ctxkey.Group, userGroup)
+		source := lifecycle.InitialSource()
 		var requestModel string
 		var channel *model.Channel
 		channelId, ok := c.Get(ctxkey.SpecificChannelId)
@@ -33,7 +34,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithMessage(c, http.StatusBadRequest, "无效的渠道 Id")
 				return
 			}
-			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: c.GetString(ctxkey.RequestModel), Type: -1, SpecificID: id})
+			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: c.GetString(ctxkey.RequestModel), Type: -1, SpecificID: id, Source: source})
 			if selectErr != nil {
 				abortWithMessage(c, selectErr.Status, selectErr.Message)
 				return
@@ -41,7 +42,7 @@ func Distribute() func(c *gin.Context) {
 			channel = selected
 		} else {
 			requestModel = c.GetString(ctxkey.RequestModel)
-			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: requestModel, Type: -1})
+			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: requestModel, Type: -1, Source: source})
 			if selectErr != nil {
 				message := fmt.Sprintf("当前分组 %s 下对于模型 %s 无可用渠道", userGroup, requestModel)
 				abortWithMessage(c, http.StatusServiceUnavailable, message)
@@ -59,6 +60,11 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.Channel, channel.Type)
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.Name)
+	if channel.UpstreamAccountID != nil {
+		// Subscription channels resolve their credential per attempt; the
+		// account ID travels with the request into the relay lifecycle.
+		c.Set(ctxkey.UpstreamAccountID, *channel.UpstreamAccountID)
+	}
 	if channel.SystemPrompt != nil && *channel.SystemPrompt != "" {
 		c.Set(ctxkey.SystemPrompt, *channel.SystemPrompt)
 	}

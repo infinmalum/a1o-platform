@@ -2,6 +2,7 @@
   "header": {
     "home": "Home",
     "channel": "Channel",
+    "upstreamAccount": "Upstream Accounts",
     "token": "Token",
     "redemption": "Redemption",
     "topup": "Top Up",
@@ -98,6 +99,9 @@
       "group": "Group",
       "group_placeholder": "Please select groups that can use this channel",
       "group_addition": "Please edit group multipliers in system settings to add new group:",
+      "upstream_account": "Bound Subscription Account",
+      "upstream_account_none": "None (regular API-key channel)",
+      "upstream_account_tip": "This channel is bound to a subscription account: requests are forwarded with the account's subscription credential and the channel key is not used.",
       "models": "Models",
       "models_placeholder": "Please select models supported by this channel",
       "model_mapping": "Model Mapping",
@@ -292,6 +296,74 @@
     "messages": {
       "update_success": "Redemption code updated successfully!",
       "create_success": "Redemption code created successfully!"
+    }
+  },
+  "upstreamAccount": {
+    "title": "Upstream Accounts",
+    "table": {
+      "id": "ID",
+      "name": "Name",
+      "profile": "Profile",
+      "status": "Status",
+      "externalId": "External ID",
+      "credentialExpiry": "Credential Expiry",
+      "concurrencyLimit": "Concurrency Limit",
+      "createdTime": "Created Time",
+      "actions": "Actions",
+      "unlimited": "Unlimited",
+      "unknown": "Unknown"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "reauthRequired": "Reconnection Required",
+      "unknown": "Unknown"
+    },
+    "buttons": {
+      "connect": "Connect ChatGPT Account",
+      "reconnect": "Reconnect",
+      "enable": "Enable",
+      "disable": "Disable",
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirmDelete": "Confirm Delete",
+      "refresh": "Refresh"
+    },
+    "edit": {
+      "title": "Edit Upstream Account",
+      "name": "Name",
+      "namePlaceholder": "Please enter a name",
+      "concurrencyLimit": "Concurrency Limit",
+      "concurrencyPlaceholder": "0 means unlimited",
+      "submit": "Submit",
+      "cancel": "Cancel"
+    },
+    "wizard": {
+      "titleConnect": "Connect a ChatGPT Subscription Account",
+      "titleReconnect": "Reconnect Account",
+      "name": "Account Name",
+      "namePlaceholder": "Optional, defaults to the account email",
+      "generate": "Generate Authorization Link",
+      "regenerate": "Regenerate Authorization Link",
+      "openAuthorize": "Open Authorization Page",
+      "copyLink": "Copy Link",
+      "copySuccess": "Authorization link copied",
+      "step1": "Open the authorization page below and complete ChatGPT sign-in in the browser",
+      "step2": "After sign-in the browser redirects to a loopback address (the page may show an error, which is expected)",
+      "step3": "Copy the full URL from the browser address bar and paste it below to finish",
+      "expiresIn": "The authorization link is valid for {{minutes}} minutes",
+      "callbackLabel": "Paste the callback URL",
+      "callbackPlaceholder": "Paste the full http://127.0.0.1:1455/auth/callback?... URL the browser redirected to",
+      "callbackRequired": "Please paste the callback URL first",
+      "complete": "Complete Connection",
+      "cancel": "Cancel",
+      "success": "Account connected successfully",
+      "reconnectSuccess": "Account reconnected successfully"
+    },
+    "messages": {
+      "updateSuccess": "Upstream account updated successfully!",
+      "deleteSuccess": "Upstream account deleted successfully!",
+      "invalidConcurrency": "Concurrency limit must be an integer >= 0"
     }
   },
   "log": {

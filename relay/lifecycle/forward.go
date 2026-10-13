@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/infinmalum/one-gateway/common/client"
+	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/relay/billing"
@@ -30,6 +31,9 @@ type Channel struct {
 	// Config carries provider-specific channel settings such as Ali plugins,
 	// AIProxyLibrary IDs, and VertexAI credentials.
 	Config model.ChannelConfig
+	// UpstreamAccountID binds the channel to an administrator-connected
+	// subscription account; each attempt resolves its lease and credential.
+	UpstreamAccountID int
 }
 
 type Principal struct {
@@ -97,19 +101,14 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 		var primaryErr *HTTPError
 		var selected Channel
 		candidates := append([]native.Protocol{upstreamProtocol}, input.FallbackUpstreamProtocols...)
-		for _, candidate := range candidates {
-			candidateChannel, err := selectInitial(input, candidate)
-			if err == nil {
-				selected = candidateChannel
-				upstreamProtocol = candidate
-				break
-			}
-			if primaryErr == nil {
-				primaryErr = err
-				if err.Status != http.StatusServiceUnavailable && !(input.Principal.SpecificChannel && err.Status == http.StatusBadRequest) {
-					return err
-				}
-			}
+		source := InitialSource()
+		selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, candidates, source)
+		if selected.ID == 0 && primaryErr != nil && primaryErr.Status == http.StatusServiceUnavailable &&
+			source == model.ChannelSourceSubscriptionOnly &&
+			config.UpstreamRoutingPolicy == config.RoutingPolicySubscriptionThenAPI {
+			// No eligible subscription exists; the explicit fallback policy
+			// allows this request to run on API channels.
+			selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, candidates, model.ChannelSourceAPIOnly)
 		}
 		if selected.ID == 0 {
 			return primaryErr
@@ -157,6 +156,9 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 	settlementContext := context.WithoutCancel(ctx)
 	retries := max(0, input.RetryLimit)
 	tried := make(map[int]bool)
+	// Accounts already refreshed within this request: the pre-flight refresh
+	// and the 401 replay each happen at most once per account.
+	refreshed := make(map[int]bool)
 	channel := input.Channel
 	// The Gemini action is selected by the transport, so a fallback onto a
 	// Gemini channel derives it from the final upstream protocol instead of
@@ -174,125 +176,189 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 		if replacement := channel.ModelMapping[input.Model]; replacement != "" {
 			mappedModel = replacement
 		}
-		version := input.Version
-		if channel.APIVersion != "" {
-			version = channel.APIVersion
-		}
-		body := input.Body
-		if converter != nil {
-			var err error
-			body, err = converter.Request(body, mappedModel)
-			if err != nil {
-				return &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}
-			}
-		}
-		req, err := native.BuildRequest(ctx, native.Request{
-			Protocol: upstreamProtocol, ChannelType: channel.Type, BaseURL: channel.BaseURL, Version: version,
-			Model: mappedModel, Action: action, APIKey: channel.APIKey,
-			SystemPrompt: channel.SystemPrompt, Body: body,
-			Headers: input.Headers, Query: input.Query,
-		})
-		if err != nil {
-			return &HTTPError{Status: http.StatusBadRequest, Message: err.Error()}
-		}
-		reservation, err := reserve(ctx, input, channel, mappedModel, upstreamProtocol)
-		if err != nil {
-			return &HTTPError{Status: http.StatusForbidden, Message: err.Error()}
-		}
-		response, err := providerClient.Do(req)
-		if err != nil {
-			reservation.Refund(settlementContext)
-			logger.Errorf(settlementContext, "upstream request failed on channel %d: %v", channel.ID, err)
-			if next, ok := selectRetry(ctx, input, channel, tried, &retries); ok {
-				channel = next
-				continue
-			}
-			return &HTTPError{Status: http.StatusBadGateway, Message: "upstream request failed"}
-		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			reservation.Refund(settlementContext)
-			if response.StatusCode >= 300 && response.StatusCode < 400 {
-				_ = response.Body.Close()
-				return &HTTPError{Status: http.StatusBadGateway, Message: "upstream redirect is not allowed"}
-			}
-			if Retryable(response.StatusCode, false, input.Principal.SpecificChannel, ctx.Err() != nil) {
+		var subscription *subscriptionAttempt
+		if channel.UpstreamAccountID != 0 {
+			var httpErr *HTTPError
+			subscription, httpErr = prepareSubscription(ctx, channel, upstreamProtocol, refreshed)
+			if httpErr != nil {
+				// The account cannot serve this attempt; fail over under the
+				// routing policy's retry preferences.
 				if next, ok := selectRetry(ctx, input, channel, tried, &retries); ok {
-					_ = response.Body.Close()
 					channel = next
 					continue
 				}
+				return httpErr
+			}
+		}
+		attempt := channel
+		outcome := func() attemptOutcome {
+			if subscription != nil {
+				// The lease covers the entire upstream operation and is
+				// released on every exit path.
+				defer subscription.Lease.Release()
+			}
+			version := input.Version
+			if attempt.APIVersion != "" {
+				version = attempt.APIVersion
+			}
+			body := input.Body
+			if converter != nil {
+				var err error
+				body, err = converter.Request(body, mappedModel)
+				if err != nil {
+					return attemptOutcome{err: &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}}
+				}
+			}
+			apiKey := attempt.APIKey
+			if subscription != nil {
+				if subscription.validator != nil {
+					normalized, validateErr := subscription.validator(body, input.Stream)
+					if validateErr != nil {
+						// The request is outside this profile's capability
+						// matrix; another channel may still serve it.
+						capabilityErr := &HTTPError{Status: http.StatusUnprocessableEntity, Message: validateErr.Error()}
+						if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
+							return attemptOutcome{retry: true, retryWith: next}
+						}
+						return attemptOutcome{err: capabilityErr}
+					}
+					body = normalized
+				}
+				apiKey = subscription.APIKey
+			}
+			req, err := native.BuildRequest(ctx, native.Request{
+				Protocol: upstreamProtocol, ChannelType: attempt.Type, BaseURL: attempt.BaseURL, Version: version,
+				Model: mappedModel, Action: action, APIKey: apiKey,
+				SystemPrompt: attempt.SystemPrompt, Body: body,
+				Headers: input.Headers, Query: input.Query,
+			})
+			if err != nil {
+				return attemptOutcome{err: &HTTPError{Status: http.StatusBadRequest, Message: err.Error()}}
+			}
+			reservation, err := reserve(ctx, input, attempt, mappedModel, upstreamProtocol)
+			if err != nil {
+				return attemptOutcome{err: &HTTPError{Status: http.StatusForbidden, Message: err.Error()}}
+			}
+			response, err := providerClient.Do(req)
+			if err != nil {
+				reservation.Refund(settlementContext)
+				logger.Errorf(settlementContext, "upstream request failed on channel %d: %v", attempt.ID, err)
+				if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
+					return attemptOutcome{retry: true, retryWith: next}
+				}
+				return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream request failed"}}
+			}
+			if response.StatusCode < 200 || response.StatusCode >= 300 {
+				reservation.Refund(settlementContext)
+				if response.StatusCode >= 300 && response.StatusCode < 400 {
+					_ = response.Body.Close()
+					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream redirect is not allowed"}}
+				}
+				if response.StatusCode == http.StatusTooManyRequests && attempt.UpstreamAccountID != 0 {
+					// Respect the provider reset window so selection skips
+					// this account until the cooldown expires.
+					coolDownAccount(attempt.UpstreamAccountID, mappedModel, response.Header)
+				}
+				if response.StatusCode == http.StatusUnauthorized && attempt.UpstreamAccountID != 0 {
+					// One bounded refresh/replay per account, within the
+					// attempt budget, before any output reached the client.
+					if !refreshed[attempt.UpstreamAccountID] && retries > 0 && ctx.Err() == nil {
+						if _, refreshErr := refreshAccountCredential(ctx, subscription.ProfileID, attempt.UpstreamAccountID); refreshErr == nil {
+							refreshed[attempt.UpstreamAccountID] = true
+							retries--
+							_ = response.Body.Close()
+							return attemptOutcome{retry: true, retryWith: attempt}
+						}
+					}
+					// The credential is unusable; other channels may serve.
+					if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
+						_ = response.Body.Close()
+						return attemptOutcome{retry: true, retryWith: next}
+					}
+				}
+				if Retryable(response.StatusCode, false, input.Principal.SpecificChannel, ctx.Err() != nil) {
+					if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
+						_ = response.Body.Close()
+						return attemptOutcome{retry: true, retryWith: next}
+					}
+				}
+				if converter != nil {
+					upstreamError := ReadUpstreamError(response)
+					copyHeaders(dst.Header(), response.Header)
+					return attemptOutcome{err: &HTTPError{Status: response.StatusCode, Message: upstreamError.Message, Upstream: &upstreamError}}
+				}
+				copyHeaders(dst.Header(), response.Header)
+				dst.WriteHeader(response.StatusCode)
+				_, _ = io.Copy(dst, response.Body)
+				_ = response.Body.Close()
+				return attemptOutcome{}
+			}
+			if input.Stream && !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") {
+				reservation.Refund(settlementContext)
+				_ = response.Body.Close()
+				return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream did not return an event stream"}}
+			}
+			if input.FixedQuota > 0 {
+				return attemptOutcome{err: settleFixedQuota(ctx, settlementContext, dst, response, input, reservation, attempt)}
+			}
+			if streamConverter != nil {
+				copyHeaders(dst.Header(), response.Header)
+				dst.Header().Set("Content-Type", "text/event-stream")
+				dst.Header().Del("Content-Length")
+				dst.WriteHeader(http.StatusOK)
+				usage, streamErr := streamConverter.Stream(flushingWriter{dst}, response.Body, input.Model)
+				_ = response.Body.Close()
+				interrupted := streamErr != nil || ctx.Err() != nil || !usage.Complete
+				reservation.Settle(settlementContext, usage, true, interrupted)
+				if streamErr != nil {
+					logger.Errorf(settlementContext, "converted stream interrupted on channel %d: %v", attempt.ID, streamErr)
+				}
+				return attemptOutcome{}
 			}
 			if converter != nil {
-				upstreamError := ReadUpstreamError(response)
+				const maxConvertedResponse = 16 << 20
+				body, readErr := io.ReadAll(io.LimitReader(response.Body, maxConvertedResponse+1))
+				_ = response.Body.Close()
+				if readErr != nil || len(body) > maxConvertedResponse {
+					reservation.Settle(settlementContext, native.Usage{}, false, true)
+					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream response could not be read"}}
+				}
+				converted, usage, convertErr := converter.Response(body, input.Model)
+				if convertErr != nil {
+					reservation.Settle(settlementContext, native.Usage{}, false, true)
+					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: convertErr.Error()}}
+				}
 				copyHeaders(dst.Header(), response.Header)
-				return &HTTPError{Status: response.StatusCode, Message: upstreamError.Message, Upstream: &upstreamError}
+				dst.Header().Set("Content-Type", "application/json")
+				dst.Header().Del("Content-Length")
+				dst.WriteHeader(http.StatusOK)
+				_, writeErr := dst.Write(converted)
+				reservation.Settle(settlementContext, usage, false, writeErr != nil || ctx.Err() != nil)
+				if writeErr != nil {
+					logger.Errorf(settlementContext, "converted response interrupted on channel %d: %v", attempt.ID, writeErr)
+				}
+				return attemptOutcome{}
 			}
 			copyHeaders(dst.Header(), response.Header)
 			dst.WriteHeader(response.StatusCode)
-			_, _ = io.Copy(dst, response.Body)
+			usage, copyErr := native.CopyResponse(dst, response.Body, input.Protocol, input.Stream)
 			_ = response.Body.Close()
-			return nil
-		}
-		if input.Stream && !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") {
-			reservation.Refund(settlementContext)
-			_ = response.Body.Close()
-			return &HTTPError{Status: http.StatusBadGateway, Message: "upstream did not return an event stream"}
-		}
-		if input.FixedQuota > 0 {
-			return settleFixedQuota(ctx, settlementContext, dst, response, input, reservation, channel)
-		}
-		if streamConverter != nil {
-			copyHeaders(dst.Header(), response.Header)
-			dst.Header().Set("Content-Type", "text/event-stream")
-			dst.Header().Del("Content-Length")
-			dst.WriteHeader(http.StatusOK)
-			usage, streamErr := streamConverter.Stream(flushingWriter{dst}, response.Body, input.Model)
-			_ = response.Body.Close()
-			interrupted := streamErr != nil || ctx.Err() != nil || !usage.Complete
-			reservation.Settle(settlementContext, usage, true, interrupted)
-			if streamErr != nil {
-				logger.Errorf(settlementContext, "converted stream interrupted on channel %d: %v", channel.ID, streamErr)
+			if copyErr == nil && usage.Complete && !usage.Seen && input.FallbackInputTokens > 0 {
+				usage.Input = input.FallbackInputTokens
+				usage.Seen = true
 			}
-			return nil
-		}
-		if converter != nil {
-			const maxConvertedResponse = 16 << 20
-			body, readErr := io.ReadAll(io.LimitReader(response.Body, maxConvertedResponse+1))
-			_ = response.Body.Close()
-			if readErr != nil || len(body) > maxConvertedResponse {
-				reservation.Settle(settlementContext, native.Usage{}, false, true)
-				return &HTTPError{Status: http.StatusBadGateway, Message: "upstream response could not be read"}
+			interrupted := copyErr != nil || ctx.Err() != nil || (input.Stream && !usage.Complete)
+			reservation.Settle(settlementContext, usage, input.Stream, interrupted)
+			if copyErr != nil {
+				logger.Errorf(settlementContext, "upstream response interrupted on channel %d: %v", attempt.ID, copyErr)
 			}
-			converted, usage, convertErr := converter.Response(body, input.Model)
-			if convertErr != nil {
-				reservation.Settle(settlementContext, native.Usage{}, false, true)
-				return &HTTPError{Status: http.StatusBadGateway, Message: convertErr.Error()}
-			}
-			copyHeaders(dst.Header(), response.Header)
-			dst.Header().Set("Content-Type", "application/json")
-			dst.Header().Del("Content-Length")
-			dst.WriteHeader(http.StatusOK)
-			_, writeErr := dst.Write(converted)
-			reservation.Settle(settlementContext, usage, false, writeErr != nil || ctx.Err() != nil)
-			if writeErr != nil {
-				logger.Errorf(settlementContext, "converted response interrupted on channel %d: %v", channel.ID, writeErr)
-			}
-			return nil
+			return attemptOutcome{}
+		}()
+		if outcome.retry {
+			channel = outcome.retryWith
+			continue
 		}
-		copyHeaders(dst.Header(), response.Header)
-		dst.WriteHeader(response.StatusCode)
-		usage, copyErr := native.CopyResponse(dst, response.Body, input.Protocol, input.Stream)
-		_ = response.Body.Close()
-		if copyErr == nil && usage.Complete && !usage.Seen && input.FallbackInputTokens > 0 {
-			usage.Input = input.FallbackInputTokens
-			usage.Seen = true
-		}
-		interrupted := copyErr != nil || ctx.Err() != nil || (input.Stream && !usage.Complete)
-		reservation.Settle(settlementContext, usage, input.Stream, interrupted)
-		if copyErr != nil {
-			logger.Errorf(settlementContext, "upstream response interrupted on channel %d: %v", channel.ID, copyErr)
-		}
-		return nil
+		return outcome.err
 	}
 }
 
@@ -410,10 +476,34 @@ func SelectForRequest(input Request, upstreamProtocol native.Protocol) (Channel,
 		}
 		input.Principal.Group = group
 	}
-	return selectInitial(input, upstreamProtocol)
+	channel, selectErr := selectInitial(input, upstreamProtocol, InitialSource())
+	if selectErr != nil {
+		return Channel{}, selectErr
+	}
+	return channel, nil
 }
 
-func selectInitial(input Request, upstreamProtocol native.Protocol) (Channel, *HTTPError) {
+// selectInitialForProtocols tries each candidate protocol once and returns
+// the first selection that succeeds. Non-availability errors surface
+// immediately except for a pinned channel's protocol mismatch.
+func selectInitialForProtocols(input Request, candidates []native.Protocol, source model.ChannelSource) (Channel, native.Protocol, *HTTPError) {
+	var primaryErr *HTTPError
+	for _, candidate := range candidates {
+		channel, err := selectInitial(input, candidate, source)
+		if err == nil {
+			return channel, candidate, nil
+		}
+		if primaryErr == nil {
+			primaryErr = err
+			if err.Status != http.StatusServiceUnavailable && !(input.Principal.SpecificChannel && err.Status == http.StatusBadRequest) {
+				return Channel{}, candidate, err
+			}
+		}
+	}
+	return Channel{}, "", primaryErr
+}
+
+func selectInitial(input Request, upstreamProtocol native.Protocol, source model.ChannelSource) (Channel, *HTTPError) {
 	requiredType := requiredChannelType(upstreamProtocol)
 	if requiredType < 0 {
 		return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "unsupported native protocol"}
@@ -425,7 +515,7 @@ func selectInitial(input Request, upstreamProtocol native.Protocol) (Channel, *H
 			return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "invalid channel ID"}
 		}
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: requiredType, SpecificID: specificID})
+	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: requiredType, SpecificID: specificID, Source: source})
 	if selectErr != nil {
 		if selectErr.Status == http.StatusServiceUnavailable {
 			label := "OpenAI"
@@ -476,18 +566,23 @@ func selectRetry(ctx context.Context, input Request, failed Channel, tried map[i
 	if *remaining <= 0 || ctx.Err() != nil || input.Principal.SpecificChannel {
 		return Channel{}, false
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried})
-	if selectErr != nil {
-		return Channel{}, false
+	// Candidates come from the routing policy's retry preference order, for
+	// example remaining subscriptions before API channels.
+	for _, source := range RetrySources() {
+		selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried, Source: source})
+		if selectErr != nil {
+			continue
+		}
+		next, err := channelFromModel(selected)
+		if err != nil {
+			logger.Errorf(ctx, "failed to load retry channel %d: %v", selected.Id, err)
+			return Channel{}, false
+		}
+		*remaining = *remaining - 1
+		logger.Infof(ctx, "retrying request on channel %d after channel %d", next.ID, failed.ID)
+		return next, true
 	}
-	next, err := channelFromModel(selected)
-	if err != nil {
-		logger.Errorf(ctx, "failed to load retry channel %d: %v", selected.Id, err)
-		return Channel{}, false
-	}
-	*remaining = *remaining - 1
-	logger.Infof(ctx, "retrying request on channel %d after channel %d", next.ID, failed.ID)
-	return next, true
+	return Channel{}, false
 }
 
 func channelFromModel(channel *model.Channel) (Channel, error) {
@@ -512,6 +607,9 @@ func channelFromModel(channel *model.Channel) (Channel, error) {
 	}
 	if channel.SystemPrompt != nil {
 		selected.SystemPrompt = *channel.SystemPrompt
+	}
+	if channel.UpstreamAccountID != nil {
+		selected.UpstreamAccountID = *channel.UpstreamAccountID
 	}
 	return selected, nil
 }

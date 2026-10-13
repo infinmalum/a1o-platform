@@ -116,6 +116,34 @@ var RelayTimeout = env.Int("RELAY_TIMEOUT", 0) // unit is second
 
 var GeminiSafetySetting = env.String("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
 
+// Upstream routing policies decide which candidate sources (API-key channels
+// versus subscription-account channels) may serve a request. api_only is the
+// default and preserves the behavior of existing deployments.
+const (
+	RoutingPolicyAPIOnly            = "api_only"
+	RoutingPolicySubscriptionOnly   = "subscription_only"
+	RoutingPolicySubscriptionThenAPI = "subscription_then_api"
+	RoutingPolicyMixed              = "mixed"
+)
+
+var ValidUpstreamRoutingPolicies = map[string]bool{
+	RoutingPolicyAPIOnly:             true,
+	RoutingPolicySubscriptionOnly:    true,
+	RoutingPolicySubscriptionThenAPI: true,
+	RoutingPolicyMixed:               true,
+}
+
+var UpstreamRoutingPolicy = env.String("UPSTREAM_ROUTING_POLICY", RoutingPolicyAPIOnly)
+
+// UpstreamMaxInflight caps the total in-flight subscription requests so a
+// subscription outage cannot exhaust process capacity needed by API traffic.
+// 0 disables the cap.
+var UpstreamMaxInflight = env.Int("UPSTREAM_MAX_INFLIGHT", 100)
+
+// UpstreamLeaseWaitSeconds bounds how long a subscription attempt waits for
+// account capacity before failing over to another channel. 0 fails fast.
+var UpstreamLeaseWaitSeconds = env.Int("UPSTREAM_LEASE_WAIT_SECONDS", 3)
+
 var Theme = env.String("THEME", "default")
 var ValidThemes = map[string]bool{
 	"default": true,

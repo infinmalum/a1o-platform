@@ -260,13 +260,13 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
+func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool, source ChannelSource) (*Channel, error) {
 	if !config.MemoryCacheEnabled || !common.RedisEnabled {
-		return GetRandomSatisfiedChannel(group, model, ignoreFirstPriority)
+		return GetRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, nil, source)
 	}
 	version, err := currentChannelCacheVersion()
 	if err != nil {
-		return GetRandomSatisfiedChannel(group, model, ignoreFirstPriority)
+		return GetRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, nil, source)
 	}
 	channelSyncLock.RLock()
 	stale := channelCacheVersion != version
@@ -277,6 +277,20 @@ func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPrior
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 	channels := group2model2channels[group][model]
+	filtered := make([]*Channel, 0, len(channels))
+	for _, channel := range channels {
+		matches := true
+		switch source {
+		case ChannelSourceAPIOnly:
+			matches = channel.UpstreamAccountID == nil
+		case ChannelSourceSubscriptionOnly:
+			matches = channel.UpstreamAccountID != nil
+		}
+		if matches {
+			filtered = append(filtered, channel)
+		}
+	}
+	channels = filtered
 	if len(channels) == 0 {
 		return nil, errors.New("channel not found")
 	}

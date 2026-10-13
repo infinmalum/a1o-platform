@@ -21,6 +21,9 @@ import (
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
 	"github.com/infinmalum/one-gateway/router"
+	// Registers the ChatGPT subscription profile's refresher and capability
+	// validator in the upstream registry.
+	_ "github.com/infinmalum/one-gateway/relay/upstream/openai"
 )
 
 //go:embed web/build/*
