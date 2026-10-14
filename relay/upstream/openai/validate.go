@@ -26,19 +26,21 @@ var supportedResponsesTools = map[string]bool{
 }
 
 // ValidateResponsesRequest enforces the subscription capability matrix on one
-// upstream Responses request and returns the normalized body: the profile
-// requires stateless streaming requests, so store=false is injected when the
-// client did not opt into storing. Unsupported fields, tools, and inputs fail
-// with an explicit error.
-func ValidateResponsesRequest(body []byte, stream bool) ([]byte, error) {
+// upstream Responses request and returns the normalized body. The profile
+// requires stateless streaming requests, so the body must carry stream=true —
+// the Chat bridge injects it, and a native client that omits or disables it
+// fails explicitly — and store=false is injected when the client did not opt
+// into storing. Unsupported fields, tools, and inputs fail with an explicit
+// error.
+func ValidateResponsesRequest(body []byte) ([]byte, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		return nil, errors.New("invalid OpenAI Responses JSON request")
 	}
-	if raw, ok := fields["stream"]; ok {
-		var requested bool
-		if json.Unmarshal(raw, &requested) == nil && !requested {
-			return nil, errors.New("this account profile currently supports streaming responses only")
+	stream := false
+	if raw, ok := fields["stream"]; ok && !isNull(raw) {
+		if json.Unmarshal(raw, &stream) != nil {
+			return nil, errors.New("OpenAI Responses stream must be boolean")
 		}
 	}
 	if !stream {

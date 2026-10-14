@@ -93,6 +93,16 @@ func nativeOpenAIChat(c *gin.Context, upstream native.Protocol) {
 	if upstream == native.Anthropic && limit == 0 {
 		limit = 1024
 	}
+	if upstream == native.OpenAIChat {
+		// The upstream protocol follows the routing policy: subscription
+		// profiles serve Responses, so subscription-first routing bridges
+		// Chat onto Responses before any API channel is considered.
+		upstream, fallbacks := lifecycle.ChatUpstreamProtocols()
+		forwardNative(c, nativeInput{protocol: native.OpenAIChat, upstreamProtocol: upstream,
+			fallbackUpstreamProtocols: fallbacks, model: fields.Model, stream: fields.Stream,
+			maxOutputTokens: limit, body: body})
+		return
+	}
 	// The Gemini upstream action is derived from the stream flag in the
 	// lifecycle, which knows the final upstream protocol.
 	forwardNative(c, nativeInput{protocol: native.OpenAIChat, upstreamProtocol: upstream, model: fields.Model, stream: fields.Stream,

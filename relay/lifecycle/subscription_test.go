@@ -261,7 +261,8 @@ func (f *subscriptionFixture) setChannelBaseURL(channel *model.Channel, rawURL s
 func writeSubscriptionSSE(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n"+
+	_, _ = fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n"+
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n"+
 		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n\n")
 }
 
@@ -327,8 +328,8 @@ func (f *subscriptionFixture) forward(body []byte, mutations ...func(*Request)) 
 	input := Request{
 		Protocol: native.OpenAIResponses, Model: "gpt-5", Stream: true, MaxOutputTokens: 100,
 		Body: body, Headers: http.Header{}, Query: url.Values{},
-		Channel: Channel{ID: f.subChannel.Id, Type: 1, BaseURL: f.upstream.URL, UpstreamAccountID: f.account.Id},
-		Principal: Principal{UserID: f.user.Id, TokenID: f.token.Id, Group: "default"},
+		Channel:    Channel{ID: f.subChannel.Id, Type: 1, BaseURL: f.upstream.URL, UpstreamAccountID: f.account.Id},
+		Principal:  Principal{UserID: f.user.Id, TokenID: f.token.Id, Group: "default"},
 		RetryLimit: 2, HTTPClient: f.upstream.Client(),
 	}
 	for _, mutate := range mutations {
@@ -588,8 +589,8 @@ func TestSubscriptionClientCancelMidStream(t *testing.T) {
 	result := Forward(ctx, dst, Request{
 		Protocol: native.OpenAIResponses, Model: "gpt-5", Stream: true, MaxOutputTokens: 100,
 		Body: subscriptionBody(t, nil), Headers: http.Header{}, Query: url.Values{},
-		Channel: Channel{ID: fixture.subChannel.Id, Type: 1, BaseURL: fixture.upstream.URL, UpstreamAccountID: fixture.account.Id},
-		Principal: Principal{UserID: fixture.user.Id, TokenID: fixture.token.Id, Group: "default"},
+		Channel:    Channel{ID: fixture.subChannel.Id, Type: 1, BaseURL: fixture.upstream.URL, UpstreamAccountID: fixture.account.Id},
+		Principal:  Principal{UserID: fixture.user.Id, TokenID: fixture.token.Id, Group: "default"},
 		RetryLimit: 2, HTTPClient: fixture.upstream.Client(),
 	})
 
@@ -613,4 +614,128 @@ func TestSubscriptionClientCancelMidStream(t *testing.T) {
 	recorder := fixture.forward(subscriptionBody(t, nil))
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []int{fixture.subChannel.Id, fixture.subChannel.Id}, fixture.consumeLogChannels())
+}
+
+// chatBridgeMutation routes an inbound Chat request the way the controller
+// does under subscription-first routing: Chat protocol, Responses upstream,
+// native Chat as the no-subscription fallback, and channel selection instead
+// of a pinned channel.
+func chatBridgeMutation(input *Request) {
+	input.Protocol = native.OpenAIChat
+	input.UpstreamProtocol = native.OpenAIResponses
+	input.FallbackUpstreamProtocols = []native.Protocol{native.OpenAIChat}
+	input.Channel = Channel{}
+}
+
+func writeFullResponsesSSE(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n"+
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_full\",\"status\":\"completed\",\"output\":["+
+		"{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}],"+
+		"\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n\n")
+}
+
+func TestChatBridgesToSubscriptionStreaming(t *testing.T) {
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	fixture := newSubscriptionFixture(t)
+	body, err := json.Marshal(map[string]any{
+		"model":    "gpt-5",
+		"stream":   true,
+		"messages": []map[string]any{{"role": "system", "content": "be brief"}, {"role": "user", "content": "hi"}},
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, chatBridgeMutation)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "chat.completion.chunk")
+	require.Contains(t, recorder.Body.String(), "\"hi\"")
+	// The upstream received a Responses request: system text became
+	// instructions, messages became input items, and streaming was forced.
+	fields := fixture.lastBody()
+	require.NotEmpty(t, fields["input"])
+	require.Nil(t, fields["messages"])
+	require.Equal(t, `"be brief"`, string(fields["instructions"]))
+	require.Equal(t, "true", string(fields["stream"]))
+	require.Equal(t, "false", string(fields["store"]))
+	require.Equal(t, []int{fixture.subChannel.Id}, fixture.consumeLogChannels())
+	require.Equal(t, 0, fixture.manager.Held(fixture.account.Id))
+}
+
+func TestChatBridgesToSubscriptionSyncAggregation(t *testing.T) {
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	fixture := newSubscriptionFixture(t)
+	fixture.upstreamRespond = func(w http.ResponseWriter, r *http.Request, authz string, hit int) {
+		writeFullResponsesSSE(w)
+	}
+	body, err := json.Marshal(map[string]any{
+		"model":    "gpt-5",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, chatBridgeMutation, func(input *Request) { input.Stream = false })
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var chat struct {
+		Object  string `json:"object"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &chat))
+	require.Equal(t, "chat.completion", chat.Object)
+	require.Equal(t, "stop", chat.Choices[0].FinishReason)
+	require.Equal(t, "hello", chat.Choices[0].Message.Content)
+	require.Equal(t, int64(10), chat.Usage.PromptTokens)
+	require.Equal(t, int64(5), chat.Usage.CompletionTokens)
+	require.Equal(t, []int{fixture.subChannel.Id}, fixture.consumeLogChannels())
+}
+
+func TestChatBridgeCapabilityRejectionFailsOverToAPI(t *testing.T) {
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	fixture := newSubscriptionFixture(t)
+	body, err := json.Marshal(map[string]any{
+		"model":       "gpt-5",
+		"messages":    []map[string]any{{"role": "user", "content": "hi"}},
+		"temperature": 0.5,
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, chatBridgeMutation)
+
+	// The profile rejects temperature, so the bridge attempt fails over and
+	// the API channel serves the request under the same Responses protocol.
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []int{fixture.apiChannel.Id}, fixture.consumeLogChannels())
+	require.NotEmpty(t, fixture.lastBody()["input"])
+}
+
+func TestChatFallbackPrefersNativeChatOnAPIChannels(t *testing.T) {
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	fixture := newSubscriptionFixture(t)
+	require.NoError(t, fixture.db.Delete(fixture.account).Error)
+	body, err := json.Marshal(map[string]any{
+		"model":    "gpt-5",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, chatBridgeMutation)
+
+	// With no subscription available, the API fallback tries the client's
+	// native protocol first: the upstream sees a Chat request, not a bridge.
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []int{fixture.apiChannel.Id}, fixture.consumeLogChannels())
+	fields := fixture.lastBody()
+	require.NotEmpty(t, fields["messages"])
+	require.Nil(t, fields["input"])
 }

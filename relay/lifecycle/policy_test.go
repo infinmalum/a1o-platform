@@ -11,6 +11,7 @@ import (
 	"github.com/infinmalum/one-gateway/common"
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/one-gateway/relay/native"
 )
 
 func setupPolicyDB(t *testing.T) {
@@ -41,6 +42,25 @@ func insertChannel(t *testing.T, name string, accountID *int) *model.Channel {
 }
 
 func int64Ptr(v int64) *int64 { return &v }
+
+func TestChatUpstreamProtocolsPerPolicy(t *testing.T) {
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	upstream, fallbacks := ChatUpstreamProtocols()
+	require.Equal(t, native.OpenAIResponses, upstream)
+	require.Equal(t, []native.Protocol{native.OpenAIChat}, fallbacks)
+
+	withPolicy(t, config.RoutingPolicySubscriptionOnly)
+	upstream, fallbacks = ChatUpstreamProtocols()
+	require.Equal(t, native.OpenAIResponses, upstream)
+	require.Equal(t, []native.Protocol{native.OpenAIChat}, fallbacks)
+
+	for _, policy := range []string{config.RoutingPolicyAPIOnly, config.RoutingPolicyMixed} {
+		withPolicy(t, policy)
+		upstream, fallbacks = ChatUpstreamProtocols()
+		require.Equal(t, native.OpenAIChat, upstream, "policy %s", policy)
+		require.Empty(t, fallbacks, "policy %s", policy)
+	}
+}
 
 func TestInitialSourcePerPolicy(t *testing.T) {
 	policies := map[string]struct {
