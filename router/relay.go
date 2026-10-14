@@ -23,6 +23,9 @@ func SetRelayRouter(router *gin.Engine) {
 		nativeGemini.Use(middleware.RelayPanicRecover(), middleware.TokenAuth())
 		nativeGemini.POST("/models/:modelAction", controller.NativeGemini)
 	}
+	nativeSystemOne := router.Group("/v1")
+	nativeSystemOne.Use(middleware.RelayPanicRecover(), middleware.TokenAuth())
+	nativeSystemOne.POST("/systemone", controller.NativeSystemOne)
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.TokenAuth())

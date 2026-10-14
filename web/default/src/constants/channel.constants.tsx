@@ -19,6 +19,13 @@ export const CHANNEL_OPTIONS = [
     color: 'orange',
     description: 'Gemini OpenAI 兼容格式',
   },
+  {
+    key: 52,
+    text: 'TypeSafe',
+    value: 52,
+    color: 'violet',
+    description: 'TypeSafe Jev 决策模型，通过 /v1/systemone 调用',
+  },
   { key: 28, text: 'Mistral AI', value: 28, color: 'orange' },
   { key: 41, text: 'Novita', value: 41, color: 'purple' },
   {

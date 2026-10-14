@@ -555,6 +555,8 @@ func requiredChannelType(protocol native.Protocol) int {
 	case native.OpenAIChat, native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations, native.OpenAIResponses,
 		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return channeltype.OpenAI
+	case native.SystemOne:
+		return channeltype.TypeSafe
 	default:
 		return -1
 	}

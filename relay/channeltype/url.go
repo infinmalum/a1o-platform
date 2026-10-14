@@ -54,6 +54,8 @@ var ChannelBaseURLs = []string{
 	"",                                          // 50
 
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
+
+	"https://api.typesafe.ai", // 52
 }
 
 func init() {

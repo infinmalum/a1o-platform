@@ -30,6 +30,9 @@ const (
 	// gateway forwards byte-for-byte; speech is a JSON request.
 	OpenAIAudioTranscriptions Protocol = "openai_audio_transcriptions"
 	OpenAIAudioTranslations   Protocol = "openai_audio_translations"
+	// SystemOne is TypeSafe's decision-model wire format: a state plus typed
+	// questions in, structured calibrated answers out, never streamed.
+	SystemOne Protocol = "systemone"
 )
 
 // multipartAudio identifies the audio protocols whose Content-Type must come
@@ -127,6 +130,12 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	case OpenAIEmbeddings:
 		path = "/v1/embeddings"
 		body, err = prepareOpenAIEmbeddingsBody(body, input.Model)
+		if err != nil {
+			return nil, err
+		}
+	case SystemOne:
+		path = "/v1/systemone"
+		body, err = prepareSystemOneBody(body, input.Model)
 		if err != nil {
 			return nil, err
 		}
@@ -270,6 +279,8 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		}
 	case Gemini:
 		req.Header.Set("x-goog-api-key", input.APIKey)
+	case SystemOne:
+		req.Header.Set("Authorization", "Bearer "+input.APIKey)
 	case OpenAIResponses, OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
 		OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 		if azureKey {
@@ -372,6 +383,31 @@ func prepareOpenAIEmbeddingsBody(body []byte, model string) ([]byte, error) {
 	var requestedModel string
 	if err := json.Unmarshal(fields["model"], &requestedModel); err != nil || requestedModel == "" {
 		return nil, errors.New("OpenAI Embeddings model is required")
+	}
+	if model == "" || model == requestedModel {
+		return body, nil
+	}
+	fields["model"], _ = json.Marshal(model)
+	return json.Marshal(fields)
+}
+
+// prepareSystemOneBody validates the shape the evaluation endpoint requires
+// and rewrites the model name when a channel mapping applied. The state and
+// questions payloads pass through untouched.
+func prepareSystemOneBody(body []byte, model string) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		return nil, errors.New("invalid SystemOne JSON request")
+	}
+	if raw, ok := fields["state"]; !ok || len(raw) == 0 || string(raw) == "null" {
+		return nil, errors.New("SystemOne state is required")
+	}
+	if raw, ok := fields["questions"]; !ok || len(raw) == 0 || string(raw) == "null" {
+		return nil, errors.New("SystemOne questions is required")
+	}
+	var requestedModel string
+	if err := json.Unmarshal(fields["model"], &requestedModel); err != nil || requestedModel == "" {
+		return nil, errors.New("SystemOne model is required")
 	}
 	if model == "" || model == requestedModel {
 		return body, nil

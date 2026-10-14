@@ -21,6 +21,8 @@ func TestErrorBodyUsesClientProtocol(t *testing.T) {
 		{Gemini, http.StatusServiceUnavailable, `"UNAVAILABLE"`},
 		{OpenAIResponses, http.StatusUnauthorized, `"authentication_error"`},
 		{OpenAIResponses, http.StatusTooManyRequests, `"rate_limit_error"`},
+		{SystemOne, http.StatusUnauthorized, `"authentication_error"`},
+		{SystemOne, http.StatusTooManyRequests, `"rate_limit_error"`},
 	} {
 		body, err := json.Marshal(ErrorBody(fixture.protocol, fixture.status, "message"))
 		if err != nil || !strings.Contains(string(body), fixture.want) {

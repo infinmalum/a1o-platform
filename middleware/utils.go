@@ -88,6 +88,22 @@ func getRequestModel(c *gin.Context) (string, error) {
 		}
 		return request.Model, nil
 	}
+	if c.Request.URL.Path == "/v1/systemone" {
+		body, err := common.GetRequestBody(c)
+		if err != nil {
+			return "", err
+		}
+		var request struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(body, &request); err != nil {
+			return "", err
+		}
+		if request.Model == "" {
+			return "", fmt.Errorf("model is required")
+		}
+		return request.Model, nil
+	}
 	var modelRequest ModelRequest
 	err := common.UnmarshalBodyReusable(c, &modelRequest)
 	if err != nil {
