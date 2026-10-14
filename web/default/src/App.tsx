@@ -25,6 +25,8 @@ import EditRedemption from './pages/Redemption/EditRedemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
 import Chat from './pages/Chat';
+import ImagePlayground from './pages/Playground/ImagePlayground';
+import DecisionPlayground from './pages/Playground/DecisionPlayground';
 import LarkOAuth from './components/LarkOAuth';
 import Dashboard from './pages/Dashboard';
 
@@ -305,6 +307,22 @@ function App() {
           <Suspense fallback={<Loading></Loading>}>
             <Chat />
           </Suspense>
+        }
+      />
+      <Route
+        path='/playground/image'
+        element={
+          <PrivateRoute>
+            <ImagePlayground />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path='/playground/decision'
+        element={
+          <PrivateRoute>
+            <DecisionPlayground />
+          </PrivateRoute>
         }
       />
       <Route

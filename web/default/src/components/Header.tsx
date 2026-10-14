@@ -42,6 +42,16 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     icon: 'comments',
   },
   {
+    name: 'header.imagePlayground',
+    to: '/playground/image',
+    icon: 'image',
+  },
+  {
+    name: 'header.decisionPlayground',
+    to: '/playground/decision',
+    icon: 'balance scale',
+  },
+  {
     name: 'header.token',
     to: '/token',
     icon: 'key',

@@ -12,6 +12,8 @@
     "setting": "Settings",
     "about": "About",
     "chat": "Chat",
+    "imagePlayground": "Image Playground",
+    "decisionPlayground": "Decision Playground",
     "login": "Login",
     "logout": "Logout",
     "register": "Register"

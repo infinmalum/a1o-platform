@@ -12,6 +12,8 @@
     "setting": "设置",
     "about": "关于",
     "chat": "聊天",
+    "imagePlayground": "图像生成操场",
+    "decisionPlayground": "决策操场",
     "login": "登录",
     "logout": "注销",
     "register": "注册"
