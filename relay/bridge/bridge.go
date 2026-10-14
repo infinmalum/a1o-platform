@@ -30,6 +30,9 @@ func For(inbound, upstream native.Protocol) (Converter, error) {
 	if inbound == native.Anthropic && upstream == native.Gemini {
 		return messagesGemini{}, nil
 	}
+	if inbound == native.OpenAIChat && upstream == native.OpenAIResponses {
+		return &chatResponses{}, nil
+	}
 	return nil, errors.New("unsupported protocol conversion")
 }
 

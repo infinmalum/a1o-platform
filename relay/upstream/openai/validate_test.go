@@ -23,7 +23,7 @@ func validResponsesBody(t *testing.T) []byte {
 }
 
 func TestValidateResponsesRequestNormalizesStatelessStreaming(t *testing.T) {
-	normalized, err := ValidateResponsesRequest(validResponsesBody(t), true)
+	normalized, err := ValidateResponsesRequest(validResponsesBody(t))
 	require.NoError(t, err)
 	var fields map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(normalized, &fields))
@@ -32,15 +32,28 @@ func TestValidateResponsesRequestNormalizesStatelessStreaming(t *testing.T) {
 	require.NotEmpty(t, fields["instructions"])
 }
 
-func TestValidateResponsesRequestRejectsSyncRequests(t *testing.T) {
-	_, err := ValidateResponsesRequest(validResponsesBody(t), false)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "streaming")
+func TestValidateResponsesRequestRequiresStreamingBody(t *testing.T) {
+	_, err := ValidateResponsesRequest(validResponsesBody(t))
+	require.NoError(t, err)
 
 	raw, err := json.Marshal(map[string]any{"model": "gpt-5", "stream": false, "input": []any{}})
 	require.NoError(t, err)
-	_, err = ValidateResponsesRequest(raw, false)
+	_, err = ValidateResponsesRequest(raw)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "streaming")
+
+	// An omitted stream flag means a synchronous request.
+	raw, err = json.Marshal(map[string]any{"model": "gpt-5", "input": []any{}})
+	require.NoError(t, err)
+	_, err = ValidateResponsesRequest(raw)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "streaming")
+
+	raw, err = json.Marshal(map[string]any{"model": "gpt-5", "stream": "yes", "input": []any{}})
+	require.NoError(t, err)
+	_, err = ValidateResponsesRequest(raw)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "boolean")
 }
 
 func TestValidateResponsesRequestRejectsForbiddenFields(t *testing.T) {
@@ -52,7 +65,7 @@ func TestValidateResponsesRequestRejectsForbiddenFields(t *testing.T) {
 		body[field] = 1
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
-		_, err = ValidateResponsesRequest(raw, true)
+		_, err = ValidateResponsesRequest(raw)
 		require.Error(t, err, "field %s must be rejected", field)
 		require.Contains(t, err.Error(), field)
 	}
@@ -62,7 +75,7 @@ func TestValidateResponsesRequestRejectsStoredResponses(t *testing.T) {
 	body := map[string]any{"model": "gpt-5", "stream": true, "input": []any{}, "store": true}
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
-	_, err = ValidateResponsesRequest(raw, true)
+	_, err = ValidateResponsesRequest(raw)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "stored responses")
 }
@@ -71,7 +84,7 @@ func TestValidateResponsesRequestRejectsNonArrayInput(t *testing.T) {
 	body := map[string]any{"model": "gpt-5", "stream": true, "input": "hello"}
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
-	_, err = ValidateResponsesRequest(raw, true)
+	_, err = ValidateResponsesRequest(raw)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "array")
 }
@@ -87,7 +100,7 @@ func TestValidateResponsesRequestRejectsSystemMessages(t *testing.T) {
 	}
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
-	_, err = ValidateResponsesRequest(raw, true)
+	_, err = ValidateResponsesRequest(raw)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "system message")
 }
@@ -102,7 +115,7 @@ func TestValidateResponsesRequestRejectsAudioVideoInput(t *testing.T) {
 	}
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
-	_, err = ValidateResponsesRequest(raw, true)
+	_, err = ValidateResponsesRequest(raw)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "input_audio"))
 }
@@ -115,7 +128,7 @@ func TestValidateResponsesRequestToolMatrix(t *testing.T) {
 		}
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
-		_, err = ValidateResponsesRequest(raw, true)
+		_, err = ValidateResponsesRequest(raw)
 		require.Error(t, err, "tool %s must be rejected", toolType)
 		require.Contains(t, err.Error(), toolType)
 	}
@@ -126,7 +139,7 @@ func TestValidateResponsesRequestToolMatrix(t *testing.T) {
 		}
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
-		_, err = ValidateResponsesRequest(raw, true)
+		_, err = ValidateResponsesRequest(raw)
 		require.NoError(t, err, "tool %s is supported", toolType)
 	}
 }

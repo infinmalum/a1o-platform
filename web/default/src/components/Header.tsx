@@ -37,6 +37,21 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     admin: true,
   },
   {
+    name: 'header.chat',
+    to: '/chat',
+    icon: 'comments',
+  },
+  {
+    name: 'header.imagePlayground',
+    to: '/playground/image',
+    icon: 'image',
+  },
+  {
+    name: 'header.decisionPlayground',
+    to: '/playground/decision',
+    icon: 'balance scale',
+  },
+  {
     name: 'header.token',
     to: '/token',
     icon: 'key',
@@ -79,14 +94,6 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     icon: 'info circle',
   },
 ];
-
-if (localStorage.getItem('chat_link')) {
-  headerButtons.splice(1, 0, {
-    name: 'header.chat',
-    to: '/chat',
-    icon: 'comments',
-  });
-}
 
 const Header = () => {
   const { t, i18n } = useTranslation();

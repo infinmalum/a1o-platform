@@ -8,9 +8,10 @@ import (
 )
 
 // RequestValidator enforces a profile's capability matrix on one upstream
-// request body and returns the normalized body to forward. An error fails the
-// attempt explicitly; the lifecycle decides whether another channel may serve.
-type RequestValidator func(body []byte, stream bool) ([]byte, error)
+// request body — the converted body when a bridge produced it — and returns
+// the normalized body to forward. An error fails the attempt explicitly; the
+// lifecycle decides whether another channel may serve.
+type RequestValidator func(body []byte) ([]byte, error)
 
 var (
 	hooksMu    sync.RWMutex

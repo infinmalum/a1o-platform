@@ -193,5 +193,8 @@ func shouldCheckModel(c *gin.Context) bool {
 	if c.Request.URL.Path == "/v1/messages" || c.Request.URL.Path == "/v1/responses" || isNativeGeminiRequest(c) {
 		return true
 	}
+	if c.Request.URL.Path == "/v1/systemone" {
+		return true
+	}
 	return false
 }

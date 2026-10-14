@@ -100,6 +100,13 @@ var PreConsumedQuota int64 = 500
 var ApproximateTokenEnabled = false
 var RetryTimes = 0
 
+// Built-in chat runtime options, editable through the option table.
+var ChatSandboxEnabled = false
+var ChatSandboxTimeoutSeconds = 30
+var ChatContextBudgetTokens = 32000
+var ChatMaxToolIterations = 8
+var ChatMaxFileBytes = int64(20 << 20)
+
 var RootUserEmail = ""
 
 var IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
@@ -120,10 +127,10 @@ var GeminiSafetySetting = env.String("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
 // versus subscription-account channels) may serve a request. api_only is the
 // default and preserves the behavior of existing deployments.
 const (
-	RoutingPolicyAPIOnly            = "api_only"
-	RoutingPolicySubscriptionOnly   = "subscription_only"
+	RoutingPolicyAPIOnly             = "api_only"
+	RoutingPolicySubscriptionOnly    = "subscription_only"
 	RoutingPolicySubscriptionThenAPI = "subscription_then_api"
-	RoutingPolicyMixed              = "mixed"
+	RoutingPolicyMixed               = "mixed"
 )
 
 var ValidUpstreamRoutingPolicies = map[string]bool{

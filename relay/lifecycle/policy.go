@@ -6,6 +6,7 @@ import (
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/relay/account"
+	"github.com/infinmalum/one-gateway/relay/native"
 	"github.com/infinmalum/one-gateway/relay/upstream"
 )
 
@@ -153,6 +154,20 @@ func RetrySources() []model.ChannelSource {
 		return []model.ChannelSource{model.ChannelSourceAny}
 	default:
 		return []model.ChannelSource{model.ChannelSourceAPIOnly}
+	}
+}
+
+// ChatUpstreamProtocols returns the initial upstream protocol for Chat
+// Completions inbound requests and the candidates tried when no channel for
+// it exists. Subscription profiles serve the Responses protocol only, so
+// subscription-first routing bridges Chat onto Responses; API-first routing
+// forwards Chat natively.
+func ChatUpstreamProtocols() (native.Protocol, []native.Protocol) {
+	switch config.UpstreamRoutingPolicy {
+	case config.RoutingPolicySubscriptionOnly, config.RoutingPolicySubscriptionThenAPI:
+		return native.OpenAIResponses, []native.Protocol{native.OpenAIChat}
+	default:
+		return native.OpenAIChat, nil
 	}
 }
 

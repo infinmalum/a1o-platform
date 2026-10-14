@@ -623,6 +623,11 @@ var ModelRatio = map[string]float64{
 	"x-ai/grok-beta":                                  7.5,
 	"x-ai/grok-vision-beta":                           7.5,
 	"xwin-lm/xwin-lm-70b":                             1.875,
+	// TypeSafe Jev: $0.042 / 1M input tokens. Output tokens are free, so the
+	// completion ratio entries below are zero.
+	"jev-latest":  0.021,
+	"jev-1.13.0":  0.021,
+	"jev-preview": 0.021,
 }
 
 var CompletionRatio = map[string]float64{
@@ -634,6 +639,10 @@ var CompletionRatio = map[string]float64{
 	// deepseek
 	"deepseek-chat":     0.28 / 0.14,
 	"deepseek-reasoner": 2.19 / 0.55,
+	// TypeSafe Jev charges per input token only
+	"jev-latest":  0,
+	"jev-1.13.0":  0,
+	"jev-preview": 0,
 }
 
 var (

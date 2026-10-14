@@ -166,6 +166,21 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&UpstreamAccountCooldown{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&ChatSession{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ChatMessage{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ChatFile{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ChatSkill{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ChatMCPServer{}); err != nil {
+		return err
+	}
 	return nil
 }
 

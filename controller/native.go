@@ -93,6 +93,16 @@ func nativeOpenAIChat(c *gin.Context, upstream native.Protocol) {
 	if upstream == native.Anthropic && limit == 0 {
 		limit = 1024
 	}
+	if upstream == native.OpenAIChat {
+		// The upstream protocol follows the routing policy: subscription
+		// profiles serve Responses, so subscription-first routing bridges
+		// Chat onto Responses before any API channel is considered.
+		upstream, fallbacks := lifecycle.ChatUpstreamProtocols()
+		forwardNative(c, nativeInput{protocol: native.OpenAIChat, upstreamProtocol: upstream,
+			fallbackUpstreamProtocols: fallbacks, model: fields.Model, stream: fields.Stream,
+			maxOutputTokens: limit, body: body})
+		return
+	}
 	// The Gemini upstream action is derived from the stream flag in the
 	// lifecycle, which knows the final upstream protocol.
 	forwardNative(c, nativeInput{protocol: native.OpenAIChat, upstreamProtocol: upstream, model: fields.Model, stream: fields.Stream,
@@ -231,6 +241,36 @@ func NativeGemini(c *gin.Context) {
 		return
 	}
 	forwardNative(c, nativeInput{protocol: native.Gemini, model: modelName, action: action, stream: action == "streamGenerateContent", maxOutputTokens: fields.GenerationConfig.MaxOutputTokens, body: body})
+}
+
+// NativeSystemOne relays TypeSafe evaluation requests. The endpoint is
+// non-streaming by protocol; the response carries the structured answers and
+// the usage report used for settlement.
+func NativeSystemOne(c *gin.Context) {
+	body, err := common.GetRequestBody(c)
+	if err != nil {
+		writeNativeError(c, native.SystemOne, http.StatusBadRequest, err)
+		return
+	}
+	var fields struct {
+		Model     string          `json:"model"`
+		State     json.RawMessage `json:"state"`
+		Questions map[string]any  `json:"questions"`
+	}
+	if err := json.Unmarshal(body, &fields); err != nil || len(fields.State) == 0 ||
+		string(fields.State) == "null" || len(fields.Questions) == 0 {
+		writeNativeError(c, native.SystemOne, http.StatusBadRequest, errors.New("model, state, and at least one question are required"))
+		return
+	}
+	if fields.Model == "" {
+		writeNativeError(c, native.SystemOne, http.StatusBadRequest, errors.New("model is required"))
+		return
+	}
+	// Output tokens are free on this protocol. Reserve against the input byte
+	// length so an unusually large response without parseable usage cannot
+	// leave only the small default reservation charged.
+	forwardNative(c, nativeInput{protocol: native.SystemOne, model: fields.Model,
+		maxOutputTokens: int64(len(body)), body: body})
 }
 
 func forwardNative(c *gin.Context, input nativeInput) {

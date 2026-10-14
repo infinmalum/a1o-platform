@@ -78,6 +78,11 @@ func InitOptionMap() {
 	config.OptionMap["RetryTimes"] = strconv.Itoa(config.RetryTimes)
 	config.OptionMap["Theme"] = config.Theme
 	config.OptionMap["UpstreamRoutingPolicy"] = config.UpstreamRoutingPolicy
+	config.OptionMap["ChatSandboxEnabled"] = strconv.FormatBool(config.ChatSandboxEnabled)
+	config.OptionMap["ChatSandboxTimeoutSeconds"] = strconv.Itoa(config.ChatSandboxTimeoutSeconds)
+	config.OptionMap["ChatContextBudgetTokens"] = strconv.Itoa(config.ChatContextBudgetTokens)
+	config.OptionMap["ChatMaxToolIterations"] = strconv.Itoa(config.ChatMaxToolIterations)
+	config.OptionMap["ChatMaxFileBytes"] = strconv.FormatInt(config.ChatMaxFileBytes, 10)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -156,6 +161,8 @@ func updateOptionMap(key string, value string) (err error) {
 			config.DisplayInCurrencyEnabled = boolValue
 		case "DisplayTokenStatEnabled":
 			config.DisplayTokenStatEnabled = boolValue
+		case "ChatSandboxEnabled":
+			config.ChatSandboxEnabled = boolValue
 		}
 	}
 	switch key {
@@ -248,6 +255,14 @@ func updateOptionMap(key string, value string) (err error) {
 		} else {
 			config.UpstreamRoutingPolicy = value
 		}
+	case "ChatSandboxTimeoutSeconds":
+		config.ChatSandboxTimeoutSeconds, _ = strconv.Atoi(value)
+	case "ChatContextBudgetTokens":
+		config.ChatContextBudgetTokens, _ = strconv.Atoi(value)
+	case "ChatMaxToolIterations":
+		config.ChatMaxToolIterations, _ = strconv.Atoi(value)
+	case "ChatMaxFileBytes":
+		config.ChatMaxFileBytes, _ = strconv.ParseInt(value, 10, 64)
 	}
 	return err
 }

@@ -336,3 +336,33 @@ func TestNonStreamingCopyReportsUpstreamReadFailure(t *testing.T) {
 		t.Fatalf("read failure was hidden: usage %+v body %q err %v", usage, w.Body.String(), err)
 	}
 }
+
+func TestSystemOneRequestAuthModelPatchAndUsage(t *testing.T) {
+	body := []byte(`{"model":"jev-latest","state":"payout failing","questions":{"is_urgent":{"type":"noul","instructions":"urgent?"}},"future":{"keep":true}}`)
+	unmapped, err := BuildRequest(context.Background(), Request{Protocol: SystemOne, BaseURL: "https://api.typesafe.ai", Model: "jev-latest", APIKey: "provider-key", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmappedBody, _ := io.ReadAll(unmapped.Body)
+	if unmapped.URL.Path != "/v1/systemone" || unmapped.Header.Get("Authorization") != "Bearer provider-key" || !bytes.Equal(unmappedBody, body) {
+		t.Fatalf("unmapped SystemOne request changed: %s %v", unmappedBody, unmapped.Header)
+	}
+	mapped, err := BuildRequest(context.Background(), Request{Protocol: SystemOne, BaseURL: "https://api.typesafe.ai", Model: "jev-1.13.0", APIKey: "provider-key", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwarded, _ := io.ReadAll(mapped.Body)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(forwarded, &fields); err != nil || string(fields["model"]) != `"jev-1.13.0"` || string(fields["state"]) != `"payout failing"` || string(fields["future"]) != `{"keep":true}` {
+		t.Fatalf("SystemOne model mapping lost fields: %s %v", forwarded, err)
+	}
+	if _, err := BuildRequest(context.Background(), Request{Protocol: SystemOne, BaseURL: "https://api.typesafe.ai", Model: "jev-1.13.0", APIKey: "provider-key", Body: []byte(`{"model":"jev-1.13.0","questions":{}}`)}); err == nil {
+		t.Fatal("SystemOne request without state was accepted")
+	}
+	response := `{"model":"jev-1.13.0","answers":{"is_urgent":{"type":"noul","noul":0.95}},"usage":{"input_tokens":307,"output_tokens":20},"future":true}`
+	w := httptest.NewRecorder()
+	usage, err := CopyResponse(w, strings.NewReader(response), SystemOne, false)
+	if err != nil || w.Body.String() != response || !usage.Seen || usage.Input != 307 || usage.Output != 20 {
+		t.Fatalf("SystemOne response lost usage: %+v body %q err %v", usage, w.Body.String(), err)
+	}
+}

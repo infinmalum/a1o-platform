@@ -6,6 +6,7 @@ import { isRoot } from '../../helpers';
 import OtherSetting from '../../components/OtherSetting';
 import PersonalSetting from '../../components/PersonalSetting';
 import OperationSetting from '../../components/OperationSetting';
+import ChatAdminSetting from '../../components/ChatAdminSetting';
 
 const Setting = () => {
   const { t } = useTranslation();
@@ -27,6 +28,14 @@ const Setting = () => {
       render: () => (
         <Tab.Pane attached={false}>
           <OperationSetting />
+        </Tab.Pane>
+      ),
+    });
+    panes.push({
+      menuItem: t('setting.tabs.chat'),
+      render: () => (
+        <Tab.Pane attached={false}>
+          <ChatAdminSetting />
         </Tab.Pane>
       ),
     });

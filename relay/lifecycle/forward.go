@@ -107,8 +107,17 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			source == model.ChannelSourceSubscriptionOnly &&
 			config.UpstreamRoutingPolicy == config.RoutingPolicySubscriptionThenAPI {
 			// No eligible subscription exists; the explicit fallback policy
-			// allows this request to run on API channels.
-			selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, candidates, model.ChannelSourceAPIOnly)
+			// allows this request to run on API channels. API channels prefer
+			// the client's native protocol: the primary candidate may be a
+			// bridge target that only subscriptions serve, such as Responses
+			// for Chat inbound under subscription-first routing.
+			apiCandidates := []native.Protocol{input.Protocol}
+			for _, candidate := range candidates {
+				if candidate != input.Protocol {
+					apiCandidates = append(apiCandidates, candidate)
+				}
+			}
+			selected, upstreamProtocol, primaryErr = selectInitialForProtocols(input, apiCandidates, model.ChannelSourceAPIOnly)
 		}
 		if selected.ID == 0 {
 			return primaryErr
@@ -212,7 +221,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			apiKey := attempt.APIKey
 			if subscription != nil {
 				if subscription.validator != nil {
-					normalized, validateErr := subscription.validator(body, input.Stream)
+					normalized, validateErr := subscription.validator(body)
 					if validateErr != nil {
 						// The request is outside this profile's capability
 						// matrix; another channel may still serve it.
@@ -546,6 +555,8 @@ func requiredChannelType(protocol native.Protocol) int {
 	case native.OpenAIChat, native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations, native.OpenAIResponses,
 		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return channeltype.OpenAI
+	case native.SystemOne:
+		return channeltype.TypeSafe
 	default:
 		return -1
 	}

@@ -2,8 +2,7 @@ body {
     margin: 0;
     padding-top: 55px;
     overflow-y: scroll;
-    font-family: Lato, 'Helvetica Neue', Arial, Helvetica, "Microsoft YaHei", sans-serif;
-    -webkit-font-smoothing: antialiased;
+    font-family: Lato, 'Helvetica Neue', Arial, Helvetica, "Microsoft YaHei", sans-serif;    -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scrollbar-width: none;
 }
@@ -113,5 +112,41 @@ code {
 
   .stat-value {
     font-size: 0.9em !important;
+  }
+}
+
+/* 内置聊天 */
+.chat-markdown pre {
+  background: #282c34;
+  color: #abb2bf;
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.9em;
+}
+
+.chat-markdown code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown p {
+  margin: 0.4em 0;
+}
+
+.chat-cursor {
+  display: inline-block;
+  animation: chat-blink 1s step-start infinite;
+}
+
+@keyframes chat-blink {
+  50% {
+    opacity: 0;
   }
 }
