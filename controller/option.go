@@ -15,7 +15,9 @@ import (
 
 func GetOptions(c *gin.Context) {
 	var options []*model.Option
-	config.OptionMapRWMutex.Lock()
+	// Read-only snapshot: a read lock lets concurrent option reads and the
+	// periodic sync proceed while this handler copies the map.
+	config.OptionMapRWMutex.RLock()
 	for k, v := range config.OptionMap {
 		if strings.HasSuffix(k, "Token") || strings.HasSuffix(k, "Secret") {
 			continue
@@ -25,7 +27,7 @@ func GetOptions(c *gin.Context) {
 			Value: helper.Interface2String(v),
 		})
 	}
-	config.OptionMapRWMutex.Unlock()
+	config.OptionMapRWMutex.RUnlock()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

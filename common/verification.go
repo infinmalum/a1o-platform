@@ -1,10 +1,12 @@
 package common
 
 import (
-	"github.com/google/uuid"
+	"crypto/subtle"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type verificationValue struct {
@@ -25,8 +27,11 @@ var VerificationValidMinutes = 10
 func GenerateVerificationCode(length int) string {
 	code := uuid.New().String()
 	code = strings.Replace(code, "-", "", -1)
-	if length == 0 {
+	if length <= 0 {
 		return code
+	}
+	if length > len(code) {
+		length = len(code)
 	}
 	return code[:length]
 }
@@ -43,6 +48,9 @@ func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
 	}
 }
 
+// VerifyCodeWithKey checks a verification code in constant time. A successful
+// match consumes the code, so it cannot be replayed within its TTL; callers
+// must prompt the user to request a new code after any failed follow-up step.
 func VerifyCodeWithKey(key string, code string, purpose string) bool {
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
@@ -51,7 +59,11 @@ func VerifyCodeWithKey(key string, code string, purpose string) bool {
 	if !okay || int(now.Sub(value.time).Seconds()) >= VerificationValidMinutes*60 {
 		return false
 	}
-	return code == value.code
+	if subtle.ConstantTimeCompare([]byte(code), []byte(value.code)) != 1 {
+		return false
+	}
+	delete(verificationMap, purpose+key)
+	return true
 }
 
 func DeleteKey(key string, purpose string) {

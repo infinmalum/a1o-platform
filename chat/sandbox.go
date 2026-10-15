@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/infinmalum/one-gateway/common/config"
@@ -16,17 +18,25 @@ import (
 const (
 	// sandboxOutputLimit caps combined stdout+stderr captured per run.
 	sandboxOutputLimit = 64 << 10
-	// sandboxMemoryLimit caps Python's address space in bytes; Node's V8
-	// reserves far more virtual memory than it commits, so it gets no AS
-	// cap.
+	// sandboxMemoryLimit caps Python's address space in bytes; Node gets a
+	// V8 heap cap (sandboxNodeHeapMB) instead because its VM reserves far
+	// more virtual memory than it commits.
 	sandboxMemoryLimit = int64(512 << 20)
+	sandboxNodeHeapMB  = 512
 	// sandboxFileSizeBytes caps files the run may create (8 MiB).
 	sandboxFileSizeBytes = int64(8 << 20)
+	// sandboxProcessLimit caps processes per run so fork bombs cannot
+	// exhaust the host; sandboxOpenFileLimit caps open descriptors.
+	sandboxProcessLimit  = 64
+	sandboxOpenFileLimit = 256
 )
 
 // Sandbox executes model-generated code in a local subprocess. Isolation is
-// process-level (rlimits, timeout, fresh temp dir); it does not block
-// network access, so the administrator option and per-session toggle gate it.
+// process-level: rlimits (CPU, memory, file size, process count), a timeout,
+// a fresh temp dir, and — unless the admin enables ChatSandboxNetworkEnabled —
+// a network namespace with no connectivity. It still runs as the gateway's own
+// UID, so deployments that enable the sandbox should run the gateway under a
+// dedicated unprivileged user.
 type Sandbox struct{}
 
 // Languages returns the runtimes installed on this host.
@@ -76,14 +86,40 @@ func (s *Sandbox) Execute(ctx context.Context, language string, code string) (st
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	// The ulimit preamble applies CPU, file-size, and (for Python, whose
-	// runtimes tolerate address-space caps; Node's V8 does not) memory
-	// limits, then execs the runtime so signals reach it directly.
-	limits := fmt.Sprintf("ulimit -t %d; ulimit -f %d;", timeout, sandboxFileSizeBytes>>10)
-	if bin == "python3" {
-		limits += fmt.Sprintf(" ulimit -v %d;", sandboxMemoryLimit>>10)
+	// RLIMIT_NPROC (-u) is accounted per user namespace on Linux 5.14+, so
+	// the process cap only applies inside the unshare user namespace. On the
+	// gateway's own namespace it would count every task of the gateway's
+	// UID — including Node's startup threads — and break legitimate
+	// runtimes on busy hosts; there, fork bombs stay bounded by the timeout
+	// plus process-group kill instead.
+	isolateNetwork := !config.ChatSandboxNetworkEnabled
+	if isolateNetwork {
+		if _, ok := networkNamespaceFlags(); !ok {
+			return "", errors.New("沙箱网络隔离不可用（当前环境不支持 unshare）：请在管理后台开启沙箱网络访问或关闭沙箱")
+		}
 	}
-	cmd := exec.CommandContext(runCtx, "sh", "-c", limits+" exec "+bin+" "+filename)
+	prlimitPath, lookupErr := exec.LookPath("prlimit")
+	if lookupErr != nil {
+		return "", errors.New("沙箱资源限制不可用（未安装 prlimit，属于 util-linux）：请安装 util-linux 后重试")
+	}
+	limits := []string{
+		"--cpu=" + strconv.Itoa(timeout),
+		"--fsize=" + strconv.Itoa(int(sandboxFileSizeBytes)),
+		"--nofile=" + strconv.Itoa(sandboxOpenFileLimit),
+	}
+	if isolateNetwork {
+		limits = append(limits, "--nproc="+strconv.Itoa(sandboxProcessLimit))
+	}
+	if bin == "python3" {
+		limits = append(limits, "--as="+strconv.Itoa(int(sandboxMemoryLimit)))
+	}
+	// Resource limits ride on prlimit so no shell ever interprets a command
+	// line; every value is an integer derived from compile-time constants.
+	// prlimitPath is absolute (LookPath), so the run launches as a bare argv
+	// list; watchProcessGroup owns the timeout kill.
+	launchArgs := append([]string{prlimitPath}, limits...)
+	launchArgs = append(launchArgs, "--", bin, filename)
+	cmd := &exec.Cmd{Path: prlimitPath, Args: launchArgs}
 	cmd.Dir = dir
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
@@ -91,12 +127,37 @@ func (s *Sandbox) Execute(ctx context.Context, language string, code string) (st
 		"LANG=C.UTF-8",
 		"PYTHONDONTWRITEBYTECODE=1",
 	}
+	if bin == "node" {
+		// Node runs without an address-space rlimit (V8 reserves far more
+		// memory than it commits), so cap its old-space heap instead.
+		cmd.Env = append(cmd.Env, fmt.Sprintf("NODE_OPTIONS=--max-old-space-size=%d", sandboxNodeHeapMB))
+	}
+	if isolateNetwork {
+		// Re-point the command at unshare so the whole run lands in a
+		// network namespace with no connectivity. nsFlags is a fixed "-rn"
+		// or "-n" from the one-time probe; nothing model-controlled ever
+		// reaches the process list.
+		nsFlags, _ := networkNamespaceFlags()
+		unsharePath, lookupErr := exec.LookPath("unshare")
+		if lookupErr != nil {
+			return "", errors.New("沙箱网络隔离不可用（未安装 unshare）：请在管理后台开启沙箱网络访问或关闭沙箱")
+		}
+		cmd.Path = unsharePath
+		cmd.Args = append([]string{"unshare", nsFlags}, cmd.Args...)
+	}
 	cmd.SysProcAttr = sandboxSysProcAttr()
 	output := &limitedBuffer{limit: sandboxOutputLimit}
 	cmd.Stdout = output
 	cmd.Stderr = output
-	watchProcessGroup(cmd, runCtx.Done())
-	if err := cmd.Run(); err != nil {
+	// The watcher reads the pid through an atomic published after Start, so
+	// it never races the Cmd's process field.
+	var pid atomic.Int64
+	watchProcessGroup(&pid, runCtx.Done())
+	if err := cmd.Start(); err != nil {
+		return output.String(), fmt.Errorf("进程启动失败: %v", err)
+	}
+	pid.Store(int64(cmd.Process.Pid))
+	if err := cmd.Wait(); err != nil {
 		if errors.Is(runCtx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return output.String(), errors.New("代码执行超时")
 		}

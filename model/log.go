@@ -146,12 +146,18 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 func SearchAllLogs(keyword string) (logs []*Log, err error) {
-	err = LOG_DB.Where("type = ? or content LIKE ?", keyword, keyword+"%").Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
+	pattern := "%" + keyword + "%"
+	err = LOG_DB.Where("content LIKE ? or model_name LIKE ? or token_name LIKE ? or username LIKE ?",
+		pattern, pattern, pattern, pattern).
+		Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
 	return logs, err
 }
 
 func SearchUserLogs(userId int, keyword string) (logs []*Log, err error) {
-	err = LOG_DB.Where("user_id = ? and type = ?", userId, keyword).Order("id desc").Limit(config.MaxRecentItems).Omit("id").Find(&logs).Error
+	pattern := "%" + keyword + "%"
+	err = LOG_DB.Where("user_id = ? and (content LIKE ? or model_name LIKE ? or token_name LIKE ?)",
+		userId, pattern, pattern, pattern).
+		Order("id desc").Limit(config.MaxRecentItems).Omit("id").Find(&logs).Error
 	return logs, err
 }
 

@@ -22,7 +22,7 @@ func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 			break
 		}
 		if err != nil {
-			return state.usage, err
+			return state.usage, writeStreamError(dst, err.Error())
 		}
 		if err := state.event(data); err != nil {
 			_ = writeStreamError(dst, err.Error())
@@ -30,7 +30,9 @@ func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 		}
 	}
 	if !state.usage.Complete {
-		return state.usage, errors.New("Anthropic stream ended before message_stop")
+		err := errors.New("Anthropic stream ended before message_stop")
+		_ = writeStreamError(dst, err.Error())
+		return state.usage, err
 	}
 	return state.usage, writeStreamDone(dst)
 }
@@ -295,9 +297,9 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 	if len(extra) > 0 {
 		return fmt.Errorf("Anthropic message delta field %q cannot be converted", firstKey(extra))
 	}
-	if nonNull(delta["stop_sequence"]) {
-		return errors.New("Anthropic stop_sequence cannot be converted")
-	}
+	// stop_sequence names the configured stop word that fired. Chat has no
+	// field for it, but the same condition is reported through the finish
+	// reason below, so the value itself is safely ignored.
 	if len(fields["usage"]) != 0 {
 		if err := s.observeOutputUsage(fields["usage"]); err != nil {
 			return err
@@ -354,44 +356,43 @@ func (s *anthropicToChatStream) observeOutputUsage(raw json.RawMessage) error {
 // terminal events are written only after the upstream [DONE] marker so an
 // interrupted upstream stream never looks complete to the client.
 func (anthropicChat) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
-	state := &chatToAnthropicStream{dst: dst, model: requestedModel, toolBlocks: map[int]int{}}
+	state := &chatToAnthropicStream{writer: anthropicStreamWriter{dst: dst, model: requestedModel}, toolBlocks: map[int]int{}}
 	reader := newSSEReader(src)
+	fail := func(err error) (native.Usage, error) {
+		_ = writeAnthropicStreamError(dst, err.Error())
+		return state.writer.usage, err
+	}
 	for {
 		data, err := reader.next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return state.usage, err
+			return fail(err)
 		}
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 			if err := state.finish(); err != nil {
-				return state.usage, err
+				return fail(err)
 			}
-			return state.usage, nil
+			return state.writer.usage, nil
 		}
 		if err := state.chunk(data); err != nil {
-			return state.usage, err
+			return fail(err)
 		}
 	}
 	if state.finished {
-		return state.usage, nil
+		return state.writer.usage, nil
 	}
-	return state.usage, errors.New("Chat stream ended before [DONE]")
+	return fail(errors.New("Chat stream ended before [DONE]"))
 }
 
 type chatToAnthropicStream struct {
-	dst        StreamWriter
-	model      string
-	id         string
-	started    bool
+	writer     anthropicStreamWriter
 	textOpen   bool
 	textBlock  int
 	toolBlocks map[int]int
 	toolOrder  []int
-	nextBlock  int
 	stopReason string
-	usage      native.Usage
 	inputSeen  bool
 	outputSeen bool
 	metadata   map[string]json.RawMessage
@@ -410,7 +411,7 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 		s.metadata[key] = value
 	}
 	if id := rawString(fields["id"]); id != "" {
-		s.id = id
+		s.writer.id = id
 	}
 	var choices []json.RawMessage
 	if json.Unmarshal(fields["choices"], &choices) != nil {
@@ -466,8 +467,8 @@ func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
 		if !ok {
 			return errors.New("invalid Chat usage")
 		}
-		s.usage.Input = max(s.usage.Input, prompt)
-		s.usage.Seen = true
+		s.writer.usage.Input = max(s.writer.usage.Input, prompt)
+		s.writer.usage.Seen = true
 		s.inputSeen = true
 	}
 	if nonNull(usage["completion_tokens"]) {
@@ -475,8 +476,8 @@ func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
 		if !ok {
 			return errors.New("invalid Chat usage")
 		}
-		s.usage.Output = max(s.usage.Output, completion)
-		s.usage.Seen = true
+		s.writer.usage.Output = max(s.writer.usage.Output, completion)
+		s.writer.usage.Seen = true
 		s.outputSeen = true
 	}
 	return nil
@@ -546,29 +547,18 @@ func (s *chatToAnthropicStream) toolCall(callRaw json.RawMessage) error {
 		if id == "" || kind != "function" || name == "" {
 			return errors.New("only named function tool calls can be converted")
 		}
-		if err := s.ensureStart(); err != nil {
-			return err
-		}
-		blockIndex = s.nextBlock
-		s.nextBlock++
-		s.toolBlocks[index] = blockIndex
-		s.toolOrder = append(s.toolOrder, blockIndex)
 		if s.textOpen {
 			if err := s.closeBlock(s.textBlock); err != nil {
 				return err
 			}
 			s.textOpen = false
 		}
-		start, err := json.Marshal(map[string]any{
-			"type": "content_block_start", "index": blockIndex,
-			"content_block": map[string]any{"type": "tool_use", "id": id, "name": name, "input": map[string]any{}},
-		})
+		blockIndex, err = s.writer.openBlock(map[string]any{"type": "tool_use", "id": id, "name": name, "input": map[string]any{}})
 		if err != nil {
 			return err
 		}
-		if err := writeAnthropicEvent(s.dst, "content_block_start", start); err != nil {
-			return err
-		}
+		s.toolBlocks[index] = blockIndex
+		s.toolOrder = append(s.toolOrder, blockIndex)
 	}
 	if arguments := rawString(function["arguments"]); arguments != "" {
 		if err := s.emitToolDelta(blockIndex, arguments); err != nil {
@@ -579,95 +569,35 @@ func (s *chatToAnthropicStream) toolCall(callRaw json.RawMessage) error {
 }
 
 func (s *chatToAnthropicStream) openText() error {
-	if s.started && s.textOpen {
+	if s.textOpen {
 		return nil
 	}
-	if err := s.ensureStart(); err != nil {
-		return err
-	}
-	s.textBlock = s.nextBlock
-	s.nextBlock++
-	start, err := json.Marshal(map[string]any{
-		"type": "content_block_start", "index": s.textBlock,
-		"content_block": map[string]string{"type": "text", "text": ""},
-	})
+	index, err := s.writer.openBlock(map[string]any{"type": "text", "text": ""})
 	if err != nil {
 		return err
 	}
-	if err := writeAnthropicEvent(s.dst, "content_block_start", start); err != nil {
-		return err
-	}
+	s.textBlock = index
 	s.textOpen = true
 	return nil
 }
 
 func (s *chatToAnthropicStream) closeBlock(index int) error {
-	stop, err := json.Marshal(map[string]any{"type": "content_block_stop", "index": index})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_stop", stop)
+	return s.writer.closeBlock(index)
 }
 
 func (s *chatToAnthropicStream) emitTextDelta(text string) error {
-	if err := s.ensureStart(); err != nil {
-		return err
-	}
-	payload, err := json.Marshal(map[string]any{
-		"type": "content_block_delta", "index": s.textBlock,
-		"delta": map[string]any{"type": "text_delta", "text": text},
-	})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_delta", payload)
+	return s.writer.delta(s.textBlock, map[string]any{"type": "text_delta", "text": text})
 }
 
 func (s *chatToAnthropicStream) emitToolDelta(blockIndex int, arguments string) error {
-	payload, err := json.Marshal(map[string]any{
-		"type": "content_block_delta", "index": blockIndex,
-		"delta": map[string]any{"type": "input_json_delta", "partial_json": arguments},
-	})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_delta", payload)
-}
-
-func (s *chatToAnthropicStream) ensureStart() error {
-	if s.started {
-		return nil
-	}
-	if s.id == "" {
-		generated, err := newStreamID("msg_")
-		if err != nil {
-			return err
-		}
-		s.id = generated
-	}
-	start, err := json.Marshal(map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id": s.id, "type": "message", "role": "assistant", "model": s.model,
-			"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
-			"usage": map[string]int64{"input_tokens": s.usage.Input, "output_tokens": 0},
-		},
-	})
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "message_start", start); err != nil {
-		return err
-	}
-	s.started = true
-	return nil
+	return s.writer.delta(blockIndex, map[string]any{"type": "input_json_delta", "partial_json": arguments})
 }
 
 func (s *chatToAnthropicStream) finish() error {
 	if s.finished {
 		return nil
 	}
-	if !s.started {
+	if !s.writer.started {
 		return errors.New("Chat stream ended without content")
 	}
 	if s.stopReason == "" {
@@ -687,30 +617,10 @@ func (s *chatToAnthropicStream) finish() error {
 			return err
 		}
 	}
-	delta, err := json.Marshal(map[string]any{
-		"type":  "message_delta",
-		"delta": map[string]any{"stop_reason": s.stopReason, "stop_sequence": nil},
-		"usage": map[string]int64{"input_tokens": s.usage.Input, "output_tokens": s.usage.Output},
-	})
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "message_delta", delta); err != nil {
-		return err
-	}
-	stopEvent := map[string]any{"type": "message_stop"}
-	if len(s.metadata) > 0 {
-		stopEvent["provider_metadata"] = map[string]any{"openai": s.metadata}
-	}
-	payload, err := json.Marshal(stopEvent)
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "message_stop", payload); err != nil {
+	if err := s.writer.finish(s.stopReason, "openai", s.metadata); err != nil {
 		return err
 	}
 	s.finished = true
-	s.usage.Complete = true
 	return nil
 }
 

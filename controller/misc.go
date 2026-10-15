@@ -192,17 +192,28 @@ func SendPasswordResetEmail(c *gin.Context) {
 }
 
 type PasswordResetRequest struct {
-	Email string `json:"email"`
-	Token string `json:"token"`
+	Email    string `json:"email"`
+	Token    string `json:"token"`
+	Password string `json:"password"`
 }
 
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&req)
+	_ = json.NewDecoder(c.Request.Body).Decode(&req)
 	if req.Email == "" || req.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": i18n.Translate(c, "invalid_parameter"),
+		})
+		return
+	}
+	// The new password must be chosen client-side; echoing a server-generated
+	// one back in the response would hand the account to anyone holding the
+	// (email-delivered) token.
+	if err := common.Validate.Var(req.Password, "required,min=8,max=20"); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "新密码长度需在 8-20 位之间",
 		})
 		return
 	}
@@ -213,20 +224,16 @@ func ResetPassword(c *gin.Context) {
 		})
 		return
 	}
-	password := common.GenerateVerificationCode(12)
-	err = model.ResetUserPasswordByEmail(req.Email, password)
-	if err != nil {
+	if err := model.ResetUserPasswordByEmail(req.Email, req.Password); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
 	}
-	common.DeleteKey(req.Email, common.PasswordResetPurpose)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    password,
 	})
 	return
 }

@@ -259,9 +259,17 @@ func (s *Store) add(entry *Entry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.order) >= maxEntries {
-		oldest := s.order[0]
-		delete(s.entries, oldest)
+		oldestID := s.order[0]
+		oldest := s.entries[oldestID]
+		delete(s.entries, oldestID)
 		s.order = s.order[1:]
+		// Dropping the map entry must not strand the runner: cancel it so
+		// the in-flight upstream request stops and the entry settles as
+		// cancelled. Terminal entries ignore the call, and their goroutine
+		// has already finished.
+		if oldest != nil {
+			oldest.Cancel()
+		}
 	}
 	s.entries[entry.id] = entry
 	s.order = append(s.order, entry.id)

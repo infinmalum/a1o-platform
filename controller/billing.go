@@ -25,7 +25,7 @@ func GetSubscription(c *gin.Context) {
 	} else {
 		userId := c.GetInt(ctxkey.Id)
 		remainQuota, err = model.GetUserQuota(userId)
-		if err != nil {
+		if err == nil {
 			usedQuota, err = model.GetUserUsedQuota(userId)
 		}
 	}

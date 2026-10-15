@@ -102,10 +102,25 @@ var RetryTimes = 0
 
 // Built-in chat runtime options, editable through the option table.
 var ChatSandboxEnabled = false
+
+// ChatSandboxNetworkEnabled allows sandboxed code to reach the network. The
+// default (false) launches every run in a network namespace with no
+// connectivity and fails closed on hosts without unshare support.
+var ChatSandboxNetworkEnabled = false
 var ChatSandboxTimeoutSeconds = 30
 var ChatContextBudgetTokens = 32000
 var ChatMaxToolIterations = 8
 var ChatMaxFileBytes = int64(20 << 20)
+
+// ChatMCPStdioEnabled permits stdio MCP servers, which execute an
+// administrator-configured command on the gateway host. It defaults to off,
+// so launching host commands is an explicit opt-in even for admins.
+var ChatMCPStdioEnabled = false
+
+// ChatMCPStdioAllowlist bounds the commands stdio MCP servers may launch, as
+// a comma-separated list of executable names matched against the resolved
+// command's base name. "*" allows every command; an empty list allows none.
+var ChatMCPStdioAllowlist = "npx,uvx,bunx,python3,node"
 
 var RootUserEmail = ""
 
@@ -184,6 +199,10 @@ var MetricSuccessChanSize = env.Int("METRIC_SUCCESS_CHAN_SIZE", 1024)
 var MetricFailChanSize = env.Int("METRIC_FAIL_CHAN_SIZE", 128)
 
 var InitialRootToken = os.Getenv("INITIAL_ROOT_TOKEN")
+
+// InitialRootPassword seeds the bootstrap root account; when unset the
+// startup code mints a random password instead of a known default.
+var InitialRootPassword = os.Getenv("INITIAL_ROOT_PASSWORD")
 
 var InitialRootAccessToken = os.Getenv("INITIAL_ROOT_ACCESS_TOKEN")
 

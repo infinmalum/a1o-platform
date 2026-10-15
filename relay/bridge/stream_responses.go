@@ -19,24 +19,27 @@ func (r *chatResponses) Stream(dst StreamWriter, src io.Reader, requestedModel s
 		includeUsage: r.includeUsage, toolIndexes: map[int]int{}, toolDeltaSeen: map[int]bool{},
 	}
 	reader := newSSEReader(src)
+	fail := func(err error) (native.Usage, error) {
+		_ = writeStreamError(dst, err.Error())
+		return state.usage, err
+	}
 	for {
 		data, err := reader.next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return state.usage, err
+			return fail(err)
 		}
 		if err := state.event(data); err != nil {
-			_ = writeStreamError(dst, err.Error())
-			return state.usage, err
+			return fail(err)
 		}
 		if state.usage.Complete {
 			break
 		}
 	}
 	if !state.usage.Complete {
-		return state.usage, errors.New("Responses stream ended before response.completed")
+		return fail(errors.New("Responses stream ended before response.completed"))
 	}
 	return state.usage, writeStreamDone(dst)
 }
@@ -126,7 +129,7 @@ func (s *responsesToChatStream) ensureStart() error {
 		return nil
 	}
 	if s.id == "" {
-		generated, err := newStreamID("chatcmpl-")
+		generated, err := newStreamID(chatCompletionIDPrefix)
 		if err != nil {
 			return err
 		}

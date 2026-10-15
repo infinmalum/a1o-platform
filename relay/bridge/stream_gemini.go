@@ -24,7 +24,7 @@ type geminiStreamEvent struct {
 }
 
 func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
-	fields, extra, err := rawObject(data, "candidates", "promptFeedback", "usageMetadata", "modelVersion", "responseId", "modelStatus")
+	fields, extra, err := rawObject(data, geminiResponseFields...)
 	if err != nil {
 		return nil, fmt.Errorf("invalid Gemini event: %w", err)
 	}
@@ -57,7 +57,7 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 	if len(rawCandidates) == 0 {
 		return event, nil
 	}
-	candidate, extra, err := rawObject(rawCandidates[0], "content", "finishReason", "safetyRatings", "citationMetadata", "tokenCount", "groundingAttributions", "groundingMetadata", "avgLogprobs", "logprobsResult", "urlContextMetadata", "index", "finishMessage")
+	candidate, extra, err := rawObject(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, fmt.Errorf("invalid Gemini candidate: %w", err)
 	}
@@ -69,11 +69,8 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 			event.metadata[name] = candidate[name]
 		}
 	}
-	if len(candidate["index"]) != 0 {
-		var index int
-		if json.Unmarshal(candidate["index"], &index) != nil || index != 0 {
-			return nil, errors.New("Gemini candidate index must be zero")
-		}
+	if err := geminiCandidateIndex(candidate["index"]); err != nil {
+		return nil, err
 	}
 	if reason := rawString(candidate["finishReason"]); reason != "" {
 		if _, err := mapGeminiFinishReason(reason, false); err != nil {
@@ -122,7 +119,7 @@ func (chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string)
 			break
 		}
 		if err != nil {
-			return state.usage, err
+			return state.usage, writeStreamError(dst, err.Error())
 		}
 		if err := state.event(data); err != nil {
 			_ = writeStreamError(dst, err.Error())
@@ -130,6 +127,7 @@ func (chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string)
 		}
 	}
 	if err := state.complete(); err != nil {
+		_ = writeStreamError(dst, err.Error())
 		return state.usage, err
 	}
 	return state.usage, nil
@@ -195,7 +193,7 @@ func (s *geminiToChatStream) emitText(text string) error {
 		return nil
 	}
 	if s.id == "" {
-		generated, err := newStreamID("chatcmpl_")
+		generated, err := newStreamID(chatCompletionIDPrefix)
 		if err != nil {
 			return err
 		}
@@ -206,7 +204,7 @@ func (s *geminiToChatStream) emitText(text string) error {
 
 func (s *geminiToChatStream) emitToolCall(part geminiPart) error {
 	if s.id == "" {
-		generated, err := newStreamID("chatcmpl_")
+		generated, err := newStreamID(chatCompletionIDPrefix)
 		if err != nil {
 			return err
 		}
@@ -214,7 +212,7 @@ func (s *geminiToChatStream) emitToolCall(part geminiPart) error {
 	}
 	callID := part.callID
 	if callID == "" {
-		generated, err := newStreamID("call_")
+		generated, err := newStreamID(chatToolCallIDPrefix)
 		if err != nil {
 			return err
 		}
@@ -241,7 +239,7 @@ func (s *geminiToChatStream) complete() error {
 		return err
 	}
 	if s.id == "" {
-		generated, err := newStreamID("chatcmpl_")
+		generated, err := newStreamID(chatCompletionIDPrefix)
 		if err != nil {
 			return err
 		}
@@ -276,39 +274,40 @@ func (s *geminiToChatStream) complete() error {
 // events. Function calls become tool_use blocks and thought parts become
 // thinking deltas carrying the thought signature.
 func (messagesGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
-	state := &geminiToAnthropicStream{dst: dst, model: requestedModel}
+	state := &geminiToAnthropicStream{writer: anthropicStreamWriter{dst: dst, model: requestedModel}}
 	reader := newSSEReader(src)
+	fail := func(err error) (native.Usage, error) {
+		_ = writeAnthropicStreamError(dst, err.Error())
+		return state.writer.usage, err
+	}
 	for {
 		data, err := reader.next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return state.usage, err
+			return fail(err)
 		}
 		if err := state.event(data); err != nil {
-			return state.usage, err
+			return fail(err)
 		}
 	}
 	if err := state.complete(); err != nil {
-		return state.usage, err
+		return fail(err)
 	}
-	return state.usage, nil
+	return state.writer.usage, nil
 }
 
 type geminiToAnthropicStream struct {
-	dst          StreamWriter
-	model        string
-	id           string
-	started      bool
-	finishReason string
-	usage        native.Usage
-	metadata     map[string]json.RawMessage
-	events       int
-	nextBlock    int
-	textOpen     bool
-	thinkingOpen bool
-	toolCalls    int
+	writer        anthropicStreamWriter
+	textOpen      bool
+	thinkingOpen  bool
+	textBlock     int
+	thinkingBlock int
+	finishReason  string
+	metadata      map[string]json.RawMessage
+	events        int
+	toolCalls     int
 }
 
 func (s *geminiToAnthropicStream) event(data []byte) error {
@@ -317,13 +316,13 @@ func (s *geminiToAnthropicStream) event(data []byte) error {
 		return err
 	}
 	s.events++
-	if s.id == "" && parsed.responseID != "" {
-		s.id = parsed.responseID
+	if s.writer.id == "" && parsed.responseID != "" {
+		s.writer.id = parsed.responseID
 	}
 	if parsed.hasUsage {
-		s.usage.Input = max(s.usage.Input, parsed.prompt)
-		s.usage.Output = max(s.usage.Output, parsed.output)
-		s.usage.Seen = true
+		s.writer.usage.Input = max(s.writer.usage.Input, parsed.prompt)
+		s.writer.usage.Output = max(s.writer.usage.Output, parsed.output)
+		s.writer.usage.Seen = true
 	}
 	for key, value := range parsed.metadata {
 		if s.metadata == nil {
@@ -348,10 +347,9 @@ func (s *geminiToAnthropicStream) event(data []byte) error {
 			}
 		case geminiPartThought:
 			if s.textOpen {
-				if err := s.closeBlock(); err != nil {
+				if err := s.closeText(); err != nil {
 					return err
 				}
-				s.textOpen = false
 			}
 			if !s.thinkingOpen {
 				if err := s.openThinking(); err != nil {
@@ -379,10 +377,9 @@ func (s *geminiToAnthropicStream) event(data []byte) error {
 			s.thinkingOpen = false
 		case geminiPartFunctionCall:
 			if s.textOpen {
-				if err := s.closeBlock(); err != nil {
+				if err := s.closeText(); err != nil {
 					return err
 				}
-				s.textOpen = false
 			}
 			if err := s.closeThinking(); err != nil {
 				return err
@@ -399,21 +396,12 @@ func (s *geminiToAnthropicStream) openText() error {
 	if s.textOpen {
 		return nil
 	}
-	if err := s.ensureStart(); err != nil {
-		return err
-	}
-	start, err := json.Marshal(map[string]any{
-		"type": "content_block_start", "index": s.nextBlock,
-		"content_block": map[string]string{"type": "text", "text": ""},
-	})
+	index, err := s.writer.openBlock(map[string]any{"type": "text", "text": ""})
 	if err != nil {
 		return err
 	}
-	if err := writeAnthropicEvent(s.dst, "content_block_start", start); err != nil {
-		return err
-	}
+	s.textBlock = index
 	s.textOpen = true
-	s.nextBlock++
 	return nil
 }
 
@@ -421,21 +409,23 @@ func (s *geminiToAnthropicStream) openThinking() error {
 	if s.thinkingOpen {
 		return nil
 	}
-	if err := s.ensureStart(); err != nil {
-		return err
-	}
-	start, err := json.Marshal(map[string]any{
-		"type": "content_block_start", "index": s.nextBlock,
-		"content_block": map[string]string{"type": "thinking", "thinking": ""},
-	})
+	index, err := s.writer.openBlock(map[string]any{"type": "thinking", "thinking": ""})
 	if err != nil {
 		return err
 	}
-	if err := writeAnthropicEvent(s.dst, "content_block_start", start); err != nil {
+	s.thinkingBlock = index
+	s.thinkingOpen = true
+	return nil
+}
+
+func (s *geminiToAnthropicStream) closeText() error {
+	if !s.textOpen {
+		return nil
+	}
+	if err := s.writer.closeBlock(s.textBlock); err != nil {
 		return err
 	}
-	s.thinkingOpen = true
-	s.nextBlock++
+	s.textOpen = false
 	return nil
 }
 
@@ -443,122 +433,45 @@ func (s *geminiToAnthropicStream) closeThinking() error {
 	if !s.thinkingOpen {
 		return nil
 	}
-	if err := s.closeBlock(); err != nil {
+	if err := s.writer.closeBlock(s.thinkingBlock); err != nil {
 		return err
 	}
 	s.thinkingOpen = false
 	return nil
 }
 
-func (s *geminiToAnthropicStream) closeBlock() error {
-	stop, err := json.Marshal(map[string]any{"type": "content_block_stop", "index": s.nextBlock - 1})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_stop", stop)
-}
-
 func (s *geminiToAnthropicStream) emitTextDelta(text string) error {
-	payload, err := json.Marshal(map[string]any{
-		"type": "content_block_delta", "index": s.nextBlock - 1,
-		"delta": map[string]any{"type": "text_delta", "text": text},
-	})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_delta", payload)
+	return s.writer.delta(s.textBlock, map[string]any{"type": "text_delta", "text": text})
 }
 
 func (s *geminiToAnthropicStream) emitThinkingDelta(text string) error {
-	payload, err := json.Marshal(map[string]any{
-		"type": "content_block_delta", "index": s.nextBlock - 1,
-		"delta": map[string]any{"type": "thinking_delta", "thinking": text},
-	})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_delta", payload)
+	return s.writer.delta(s.thinkingBlock, map[string]any{"type": "thinking_delta", "thinking": text})
 }
 
 func (s *geminiToAnthropicStream) emitSignatureDelta(signature string) error {
-	payload, err := json.Marshal(map[string]any{
-		"type": "content_block_delta", "index": s.nextBlock - 1,
-		"delta": map[string]any{"type": "signature_delta", "signature": signature},
-	})
-	if err != nil {
-		return err
-	}
-	return writeAnthropicEvent(s.dst, "content_block_delta", payload)
+	return s.writer.delta(s.thinkingBlock, map[string]any{"type": "signature_delta", "signature": signature})
 }
 
 func (s *geminiToAnthropicStream) emitToolUse(part geminiPart) error {
-	if err := s.ensureStart(); err != nil {
-		return err
-	}
 	blockID := part.callID
 	if blockID == "" {
-		generated, err := newStreamID("toolu_")
+		generated, err := newStreamID(anthropicToolUseIDPrefix)
 		if err != nil {
 			return err
 		}
 		blockID = generated
 	}
-	index := s.nextBlock
-	s.nextBlock++
-	start, err := json.Marshal(map[string]any{
-		"type": "content_block_start", "index": index,
-		"content_block": map[string]any{"type": "tool_use", "id": blockID, "name": part.name, "input": map[string]any{}},
-	})
+	index, err := s.writer.openBlock(map[string]any{"type": "tool_use", "id": blockID, "name": part.name, "input": map[string]any{}})
 	if err != nil {
 		return err
 	}
-	if err := writeAnthropicEvent(s.dst, "content_block_start", start); err != nil {
+	if err := s.writer.delta(index, map[string]any{"type": "input_json_delta", "partial_json": string(part.args)}); err != nil {
 		return err
 	}
-	arguments, err := json.Marshal(map[string]any{"type": "content_block_delta", "index": index, "delta": map[string]any{"type": "input_json_delta", "partial_json": string(part.args)}})
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "content_block_delta", arguments); err != nil {
-		return err
-	}
-	stop, err := json.Marshal(map[string]any{"type": "content_block_stop", "index": index})
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "content_block_stop", stop); err != nil {
+	if err := s.writer.closeBlock(index); err != nil {
 		return err
 	}
 	s.toolCalls++
-	return nil
-}
-
-func (s *geminiToAnthropicStream) ensureStart() error {
-	if s.started {
-		return nil
-	}
-	if s.id == "" {
-		generated, err := newStreamID("msg_")
-		if err != nil {
-			return err
-		}
-		s.id = generated
-	}
-	start, err := json.Marshal(map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id": s.id, "type": "message", "role": "assistant", "model": s.model,
-			"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
-			"usage": map[string]int64{"input_tokens": s.usage.Input, "output_tokens": 0},
-		},
-	})
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "message_start", start); err != nil {
-		return err
-	}
-	s.started = true
 	return nil
 }
 
@@ -569,47 +482,24 @@ func (s *geminiToAnthropicStream) complete() error {
 	if s.finishReason == "" {
 		return errors.New("Gemini stream ended without a finish reason")
 	}
-	if !s.usage.Seen {
+	if !s.writer.usage.Seen {
 		return errors.New("Gemini stream ended without provider usage")
 	}
 	mapped, err := mapGeminiStopReason(s.finishReason, s.toolCalls > 0)
 	if err != nil {
 		return err
 	}
-	if err := s.ensureStart(); err != nil {
+	if err := s.writer.ensureStart(); err != nil {
 		return err
 	}
 	if err := s.closeThinking(); err != nil {
 		return err
 	}
-	if s.textOpen {
-		if err := s.closeBlock(); err != nil {
-			return err
-		}
-		s.textOpen = false
-	}
-	delta, err := json.Marshal(map[string]any{
-		"type":  "message_delta",
-		"delta": map[string]any{"stop_reason": mapped, "stop_sequence": nil},
-		"usage": map[string]int64{"input_tokens": s.usage.Input, "output_tokens": s.usage.Output},
-	})
-	if err != nil {
+	if err := s.closeText(); err != nil {
 		return err
 	}
-	if err := writeAnthropicEvent(s.dst, "message_delta", delta); err != nil {
+	if err := s.writer.finish(mapped, "gemini", s.metadata); err != nil {
 		return err
 	}
-	stopEvent := map[string]any{"type": "message_stop"}
-	if len(s.metadata) > 0 {
-		stopEvent["provider_metadata"] = map[string]any{"gemini": s.metadata}
-	}
-	payload, err := json.Marshal(stopEvent)
-	if err != nil {
-		return err
-	}
-	if err := writeAnthropicEvent(s.dst, "message_stop", payload); err != nil {
-		return err
-	}
-	s.usage.Complete = true
 	return nil
 }

@@ -14,37 +14,16 @@ import (
 // requests convert their body; the response stream uses the paired
 // StreamConverter.
 func ChatToAnthropic(body []byte, model string) ([]byte, error) {
-	if model == "" {
-		return nil, errors.New("model is required")
-	}
-	fields, err := object(body, "model", "messages", "stream", "max_tokens", "max_completion_tokens", "temperature", "top_p", "stop", "tools", "tool_choice")
+	head, err := parseChatRequestHead(body, model, "stop")
 	if err != nil {
 		return nil, err
 	}
-	var stream bool
-	if err := decode(fields["stream"], &stream); err != nil {
-		return nil, errors.New("stream must be boolean")
+	fields, messages := head.fields, head.messages
+	request := map[string]any{"model": model, "max_tokens": head.limit}
+	if head.limit == 0 {
+		request["max_tokens"] = 1024
 	}
-	var messages []json.RawMessage
-	if err := json.Unmarshal(fields["messages"], &messages); err != nil || len(messages) == 0 {
-		return nil, errors.New("messages must be a non-empty array")
-	}
-	var maxTokens, maxCompletion int64
-	if err := decode(fields["max_tokens"], &maxTokens); err != nil || maxTokens < 0 {
-		return nil, errors.New("max_tokens must not be negative")
-	}
-	if err := decode(fields["max_completion_tokens"], &maxCompletion); err != nil || maxCompletion < 0 {
-		return nil, errors.New("max_completion_tokens must not be negative")
-	}
-	if maxTokens > 0 && maxCompletion > 0 && maxTokens != maxCompletion {
-		return nil, errors.New("conflicting Chat token limits")
-	}
-	limit := max(maxTokens, maxCompletion)
-	if limit == 0 {
-		limit = 1024
-	}
-	request := map[string]any{"model": model, "max_tokens": limit}
-	if stream {
+	if head.stream {
 		request["stream"] = true
 	}
 	var system []string
@@ -80,33 +59,16 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 				if role != "assistant" {
 					return nil, errors.New("tool_calls require an assistant message")
 				}
-				var calls []json.RawMessage
-				if err := json.Unmarshal(message["tool_calls"], &calls); err != nil {
-					return nil, errors.New("tool_calls must be an array")
+				calls, err := chatToolCalls(message["tool_calls"])
+				if err != nil {
+					return nil, err
 				}
 				for _, call := range calls {
-					item, err := object(call, "id", "type", "function")
+					input, err := chatToolArgsObject(call.Arguments)
 					if err != nil {
 						return nil, err
 					}
-					var id, kind string
-					_ = json.Unmarshal(item["id"], &id)
-					_ = json.Unmarshal(item["type"], &kind)
-					if id == "" || kind != "function" {
-						return nil, errors.New("only named function tool calls can be converted")
-					}
-					function, err := object(item["function"], "name", "arguments")
-					if err != nil {
-						return nil, err
-					}
-					var name, arguments string
-					_ = json.Unmarshal(function["name"], &name)
-					_ = json.Unmarshal(function["arguments"], &arguments)
-					var input map[string]any
-					if name == "" || json.Unmarshal([]byte(arguments), &input) != nil || input == nil {
-						return nil, errors.New("function tool arguments must be a JSON object")
-					}
-					blocks = append(blocks, map[string]any{"type": "tool_use", "id": id, "name": name, "input": input})
+					blocks = append(blocks, map[string]any{"type": "tool_use", "id": call.ID, "name": call.Name, "input": input})
 				}
 			}
 			if len(blocks) == 0 {
@@ -137,16 +99,11 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 		}
 	}
 	if len(fields["stop"]) != 0 {
-		var one string
-		if json.Unmarshal(fields["stop"], &one) == nil {
-			request["stop_sequences"] = []string{one}
-		} else {
-			var many []string
-			if json.Unmarshal(fields["stop"], &many) != nil {
-				return nil, errors.New("stop must be text or a list of text")
-			}
-			request["stop_sequences"] = many
+		stops, err := chatStopSequences(fields["stop"])
+		if err != nil {
+			return nil, err
 		}
+		request["stop_sequences"] = stops
 	}
 	if len(fields["tools"]) != 0 {
 		var tools []json.RawMessage
@@ -282,9 +239,6 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	if len(fields["role"]) != 0 && (json.Unmarshal(fields["role"], &role) != nil || role != "assistant") {
 		return nil, native.Usage{}, errors.New("Anthropic response role must be assistant")
 	}
-	if len(fields["stop_sequence"]) != 0 && string(fields["stop_sequence"]) != "null" {
-		return nil, native.Usage{}, errors.New("Anthropic stop_sequence cannot be converted")
-	}
 	if response.Usage != nil && (response.Usage.InputTokens < 0 || response.Usage.OutputTokens < 0 || response.Usage.CacheCreationInputTokens < 0 || response.Usage.CacheReadInputTokens < 0) {
 		return nil, native.Usage{}, errors.New("invalid Anthropic usage")
 	}
@@ -372,38 +326,6 @@ func decode(raw json.RawMessage, out any) error {
 		return nil
 	}
 	return json.Unmarshal(raw, out)
-}
-
-func textBlocks(raw json.RawMessage) ([]any, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
-	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		if text == "" {
-			return nil, nil
-		}
-		return []any{map[string]string{"type": "text", "text": text}}, nil
-	}
-	var parts []json.RawMessage
-	if json.Unmarshal(raw, &parts) != nil {
-		return nil, errors.New("Chat content must be text or text parts")
-	}
-	var result []any
-	for _, part := range parts {
-		item, err := object(part, "type", "text")
-		if err != nil {
-			return nil, err
-		}
-		var kind, text string
-		_ = json.Unmarshal(item["type"], &kind)
-		_ = json.Unmarshal(item["text"], &text)
-		if kind != "text" {
-			return nil, fmt.Errorf("Chat content part %q cannot be converted", kind)
-		}
-		result = append(result, map[string]string{"type": "text", "text": text})
-	}
-	return result, nil
 }
 
 func joinSystem(parts []string) string {

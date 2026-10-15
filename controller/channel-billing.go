@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -126,6 +127,21 @@ func GetAuthHeader(token string) http.Header {
 	return h
 }
 
+// sanitizeURLError strips the query string from *url.Error messages before
+// they reach logs or API responses. Some upstream balance APIs (OpenAI-SB)
+// require the channel key as a query parameter, so the transport error text
+// must never quote the full URL.
+func sanitizeURLError(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if parsed, parseErr := url.Parse(urlErr.URL); parseErr == nil && parsed.RawQuery != "" {
+			parsed.RawQuery = ""
+			return fmt.Errorf("%s %q: %w", urlErr.Op, parsed.String(), urlErr.Err)
+		}
+	}
+	return err
+}
+
 func GetResponseBody(method, url string, channel *model.Channel, headers http.Header) ([]byte, error) {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
@@ -136,16 +152,13 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 	}
 	res, err := client.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeURLError(err)
 	}
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status code: %d", res.StatusCode)
 	}
 	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	err = res.Body.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -434,14 +447,14 @@ func updateAllChannelsBalance() error {
 }
 
 func UpdateAllChannelsBalance(c *gin.Context) {
-	//err := updateAllChannelsBalance()
-	//if err != nil {
-	//	c.JSON(http.StatusOK, gin.H{
-	//		"success": false,
-	//		"message": err.Error(),
-	//	})
-	//	return
-	//}
+	err := updateAllChannelsBalance()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

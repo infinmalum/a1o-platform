@@ -96,11 +96,25 @@ func TestAnthropicToChatRejectsResponseFieldsItCannotRepresent(t *testing.T) {
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":2,"output_tokens":1,"server_tool_use":{"web_search_requests":1}}}`,
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"container":{"id":"x"}}`,
 		`{"id":"msg_1","type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"call_1","name":"lookup","input":{}},{"type":"text","text":"after tool"}]}`,
-		`{"id":"msg_1","type":"message","stop_reason":"stop_sequence","stop_sequence":"END","content":[{"type":"text","text":"ok"}]}`,
 		`{"id":"msg_1","type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"call_1","name":"lookup","input":true}]}`,
 	} {
 		if _, _, err := AnthropicToChat([]byte(body), "alias"); err == nil {
 			t.Fatalf("lossy Anthropic response was accepted: %s", body)
 		}
+	}
+}
+
+// TestAnthropicToChatAcceptsStopSequence pins that a response which hit a
+// client-configured stop word converts with finish "stop" instead of failing:
+// the request side forwards stop_sequences, so the response side must accept
+// the matching stop_sequence report.
+func TestAnthropicToChatAcceptsStopSequence(t *testing.T) {
+	input := []byte(`{"id":"msg_1","type":"message","stop_reason":"stop_sequence","stop_sequence":"END","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":2,"output_tokens":1}}`)
+	converted, _, err := AnthropicToChat(input, "alias")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(converted), `"finish_reason":"stop"`) {
+		t.Fatalf("stop_sequence response did not convert to finish stop: %s", converted)
 	}
 }

@@ -25,8 +25,19 @@ func CreateRootAccountIfNeed() error {
 	var user User
 	//if user.Status != util.UserStatusEnabled {
 	if err := DB.First(&user).Error; err != nil {
-		logger.SysLog("no user exists, creating a root user for you: username is root, password is 123456")
-		hashedPassword, err := common.Password2Hash("123456")
+		password := config.InitialRootPassword
+		if password != "" {
+			logger.SysLog("no user exists, creating root user with the password from INITIAL_ROOT_PASSWORD")
+		} else {
+			// A publicly known default password is a takeover vector on
+			// internet-facing deployments, so mint a per-deployment one and
+			// surface it exactly once; the operator must rotate it after
+			// first login.
+			password = random.GetRandomString(20)
+			logger.SysLog("no user exists, creating a root user for you: username is root, and the generated password is on the next line — log in and change it immediately")
+			logger.SysLog("initial root password: " + password)
+		}
+		hashedPassword, err := common.Password2Hash(password)
 		if err != nil {
 			return err
 		}
@@ -155,9 +166,6 @@ func migrateDB() error {
 		return err
 	}
 	if err = DB.AutoMigrate(&Log{}); err != nil {
-		return err
-	}
-	if err = DB.AutoMigrate(&Channel{}); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&UpstreamAccount{}); err != nil {

@@ -384,14 +384,26 @@ func ListMCPServers(userId int) ([]*ChatMCPServer, error) {
 	var servers []*ChatMCPServer
 	err := DB.Where("owner_id = ? or owner_id = ?", userId, ChatSkillOwnerGlobal).
 		Order("owner_id asc, id asc").Find(&servers).Error
-	return servers, err
+	if err != nil {
+		return nil, err
+	}
+	for _, server := range servers {
+		unsealMCPServerCredentials(server)
+	}
+	return servers, nil
 }
 
 func ListEnabledMCPServers(userId int) ([]*ChatMCPServer, error) {
 	var servers []*ChatMCPServer
 	err := DB.Where("(owner_id = ? or owner_id = ?) and enabled = ?", userId, ChatSkillOwnerGlobal, true).
 		Order("owner_id asc, id asc").Find(&servers).Error
-	return servers, err
+	if err != nil {
+		return nil, err
+	}
+	for _, server := range servers {
+		unsealMCPServerCredentials(server)
+	}
+	return servers, nil
 }
 
 func GetMCPServerForOwner(id int, ownerId int) (*ChatMCPServer, error) {
@@ -400,19 +412,51 @@ func GetMCPServerForOwner(id int, ownerId int) (*ChatMCPServer, error) {
 	if err != nil {
 		return nil, errors.New("MCP 服务器不存在")
 	}
+	unsealMCPServerCredentials(&server)
 	return &server, nil
 }
 
+// unsealMCPServerCredentials decrypts the stored Env/Headers fields so every
+// reader — the admin UI and the MCP dialer alike — sees the plaintext the
+// admin entered.
+func unsealMCPServerCredentials(server *ChatMCPServer) {
+	unsealMCPCredentialField(fmt.Sprintf("MCP server %d env", server.Id), server.Env)
+	unsealMCPCredentialField(fmt.Sprintf("MCP server %d headers", server.Id), server.Headers)
+}
+
 func UpsertChatMCPServer(server *ChatMCPServer) error {
-	now := helper.GetTimestamp()
-	if server.Id == 0 {
-		server.CreatedTime = now
-		server.UpdatedTime = now
-		return DB.Create(server).Error
+	// User-supplied MCP credentials are secrets like any other: they land in
+	// the database only sealed. Sealing writes into a copy so the caller's
+	// struct — echoed back to the admin UI — keeps the entered plaintext.
+	stored := *server
+	if server.Env != nil {
+		env := *server.Env
+		stored.Env = &env
 	}
-	server.UpdatedTime = now
-	return DB.Model(server).Select("name", "transport", "command", "args", "env", "url", "headers", "enabled", "updated_time").
-		Updates(server).Error
+	if server.Headers != nil {
+		headers := *server.Headers
+		stored.Headers = &headers
+	}
+	if err := sealMCPCredentialField(stored.Env); err != nil {
+		return err
+	}
+	if err := sealMCPCredentialField(stored.Headers); err != nil {
+		return err
+	}
+	now := helper.GetTimestamp()
+	if stored.Id == 0 {
+		stored.CreatedTime = now
+		stored.UpdatedTime = now
+		if err := DB.Create(&stored).Error; err != nil {
+			return err
+		}
+		server.Id, server.CreatedTime, server.UpdatedTime =
+			stored.Id, stored.CreatedTime, stored.UpdatedTime
+		return nil
+	}
+	stored.UpdatedTime = now
+	return DB.Model(&stored).Select("name", "transport", "command", "args", "env", "url", "headers", "enabled", "updated_time").
+		Updates(&stored).Error
 }
 
 func DeleteChatMCPServer(id int, ownerId int) error {

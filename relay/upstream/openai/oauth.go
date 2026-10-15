@@ -68,18 +68,23 @@ func DefaultEndpoints() Endpoints {
 
 // Client speaks the Sign in with ChatGPT OAuth flow.
 type Client struct {
-	Endpoints  Endpoints
-	HTTP       *http.Client
-	AgentName  string // agent_name_hint, sent only on initial registration
-	HostID     string // ext_agent_host_id, stable per host
+	Endpoints   Endpoints
+	HTTP        *http.Client
+	AgentName   string // agent_name_hint, sent only on initial registration
+	HostID      string // ext_agent_host_id, stable per host
 	RedirectURI string
 }
+
+// oauthHTTPTimeout bounds every OAuth endpoint call. The refresh path runs
+// under the coordinator's per-account flight, so a hung token endpoint must
+// not pin the account indefinitely.
+const oauthHTTPTimeout = 30 * time.Second
 
 // NewClient builds a client with the production endpoints.
 func NewClient(agentName, hostID string) *Client {
 	return &Client{
 		Endpoints:   DefaultEndpoints(),
-		HTTP:        http.DefaultClient,
+		HTTP:        &http.Client{Timeout: oauthHTTPTimeout},
 		AgentName:   agentName,
 		HostID:      hostID,
 		RedirectURI: DefaultRedirectURI,
@@ -204,8 +209,8 @@ type TokenSet struct {
 // TokenError reports a non-200 token endpoint response.
 type TokenError struct {
 	Status      int
-	Code        string        `json:"error"`
-	Description string        `json:"error_description"`
+	Code        string `json:"error"`
+	Description string `json:"error_description"`
 }
 
 func (e *TokenError) Error() string {
@@ -226,6 +231,10 @@ func (e *TokenError) IsReauthorization() bool {
 }
 
 func (c *Client) postToken(ctx context.Context, form url.Values) (*TokenSet, error) {
+	if parsed, err := url.Parse(c.Endpoints.Token); err != nil || parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, errors.New("oauth token endpoint must be an http(s) URL")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoints.Token, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err

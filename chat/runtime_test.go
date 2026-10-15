@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -239,6 +240,12 @@ func TestSandboxExecutesPython(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("本机没有 python3，跳过")
 	}
+	// These checks exercise execution mechanics (output capture, exit codes),
+	// not isolation, so they opt into the network-allowed path and stay
+	// independent of host unshare support.
+	previousNetwork := config.ChatSandboxNetworkEnabled
+	config.ChatSandboxNetworkEnabled = true
+	t.Cleanup(func() { config.ChatSandboxNetworkEnabled = previousNetwork })
 	sandbox := &Sandbox{}
 	output, err := sandbox.Execute(context.Background(), "python", "print('hello', 6*7)")
 	if err != nil {
@@ -259,6 +266,9 @@ func TestSandboxTimesOutInfiniteLoop(t *testing.T) {
 	previousTimeout := config.ChatSandboxTimeoutSeconds
 	config.ChatSandboxTimeoutSeconds = 1
 	t.Cleanup(func() { config.ChatSandboxTimeoutSeconds = previousTimeout })
+	previousNetwork := config.ChatSandboxNetworkEnabled
+	config.ChatSandboxNetworkEnabled = true
+	t.Cleanup(func() { config.ChatSandboxNetworkEnabled = previousNetwork })
 
 	sandbox := &Sandbox{}
 	start := time.Now()
@@ -285,5 +295,105 @@ func TestVirtualToolNameSlugifiesAndDedupes(t *testing.T) {
 	long := VirtualToolName(strings.Repeat("s", 80), strings.Repeat("t", 80), map[string]bool{})
 	if len(long) > 64 {
 		t.Fatalf("name too long: %d", len(long))
+	}
+}
+
+// disconnectLeg cancels the caller's context while streaming, before the
+// runtime persists the assistant row — the shape of a client vanishing
+// mid-leg with tool calls already decided.
+type disconnectLeg struct {
+	calls   []LegToolCall
+	cancels context.CancelFunc
+}
+
+func (l *disconnectLeg) RunLeg(ctx context.Context, req LegRequest, onDelta func(string)) (LegResult, error) {
+	l.cancels()
+	return LegResult{ToolCalls: l.calls}, nil
+}
+
+// TestRunLoopPersistsPlaceholdersWhenCancelledMidTurn pins the repair for
+// interrupted tool turns: the stored history used to end with an assistant
+// tool_calls row missing its tool messages, which the next turn's upstream
+// rejects outright.
+func TestRunLoopPersistsPlaceholdersWhenCancelledMidTurn(t *testing.T) {
+	setupChatDB(t)
+	session := &model.ChatSession{UserId: 1, Model: "test-model"}
+	userMessage := &model.ChatMessage{Role: model.ChatRoleUser, Content: "查一下"}
+	insertChatFixture(t, session, userMessageAsHistory(userMessage)...)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	leg := &disconnectLeg{cancels: cancel, calls: []LegToolCall{
+		{ID: "c1", Name: "echo", Arguments: "{}"},
+		{ID: "c2", Name: "echo", Arguments: "{}"},
+	}}
+	tools := newToolSet()
+	tools.add(Tool{Name: "echo"}, func(ctx context.Context, req toolRequest) toolResult {
+		return toolResult{Content: "ok"}
+	})
+
+	runtime := &Runtime{}
+	var events []Event
+	err := runtime.runLoop(ctx, collectEvents(&events),
+		TurnRequest{Session: session, History: userMessageAsHistory(userMessage), Leg: leg}, tools)
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+
+	messages, err := model.GetSessionMessages(session.Id)
+	if err != nil {
+		t.Fatalf("load messages: %v", err)
+	}
+	// Both tool calls are unanswered when the turn dies mid-leg, so both get
+	// a placeholder: user, assistant with tool_calls, tool c1, tool c2.
+	if len(messages) != 4 {
+		t.Fatalf("stored messages = %d, want 4", len(messages))
+	}
+	if messages[1].Role != model.ChatRoleAssistant || messages[1].ToolCalls == nil {
+		t.Fatalf("assistant row missing tool calls: %+v", messages[1])
+	}
+	if messages[2].Role != model.ChatRoleTool || messages[2].ToolCallId != "c1" ||
+		messages[2].Name != "echo" {
+		t.Fatalf("first placeholder row wrong: %+v", messages[2])
+	}
+	if messages[3].Role != model.ChatRoleTool || messages[3].ToolCallId != "c2" {
+		t.Fatalf("second placeholder row wrong: %+v", messages[3])
+	}
+}
+
+// TestRunLoopDoesNotPersistHallucinatedToolCalls pins that tool calls from a
+// model with no tools offered never reach the stored history: they would
+// leave the same dangling tool_calls sequence the interrupted-turn repair
+// guards against.
+func TestRunLoopDoesNotPersistHallucinatedToolCalls(t *testing.T) {
+	setupChatDB(t)
+	session := &model.ChatSession{UserId: 1, Model: "test-model"}
+	userMessage := &model.ChatMessage{Role: model.ChatRoleUser, Content: "你好"}
+	insertChatFixture(t, session, userMessageAsHistory(userMessage)...)
+
+	leg := &fakeLeg{responses: []fakeLegResponse{
+		{result: LegResult{Content: "我没有工具可用。", ToolCalls: []LegToolCall{
+			{ID: "ghost-1", Name: "not_offered", Arguments: "{}"},
+		}}},
+	}}
+
+	runtime := &Runtime{}
+	var events []Event
+	err := runtime.runLoop(context.Background(), collectEvents(&events),
+		TurnRequest{Session: session, History: userMessageAsHistory(userMessage), Leg: leg},
+		newToolSet())
+	if err != nil {
+		t.Fatalf("runLoop failed: %v", err)
+	}
+
+	messages, err := model.GetSessionMessages(session.Id)
+	if err != nil {
+		t.Fatalf("load messages: %v", err)
+	}
+	if len(messages) != 2 { // user, assistant — no ghost tool row
+		t.Fatalf("stored messages = %d, want 2", len(messages))
+	}
+	if messages[1].ToolCalls != nil {
+		t.Fatalf("hallucinated tool calls persisted: %s", *messages[1].ToolCalls)
 	}
 }

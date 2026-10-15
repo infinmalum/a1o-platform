@@ -152,7 +152,10 @@ func credentialError(err error) *HTTPError {
 }
 
 // coolDownAccount records a 429 observation for the account/model scope so
-// selection skips this account until the reset window passes.
+// selection skips this account until the reset window passes. modelName must
+// be the client-facing request model: readiness checks run before channel
+// ModelMapping is applied, so cooldowns are keyed by the name selection will
+// query.
 func coolDownAccount(accountID int, modelName string, header http.Header) {
 	account.DefaultCooldowns.Set(account.Observation{
 		AccountID: accountID,

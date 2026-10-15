@@ -181,6 +181,22 @@ func (user *User) Update(updatePassword bool) error {
 	return err
 }
 
+// UpdateProfile persists the fields the user-edit endpoints manage, including
+// zero values so clearing an email or zeroing a quota actually lands — plain
+// struct Updates silently skip zeros. The caller must populate the struct
+// from a loaded row (or a payload that round-trips every listed column);
+// fields outside the list, such as used_quota and access_token, are never
+// touched. Password is written only when updatePassword is set, at which
+// point it arrives already hashed.
+func (user *User) UpdateProfile(updatePassword bool) error {
+	columns := []string{"username", "display_name", "email", "github_id",
+		"wechat_id", "group", "quota"}
+	if updatePassword {
+		columns = append(columns, "password")
+	}
+	return DB.Model(user).Select(columns).Updates(user).Error
+}
+
 func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
@@ -217,60 +233,56 @@ func (user *User) ValidateAndFill() (err error) {
 	return nil
 }
 
+// The FillUserBy* helpers must propagate query errors: a silent zero-value
+// user would let OAuth login chains continue against a phantom account. A
+// miss surfaces as gorm.ErrRecordNotFound, not nil.
 func (user *User) FillUserById() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	DB.Where(User{Id: user.Id}).First(user)
-	return nil
+	return DB.Where(User{Id: user.Id}).First(user).Error
 }
 
 func (user *User) FillUserByEmail() error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	DB.Where(User{Email: user.Email}).First(user)
-	return nil
+	return DB.Where(User{Email: user.Email}).First(user).Error
 }
 
 func (user *User) FillUserByGitHubId() error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
 	}
-	DB.Where(User{GitHubId: user.GitHubId}).First(user)
-	return nil
+	return DB.Where(User{GitHubId: user.GitHubId}).First(user).Error
 }
 
 func (user *User) FillUserByLarkId() error {
 	if user.LarkId == "" {
 		return errors.New("lark id 为空！")
 	}
-	DB.Where(User{LarkId: user.LarkId}).First(user)
-	return nil
+	return DB.Where(User{LarkId: user.LarkId}).First(user).Error
 }
 
 func (user *User) FillUserByOidcId() error {
 	if user.OidcId == "" {
 		return errors.New("oidc id 为空！")
 	}
-	DB.Where(User{OidcId: user.OidcId}).First(user)
-	return nil
+	return DB.Where(User{OidcId: user.OidcId}).First(user).Error
 }
 
 func (user *User) FillUserByWeChatId() error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	DB.Where(User{WeChatId: user.WeChatId}).First(user)
-	return nil
+	return DB.Where(User{WeChatId: user.WeChatId}).First(user).Error
 }
 
 func (user *User) FillUserByUsername() error {
 	if user.Username == "" {
 		return errors.New("username 为空！")
 	}
-	DB.Where(User{Username: user.Username}).First(user)
-	return nil
+	return DB.Where(User{Username: user.Username}).First(user).Error
 }
 
 func IsEmailAlreadyTaken(email string) bool {

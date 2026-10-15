@@ -151,8 +151,20 @@ func (channel *Channel) Insert() error {
 func (channel *Channel) Update() error {
 	var previousGroup string
 	DB.Model(&Channel{}).Where("id = ?", channel.Id).Pluck("group", &previousGroup)
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
+	// Struct Updates silently skips zero values, so clearing base_url,
+	// model_mapping, or resetting weight/priority to 0 never persisted.
+	// Select the editable columns explicitly; server-maintained counters
+	// (balance, used_quota, test_time, response_time) stay excluded so a
+	// stale payload cannot rewind them.
+	columns := []string{"type", "status", "name", "weight", "base_url", "other",
+		"models", "group", "model_mapping", "priority", "config", "system_prompt",
+		"upstream_account_id"}
+	if channel.Key != "" {
+		// GET /api/channel/:id omits the key, so edit payloads round-trip an
+		// empty key: only rewrite it when a new one was actually entered.
+		columns = append(columns, "key")
+	}
+	err := DB.Model(channel).Select(columns).Updates(channel).Error
 	if err != nil {
 		return err
 	}

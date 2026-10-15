@@ -417,7 +417,32 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
-	if err := updatedUser.Update(updatePassword); err != nil {
+	// Merge the managed fields onto the loaded row and persist them with an
+	// explicit column list: updating the decoded payload struct directly
+	// silently skipped zero values, so zeroing a quota recorded a log line
+	// but changed nothing, while a blanket full-column write would have
+	// blanked every field the payload omits.
+	originUser.Username = updatedUser.Username
+	originUser.DisplayName = updatedUser.DisplayName
+	originUser.Email = updatedUser.Email
+	originUser.GitHubId = updatedUser.GitHubId
+	originUser.WeChatId = updatedUser.WeChatId
+	originUser.Group = updatedUser.Group
+	originUser.Quota = updatedUser.Quota
+	if updatePassword {
+		// UpdateProfile persists the password as given, so hash it here the
+		// way User.Update used to.
+		hashed, err := common.Password2Hash(updatedUser.Password)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		originUser.Password = hashed
+	}
+	if err := originUser.UpdateProfile(updatePassword); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -455,18 +480,37 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	cleanUser := model.User{
-		Id:          c.GetInt(ctxkey.Id),
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.DisplayName,
+	row, err := model.GetUserById(c.GetInt(ctxkey.Id), false)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
 	}
 	if user.Password == unchangedPasswordMarker {
 		user.Password = "" // rollback to what it should be
-		cleanUser.Password = ""
 	}
 	updatePassword := user.Password != ""
-	if err := cleanUser.Update(updatePassword); err != nil {
+	// Persist the loaded row with an explicit column list so clearing the
+	// display name works and fields outside the edit form (quota, role,
+	// email bindings) cannot be altered from this endpoint.
+	row.Username = user.Username
+	row.DisplayName = user.DisplayName
+	if updatePassword {
+		// UpdateProfile persists the password as given, so hash it here the
+		// way User.Update used to.
+		hashed, err := common.Password2Hash(user.Password)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		row.Password = hashed
+	}
+	if err := row.UpdateProfile(updatePassword); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -509,11 +553,15 @@ func DeleteUser(c *gin.Context) {
 	err = model.DeleteUserById(id)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
+			"success": false,
+			"message": err.Error(),
 		})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
 
 func DeleteSelf(c *gin.Context) {

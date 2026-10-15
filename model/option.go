@@ -79,10 +79,13 @@ func InitOptionMap() {
 	config.OptionMap["Theme"] = config.Theme
 	config.OptionMap["UpstreamRoutingPolicy"] = config.UpstreamRoutingPolicy
 	config.OptionMap["ChatSandboxEnabled"] = strconv.FormatBool(config.ChatSandboxEnabled)
+	config.OptionMap["ChatSandboxNetworkEnabled"] = strconv.FormatBool(config.ChatSandboxNetworkEnabled)
 	config.OptionMap["ChatSandboxTimeoutSeconds"] = strconv.Itoa(config.ChatSandboxTimeoutSeconds)
 	config.OptionMap["ChatContextBudgetTokens"] = strconv.Itoa(config.ChatContextBudgetTokens)
 	config.OptionMap["ChatMaxToolIterations"] = strconv.Itoa(config.ChatMaxToolIterations)
 	config.OptionMap["ChatMaxFileBytes"] = strconv.FormatInt(config.ChatMaxFileBytes, 10)
+	config.OptionMap["ChatMCPStdioEnabled"] = strconv.FormatBool(config.ChatMCPStdioEnabled)
+	config.OptionMap["ChatMCPStdioAllowlist"] = config.ChatMCPStdioAllowlist
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -124,145 +127,130 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+// Option binding tables map option keys onto their config variables so
+// updateOptionMap stays declarative: adding an option means declaring the
+// config variable and adding one binding, not another switch case.
+
+var boolOptionBindings = map[string]*bool{
+	"ApproximateTokenEnabled":        &config.ApproximateTokenEnabled,
+	"AutomaticDisableChannelEnabled": &config.AutomaticDisableChannelEnabled,
+	"AutomaticEnableChannelEnabled":  &config.AutomaticEnableChannelEnabled,
+	"ChatMCPStdioEnabled":            &config.ChatMCPStdioEnabled,
+	"ChatSandboxEnabled":             &config.ChatSandboxEnabled,
+	"ChatSandboxNetworkEnabled":      &config.ChatSandboxNetworkEnabled,
+	"DisplayInCurrencyEnabled":       &config.DisplayInCurrencyEnabled,
+	"DisplayTokenStatEnabled":        &config.DisplayTokenStatEnabled,
+	"EmailDomainRestrictionEnabled":  &config.EmailDomainRestrictionEnabled,
+	"EmailVerificationEnabled":       &config.EmailVerificationEnabled,
+	"GitHubOAuthEnabled":             &config.GitHubOAuthEnabled,
+	"LogConsumeEnabled":              &config.LogConsumeEnabled,
+	"OidcEnabled":                    &config.OidcEnabled,
+	"PasswordLoginEnabled":           &config.PasswordLoginEnabled,
+	"PasswordRegisterEnabled":        &config.PasswordRegisterEnabled,
+	"RegisterEnabled":                &config.RegisterEnabled,
+	"TurnstileCheckEnabled":          &config.TurnstileCheckEnabled,
+	"WeChatAuthEnabled":              &config.WeChatAuthEnabled,
+}
+
+var stringOptionBindings = map[string]*string{
+	"ChatLink":                    &config.ChatLink,
+	"ChatMCPStdioAllowlist":       &config.ChatMCPStdioAllowlist,
+	"Footer":                      &config.Footer,
+	"GitHubClientId":              &config.GitHubClientId,
+	"GitHubClientSecret":          &config.GitHubClientSecret,
+	"LarkClientId":                &config.LarkClientId,
+	"LarkClientSecret":            &config.LarkClientSecret,
+	"Logo":                        &config.Logo,
+	"MessagePusherAddress":        &config.MessagePusherAddress,
+	"MessagePusherToken":          &config.MessagePusherToken,
+	"OidcAuthorizationEndpoint":   &config.OidcAuthorizationEndpoint,
+	"OidcClientId":                &config.OidcClientId,
+	"OidcClientSecret":            &config.OidcClientSecret,
+	"OidcTokenEndpoint":           &config.OidcTokenEndpoint,
+	"OidcUserinfoEndpoint":        &config.OidcUserinfoEndpoint,
+	"OidcWellKnown":               &config.OidcWellKnown,
+	"SMTPAccount":                 &config.SMTPAccount,
+	"SMTPFrom":                    &config.SMTPFrom,
+	"SMTPServer":                  &config.SMTPServer,
+	"SMTPToken":                   &config.SMTPToken,
+	"ServerAddress":               &config.ServerAddress,
+	"SystemName":                  &config.SystemName,
+	"Theme":                       &config.Theme,
+	"TopUpLink":                   &config.TopUpLink,
+	"TurnstileSecretKey":          &config.TurnstileSecretKey,
+	"TurnstileSiteKey":            &config.TurnstileSiteKey,
+	"WeChatAccountQRCodeImageURL": &config.WeChatAccountQRCodeImageURL,
+	"WeChatServerAddress":         &config.WeChatServerAddress,
+	"WeChatServerToken":           &config.WeChatServerToken,
+}
+
+var intOptionBindings = map[string]*int{
+	"ChatContextBudgetTokens":   &config.ChatContextBudgetTokens,
+	"ChatMaxToolIterations":     &config.ChatMaxToolIterations,
+	"ChatSandboxTimeoutSeconds": &config.ChatSandboxTimeoutSeconds,
+	"RetryTimes":                &config.RetryTimes,
+	"SMTPPort":                  &config.SMTPPort,
+}
+
+var int64OptionBindings = map[string]*int64{
+	"ChatMaxFileBytes":     &config.ChatMaxFileBytes,
+	"PreConsumedQuota":     &config.PreConsumedQuota,
+	"QuotaForInvitee":      &config.QuotaForInvitee,
+	"QuotaForInviter":      &config.QuotaForInviter,
+	"QuotaForNewUser":      &config.QuotaForNewUser,
+	"QuotaRemindThreshold": &config.QuotaRemindThreshold,
+}
+
+var floatOptionBindings = map[string]*float64{
+	"ChannelDisableThreshold": &config.ChannelDisableThreshold,
+	"QuotaPerUnit":            &config.QuotaPerUnit,
+}
+
+// customOptionSetters holds the keys whose update does more than assign one
+// config variable.
+var customOptionSetters = map[string]func(value string) error{
+	"CompletionRatio": billingratio.UpdateCompletionRatioByJSONString,
+	"GroupRatio":      billingratio.UpdateGroupRatioByJSONString,
+	"ModelRatio":      billingratio.UpdateModelRatioByJSONString,
+	"EmailDomainWhitelist": func(value string) error {
+		config.EmailDomainWhitelist = strings.Split(value, ",")
+		return nil
+	},
+	"UpstreamRoutingPolicy": func(value string) error {
+		if !config.ValidUpstreamRoutingPolicies[value] {
+			return fmt.Errorf("invalid upstream routing policy: %s", value)
+		}
+		config.UpstreamRoutingPolicy = value
+		return nil
+	},
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	config.OptionMapRWMutex.Lock()
 	defer config.OptionMapRWMutex.Unlock()
 	config.OptionMap[key] = value
-	if strings.HasSuffix(key, "Enabled") {
-		boolValue := value == "true"
-		switch key {
-		case "PasswordRegisterEnabled":
-			config.PasswordRegisterEnabled = boolValue
-		case "PasswordLoginEnabled":
-			config.PasswordLoginEnabled = boolValue
-		case "EmailVerificationEnabled":
-			config.EmailVerificationEnabled = boolValue
-		case "GitHubOAuthEnabled":
-			config.GitHubOAuthEnabled = boolValue
-		case "OidcEnabled":
-			config.OidcEnabled = boolValue
-		case "WeChatAuthEnabled":
-			config.WeChatAuthEnabled = boolValue
-		case "TurnstileCheckEnabled":
-			config.TurnstileCheckEnabled = boolValue
-		case "RegisterEnabled":
-			config.RegisterEnabled = boolValue
-		case "EmailDomainRestrictionEnabled":
-			config.EmailDomainRestrictionEnabled = boolValue
-		case "AutomaticDisableChannelEnabled":
-			config.AutomaticDisableChannelEnabled = boolValue
-		case "AutomaticEnableChannelEnabled":
-			config.AutomaticEnableChannelEnabled = boolValue
-		case "ApproximateTokenEnabled":
-			config.ApproximateTokenEnabled = boolValue
-		case "LogConsumeEnabled":
-			config.LogConsumeEnabled = boolValue
-		case "DisplayInCurrencyEnabled":
-			config.DisplayInCurrencyEnabled = boolValue
-		case "DisplayTokenStatEnabled":
-			config.DisplayTokenStatEnabled = boolValue
-		case "ChatSandboxEnabled":
-			config.ChatSandboxEnabled = boolValue
-		}
+	if setter, ok := customOptionSetters[key]; ok {
+		return setter(value)
 	}
-	switch key {
-	case "EmailDomainWhitelist":
-		config.EmailDomainWhitelist = strings.Split(value, ",")
-	case "SMTPServer":
-		config.SMTPServer = value
-	case "SMTPPort":
-		intValue, _ := strconv.Atoi(value)
-		config.SMTPPort = intValue
-	case "SMTPAccount":
-		config.SMTPAccount = value
-	case "SMTPFrom":
-		config.SMTPFrom = value
-	case "SMTPToken":
-		config.SMTPToken = value
-	case "ServerAddress":
-		config.ServerAddress = value
-	case "GitHubClientId":
-		config.GitHubClientId = value
-	case "GitHubClientSecret":
-		config.GitHubClientSecret = value
-	case "LarkClientId":
-		config.LarkClientId = value
-	case "LarkClientSecret":
-		config.LarkClientSecret = value
-	case "OidcClientId":
-		config.OidcClientId = value
-	case "OidcClientSecret":
-		config.OidcClientSecret = value
-	case "OidcWellKnown":
-		config.OidcWellKnown = value
-	case "OidcAuthorizationEndpoint":
-		config.OidcAuthorizationEndpoint = value
-	case "OidcTokenEndpoint":
-		config.OidcTokenEndpoint = value
-	case "OidcUserinfoEndpoint":
-		config.OidcUserinfoEndpoint = value
-	case "Footer":
-		config.Footer = value
-	case "SystemName":
-		config.SystemName = value
-	case "Logo":
-		config.Logo = value
-	case "WeChatServerAddress":
-		config.WeChatServerAddress = value
-	case "WeChatServerToken":
-		config.WeChatServerToken = value
-	case "WeChatAccountQRCodeImageURL":
-		config.WeChatAccountQRCodeImageURL = value
-	case "MessagePusherAddress":
-		config.MessagePusherAddress = value
-	case "MessagePusherToken":
-		config.MessagePusherToken = value
-	case "TurnstileSiteKey":
-		config.TurnstileSiteKey = value
-	case "TurnstileSecretKey":
-		config.TurnstileSecretKey = value
-	case "QuotaForNewUser":
-		config.QuotaForNewUser, _ = strconv.ParseInt(value, 10, 64)
-	case "QuotaForInviter":
-		config.QuotaForInviter, _ = strconv.ParseInt(value, 10, 64)
-	case "QuotaForInvitee":
-		config.QuotaForInvitee, _ = strconv.ParseInt(value, 10, 64)
-	case "QuotaRemindThreshold":
-		config.QuotaRemindThreshold, _ = strconv.ParseInt(value, 10, 64)
-	case "PreConsumedQuota":
-		config.PreConsumedQuota, _ = strconv.ParseInt(value, 10, 64)
-	case "RetryTimes":
-		config.RetryTimes, _ = strconv.Atoi(value)
-	case "ModelRatio":
-		err = billingratio.UpdateModelRatioByJSONString(value)
-	case "GroupRatio":
-		err = billingratio.UpdateGroupRatioByJSONString(value)
-	case "CompletionRatio":
-		err = billingratio.UpdateCompletionRatioByJSONString(value)
-	case "TopUpLink":
-		config.TopUpLink = value
-	case "ChatLink":
-		config.ChatLink = value
-	case "ChannelDisableThreshold":
-		config.ChannelDisableThreshold, _ = strconv.ParseFloat(value, 64)
-	case "QuotaPerUnit":
-		config.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
-	case "Theme":
-		config.Theme = value
-	case "UpstreamRoutingPolicy":
-		if !config.ValidUpstreamRoutingPolicies[value] {
-			err = fmt.Errorf("invalid upstream routing policy: %s", value)
-		} else {
-			config.UpstreamRoutingPolicy = value
-		}
-	case "ChatSandboxTimeoutSeconds":
-		config.ChatSandboxTimeoutSeconds, _ = strconv.Atoi(value)
-	case "ChatContextBudgetTokens":
-		config.ChatContextBudgetTokens, _ = strconv.Atoi(value)
-	case "ChatMaxToolIterations":
-		config.ChatMaxToolIterations, _ = strconv.Atoi(value)
-	case "ChatMaxFileBytes":
-		config.ChatMaxFileBytes, _ = strconv.ParseInt(value, 10, 64)
+	if binding, ok := boolOptionBindings[key]; ok {
+		*binding = value == "true"
+		return nil
 	}
-	return err
+	if binding, ok := stringOptionBindings[key]; ok {
+		*binding = value
+		return nil
+	}
+	if binding, ok := intOptionBindings[key]; ok {
+		*binding, _ = strconv.Atoi(value)
+		return nil
+	}
+	if binding, ok := int64OptionBindings[key]; ok {
+		*binding, _ = strconv.ParseInt(value, 10, 64)
+		return nil
+	}
+	if binding, ok := floatOptionBindings[key]; ok {
+		*binding, _ = strconv.ParseFloat(value, 64)
+		return nil
+	}
+	return nil
 }
