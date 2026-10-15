@@ -35,9 +35,9 @@ func SetupLogger() {
 		if LogDir != "" {
 			var logPath string
 			if config.OnlyOneLogFile {
-				logPath = filepath.Join(LogDir, "oneapi.log")
+				logPath = filepath.Join(LogDir, "one-gateway.log")
 			} else {
-				logPath = filepath.Join(LogDir, fmt.Sprintf("oneapi-%s.log", time.Now().Format("20060102")))
+				logPath = filepath.Join(LogDir, fmt.Sprintf("one-gateway-%s.log", time.Now().Format("20060102")))
 			}
 			fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -152,7 +152,7 @@ func getLineInfo() (string, string) {
 		file = "unknown"
 		line = 0
 	}
-	parts := strings.Split(file, "one-api/")
+	parts := strings.Split(file, "one-gateway/")
 	if len(parts) > 1 {
 		file = parts[1]
 	}

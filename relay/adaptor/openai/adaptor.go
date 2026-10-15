@@ -74,7 +74,7 @@ func (a *Adaptor) SetupRequestHeader(c *adaptor.Context, req *http.Request, meta
 	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
 	if meta.ChannelType == channeltype.OpenRouter {
 		req.Header.Set("HTTP-Referer", "https://github.com/infinmalum/one-gateway")
-		req.Header.Set("X-Title", "One API")
+		req.Header.Set("X-Title", "One Gateway")
 	}
 	return nil
 }

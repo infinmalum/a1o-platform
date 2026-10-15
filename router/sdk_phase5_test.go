@@ -429,7 +429,7 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/oneapi/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
+	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/onegateway/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
 	proxyRequest.Header.Set("X-Trace", "keep")
 	proxyRequest.Header.Set("Authorization", "Bearer sk-phase5-gateway-key")
 	proxyResponse := httptest.NewRecorder()

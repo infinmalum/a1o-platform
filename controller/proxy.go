@@ -19,7 +19,7 @@ import (
 // of followed, so channel credentials cannot be redirected elsewhere.
 func RelayProxy(c *gin.Context) {
 	metadata := ginmeta.Get(c)
-	prefix := fmt.Sprintf("/v1/oneapi/proxy/%d", metadata.ChannelId)
+	prefix := fmt.Sprintf("/v1/onegateway/proxy/%d", metadata.ChannelId)
 	target := strings.TrimPrefix(c.Request.URL.Path, prefix)
 
 	base, err := url.Parse(metadata.BaseURL)
