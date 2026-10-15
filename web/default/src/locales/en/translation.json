@@ -805,7 +805,7 @@
   "footer": {
     "built_by": "based on",
     "built_by_name": "One API",
-    "license": "by JustSong; upstream MIT, fork changes under",
+    "license": "by JustSong; upstream MIT, One Gateway changes under",
     "apache": "Apache 2.0"
   },
   "home": {
@@ -873,9 +873,13 @@
       "confirm": {
         "title": "Password Reset Confirmation",
         "new_password": "New password",
+        "confirm_password": "Confirm new password",
         "button": "Submit",
         "button_disabled": "Password reset completed",
-        "notice": "New password has been generated, please click the password field or button above to copy. Please login and change your password as soon as possible!"
+        "password_rule": "Password must be 8-20 characters long",
+        "password_mismatch": "The two passwords do not match",
+        "notice": "Enter a new password to finish the reset. It must be 8-20 characters long.",
+        "success_notice": "Your password has been reset. Please sign in with the new password."
       }
     }
   },
@@ -955,6 +959,7 @@
     "adminTitle": "Built-in Chat Administration",
     "options": "Runtime Options",
     "sandboxToggle": "Enable code sandbox (process-level isolation; use with care)",
+    "sandboxNetworkToggle": "Allow sandboxed code network access (runs in an isolated network namespace by default; hosts without unshare support will fail the run)",
     "maxToolIterations": "Max tool iterations",
     "maxFileBytes": "Attachment size limit (bytes)"
   }

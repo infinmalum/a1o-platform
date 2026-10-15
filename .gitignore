@@ -10,12 +10,12 @@ data
 /web/node_modules
 cmd.md
 .env
-/one-api
 /one-gateway
 temp
 .cache/
 .DS_Store
 .mimosa/
+.zcode/
 
 # internal planning documents (kept local only)
 /docs/relay-rewrite-plan.md

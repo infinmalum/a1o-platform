@@ -15,10 +15,10 @@
 
 ---
 
-One Gateway is a community fork of [One API](https://github.com/songquanpeng/one-api). It fronts many model providers with a single OpenAI-compatible API and ships a web console for channels, users, tokens, quotas, and usage logs. The upstream project is created and maintained by JustSong and its contributors; this fork builds on their work.
+One Gateway is an independently maintained AI gateway, originally derived from [One API](https://github.com/songquanpeng/one-api). It fronts many model providers with a single OpenAI-compatible API and ships a web console for channels, users, tokens, quotas, and usage logs. One API was created by JustSong and its contributors; One Gateway builds on their work.
 
 > [!NOTE]
-> This repository is a separate fork. Upstream releases, Docker images, demo sites, and issue trackers are not releases or support channels for One Gateway.
+> This repository is maintained independently of One API. One API's releases, Docker images, demo sites, and issue trackers are not releases or support channels for One Gateway.
 
 ## Highlights
 
@@ -33,7 +33,7 @@ Provider and model support varies by channel implementation. Check the channel s
 
 ## Quick start with Docker
 
-Build this fork's image from the repository root:
+Build the image from the repository root:
 
 ```sh
 git clone https://github.com/infinmalum/one-gateway.git
@@ -42,9 +42,9 @@ docker build -t one-gateway:local .
 docker run -d --name one-gateway --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" one-gateway:local
 ```
 
-Open <http://localhost:3000>. On a new database, the application creates the `root` account with password `123456`. **Change that password immediately** in the console. The volume stores the default SQLite database; keep it when replacing the container. For an exposed deployment, configure HTTPS and a persistent `SESSION_SECRET` as well.
+Open <http://localhost:3000>. On a new database, the application creates the `root` account with a random password printed once in the startup log; set `INITIAL_ROOT_PASSWORD` to preseed it instead. **Change that password immediately** in the console. The volume stores the default SQLite database; keep it when replacing the container. For an exposed deployment, configure HTTPS and a persistent `SESSION_SECRET` as well.
 
-The checked-in `docker-compose.yml` builds this fork locally and tags the image `one-gateway:local`. Existing database names and data paths are retained for upgrades.
+The checked-in `docker-compose.yml` builds the image locally, tags it `one-gateway:local`, and stores data under `one-gateway`-named database and volume paths. If you deployed an earlier compose file that used the inherited `one-api` names, migrate your database and `data/` directory before switching.
 
 ## Build from source
 
@@ -74,7 +74,7 @@ Set environment variables before starting the server. Common settings are:
 | `NODE_TYPE` | `master` or `slave` for multi-node deployments. |
 | `FRONTEND_BASE_URL` | Optional frontend redirect for a slave node. |
 
-For multiple instances, point every node at the same MySQL or PostgreSQL database, use the same `SESSION_SECRET`, and configure node roles and cache synchronization. The source of truth for supported settings is [`common/config`](common/config) and the existing environment-variable section in the upstream project's documentation.
+For multiple instances, point every node at the same MySQL or PostgreSQL database, use the same `SESSION_SECRET`, and configure node roles and cache synchronization. The source of truth for supported settings is the [`common/config`](common/config) package.
 
 After signing in, add a provider key on **Channels**, then create an access token on **Tokens**. Point any OpenAI-compatible client at `http://localhost:3000/v1` and use that token as its API key:
 
@@ -87,8 +87,6 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## Documentation
 
-- [Management API reference](docs/API.md)
-- [Relay architecture notes](docs/relay-rewrite-plan.md)
 - [Frontend theme notes](web/README.md)
 - [TypeScript migration notes](docs/typescript-migration.md)
 
@@ -98,8 +96,8 @@ curl http://localhost:3000/v1/chat/completions \
 - Run `npm run build --prefix web/default` before changing embedded assets.
 - Run `go test ./...` for backend changes.
 
-Report fork-specific bugs and changes in [this repository's issues](https://github.com/infinmalum/one-gateway/issues). Please check whether a behavior also exists in the upstream project before filing it here.
+Report bugs and changes in [this repository's issues](https://github.com/infinmalum/one-gateway/issues).
 
 ## Origin and licenses
 
-One Gateway is derived from [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong and other contributors. The upstream MIT license and notice are preserved in [`LICENSE.upstream`](LICENSE.upstream). Original changes made in this fork are offered under the [Apache License 2.0](LICENSE); see [`NOTICE`](NOTICE) for attribution and scope. Existing per-file and third-party license notices remain applicable.
+One Gateway is derived from [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong and other contributors. The upstream MIT license and notice are preserved in [`LICENSE.upstream`](LICENSE.upstream). Original changes made in One Gateway are offered under the [Apache License 2.0](LICENSE); see [`NOTICE`](NOTICE) for attribution and scope. Existing per-file and third-party license notices remain applicable.

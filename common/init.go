@@ -19,7 +19,7 @@ var (
 
 func printHelp() {
 	fmt.Println("One Gateway " + Version + " - All in one API service for OpenAI API.")
-	fmt.Println("Copyright (C) 2023 JustSong. All rights reserved.")
+	fmt.Println("Derived from One API. Copyright (C) 2023 JustSong. All rights reserved.")
 	fmt.Println("GitHub: https://github.com/infinmalum/one-gateway")
 	fmt.Println("Usage: one-gateway [--port <port>] [--log-dir <log directory>] [--version] [--help]")
 }

@@ -807,7 +807,7 @@
   "footer": {
     "built_by": "基于",
     "built_by_name": "One API",
-    "license": "（JustSong）；原项目采用 MIT，派生修改采用",
+    "license": "（JustSong）；原项目采用 MIT，One Gateway 修改采用",
     "apache": "Apache 2.0"
   },
   "home": {
@@ -875,9 +875,13 @@
       "confirm": {
         "title": "密码重置确认",
         "new_password": "新密码",
+        "confirm_password": "确认新密码",
         "button": "提交",
         "button_disabled": "密码重置完成",
-        "notice": "新密码已生成，请点击密码框或上方按钮复制。请及时登录并修改密码！"
+        "password_rule": "密码长度需在 8-20 位之间",
+        "password_mismatch": "两次输入的密码不一致",
+        "notice": "请输入新密码完成重置，密码长度需在 8-20 位之间。",
+        "success_notice": "密码已重置，请使用新密码登录。"
       }
     }
   },
@@ -951,6 +955,7 @@
     "adminTitle": "内置聊天管理",
     "options": "运行选项",
     "sandboxToggle": "启用代码 Sandbox（子进程级隔离，谨慎开启）",
+    "sandboxNetworkToggle": "允许沙箱代码访问网络（默认在无网络的隔离命名空间中执行；不支持 unshare 的环境将执行失败）",
     "maxToolIterations": "工具调用轮数上限",
     "maxFileBytes": "附件大小上限（字节）"
   }
