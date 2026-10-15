@@ -14,7 +14,7 @@ import {
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
-import { API, getLogo, showError, showSuccess, showWarning } from '../helpers';
+import { API, getLogo, isAdmin, getUiMode, landingForMode, showError, showSuccess, showWarning } from '../helpers';
 import { onGitHubOAuthClicked, onLarkOAuthClicked } from './utils';
 import larkIcon from '../images/lark.svg';
 
@@ -47,6 +47,17 @@ const LoginForm = () => {
     navigate(fallback);
   };
 
+  // Where a sign-in lands when the visitor was not sent here from a page:
+  // administrators start on the dashboard, and everyone else on the page their
+  // chosen mode is about.
+  const landingPage = () => {
+    if (isAdmin()) {
+      return '/dashboard';
+    }
+    const mode = getUiMode();
+    return mode ? landingForMode(mode) : '/quickstart';
+  };
+
   useEffect(() => {
     if (searchParams.get('expired')) {
       showError(t('messages.error.login_expired'));
@@ -71,7 +82,7 @@ const LoginForm = () => {
     if (success) {
       userDispatch({ type: 'login', payload: data });
       localStorage.setItem('user', JSON.stringify(data));
-      redirectAfterLogin('/');
+      redirectAfterLogin(landingPage());
       showSuccess(t('messages.success.login'));
       setShowWeChatLoginModal(false);
     } else {
@@ -100,7 +111,7 @@ const LoginForm = () => {
           showSuccess(t('messages.success.login'));
           showWarning(t('messages.error.root_password'));
         } else {
-          redirectAfterLogin('/token');
+          redirectAfterLogin(landingPage());
           showSuccess(t('messages.success.login'));
         }
       } else {

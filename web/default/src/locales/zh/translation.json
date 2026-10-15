@@ -16,7 +16,8 @@
     "decisionPlayground": "决策操场",
     "login": "登录",
     "logout": "注销",
-    "register": "注册"
+    "register": "注册",
+    "quickStart": "快速开始"
   },
   "topup": {
     "title": "充值中心",
@@ -707,6 +708,20 @@
         },
         "buttons": {
           "save": "保存倍率设置"
+        },
+        "advanced": "高级模式（直接编辑倍率 JSON）",
+        "price": {
+          "hint": "按价格填写，系统自动换算倍率。列表默认显示渠道里已有的模型，搜索可以给其他模型定价。",
+          "search": "搜索模型名称",
+          "model": "模型",
+          "input": "输入价（$/百万 token）",
+          "output": "输出价（$/百万 token）",
+          "unpriced": "未定价",
+          "empty": "没有匹配的模型",
+          "perMillion": "价格单位为美元/百万 token，换算倍率时按当前额度单位自动处理。",
+          "groupTitle": "分组倍率",
+          "group": "分组",
+          "groupRatio": "倍率"
         }
       },
       "log": {
@@ -957,6 +972,92 @@
     "sandboxToggle": "启用代码 Sandbox（子进程级隔离，谨慎开启）",
     "sandboxNetworkToggle": "允许沙箱代码访问网络（默认在无网络的隔离命名空间中执行；不支持 unshare 的环境将执行失败）",
     "maxToolIterations": "工具调用轮数上限",
-    "maxFileBytes": "附件大小上限（字节）"
+    "maxFileBytes": "附件大小上限（字节）",
+    "balance": "余额"
+  },
+  "uiMode": {
+    "title": "你打算怎么用？",
+    "subtitle": "选一个，我们只把用得上的功能摆出来。以后随时可以在「设置」里改。",
+    "hint": "管理员不受影响，始终能看到全部管理功能。",
+    "saved": "已切换界面模式",
+    "settingNotice": "决定导航栏显示哪些页面。不确定就选「两个都用」。",
+    "chat": {
+      "title": "只想聊天",
+      "description": "直接和模型对话，上传文件，使用工具。"
+    },
+    "api": {
+      "title": "接入 API",
+      "description": "拿 API Key 接到自己的程序或客户端里。"
+    },
+    "both": {
+      "title": "两个都用",
+      "description": "聊天和 API 都要，功能全开。"
+    }
+  },
+  "quickStart": {
+    "title": "快速开始",
+    "subtitle": "三步把 One Gateway 接进你的程序：拿到地址、创建 Key、复制调用示例。",
+    "copy": "复制",
+    "copied": "已复制到剪贴板",
+    "copyFailed": "复制失败，请手动选择文本复制",
+    "step1": {
+      "title": "你的 API 地址",
+      "description": "所有请求都发往这个地址，兼容 OpenAI 的客户端直接填它。"
+    },
+    "step2": {
+      "title": "创建一个 API Key",
+      "description": "在「令牌」页面创建，可以限制可用模型、有效期和额度。Key 就是你的身份凭证，请勿泄露。",
+      "button": "去创建令牌"
+    },
+    "step3": {
+      "title": "复制调用示例",
+      "description": "网关同时支持四种协议，按你手上客户端的协议选一个即可。",
+      "clientHint": "使用 NextChat、Cherry Studio、LobeChat 等客户端时，把 API 地址填成上面的地址、API Key 填成你的令牌即可。"
+    },
+    "protocols": {
+      "openaiChat": "OpenAI Chat Completions",
+      "openaiResponses": "OpenAI Responses",
+      "anthropic": "Anthropic Messages",
+      "gemini": "Gemini"
+    },
+    "pricing": {
+      "title": "模型与价格",
+      "description": "以下是「{{group}}」分组可用的模型与价格。",
+      "groupRatio": "该分组倍率为 {{ratio}}。",
+      "search": "搜索模型",
+      "model": "模型",
+      "input": "输入价",
+      "output": "输出价",
+      "unpriced": "未定价",
+      "empty": "没有匹配的模型",
+      "perMillion": "价格单位为每百万 token。",
+      "usageLink": "查看我的用量"
+    }
+  },
+  "business": {
+    "title": "经营概览",
+    "attention": "{{count}} 个上游需要关注",
+    "costNotice": "这里只统计网关的收入与用量。上游成本与毛利需要你自己记录每个模型的进货成本，网关没有这份数据，因此不做估算。",
+    "todayConsumed": "今日消耗",
+    "todayTopup": "今日充值",
+    "todayRequests": "今日请求",
+    "todayActiveUsers": "今日活跃用户",
+    "weekConsumed": "近 7 日消耗",
+    "weekTopup": "近 7 日充值",
+    "weekRequests": "近 7 日请求",
+    "totalUsers": "账号总数",
+    "topModels": "今日模型消耗",
+    "noUsageToday": "今天还没有调用",
+    "upstream": {
+      "title": "上游健康",
+      "total": "渠道总数",
+      "enabled": "启用中",
+      "autoDisabled": "自动禁用",
+      "manuallyDisabled": "手动禁用",
+      "lowBalance": "余额不足",
+      "balanceUnknown": "余额未知",
+      "lowBalanceHint": "余额低于 ${{threshold}} 视为不足；从未查询过余额的渠道单独统计。",
+      "manage": "去管理渠道"
+    }
   }
 }

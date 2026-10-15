@@ -253,6 +253,51 @@ func updateChannelUsedQuota(id int, quota int64) {
 	}
 }
 
+// ChannelHealthSummary counts channels by operational state for the admin
+// dashboard. Only aggregates leave this type; channel keys never do.
+type ChannelHealthSummary struct {
+	Total              int64 `json:"total"`
+	Enabled            int64 `json:"enabled"`
+	ManuallyDisabled   int64 `json:"manually_disabled"`
+	AutoDisabled       int64 `json:"auto_disabled"`
+	LowBalance         int64 `json:"low_balance"`
+	BalanceUnavailable int64 `json:"balance_unavailable"`
+}
+
+// GetChannelHealthSummary reports how many channels are serving, disabled, or
+// running out of upstream balance. A channel whose balance was never fetched
+// counts as BalanceUnavailable rather than empty, so providers that expose no
+// balance are not reported as broke.
+func GetChannelHealthSummary(lowBalanceThreshold float64) (summary ChannelHealthSummary, err error) {
+	byStatus := []struct {
+		status int
+		target *int64
+	}{
+		{ChannelStatusEnabled, &summary.Enabled},
+		{ChannelStatusManuallyDisabled, &summary.ManuallyDisabled},
+		{ChannelStatusAutoDisabled, &summary.AutoDisabled},
+	}
+	for _, entry := range byStatus {
+		if err = DB.Model(&Channel{}).Where("status = ?", entry.status).Count(entry.target).Error; err != nil {
+			return summary, err
+		}
+	}
+	if err = DB.Model(&Channel{}).Count(&summary.Total).Error; err != nil {
+		return summary, err
+	}
+	if err = DB.Model(&Channel{}).
+		Where("balance_updated_time > 0 AND balance >= 0 AND balance < ?", lowBalanceThreshold).
+		Count(&summary.LowBalance).Error; err != nil {
+		return summary, err
+	}
+	if err = DB.Model(&Channel{}).
+		Where("balance_updated_time = 0 OR balance < 0").
+		Count(&summary.BalanceUnavailable).Error; err != nil {
+		return summary, err
+	}
+	return summary, nil
+}
+
 func DeleteChannelByStatus(status int64) (int64, error) {
 	var groups []string
 	DB.Model(&Channel{}).Where("status = ?", status).Pluck("group", &groups)

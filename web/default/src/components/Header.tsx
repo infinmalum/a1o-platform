@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserContext } from '../context/User';
+import { StatusContext } from '../context/Status';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -17,13 +18,23 @@ import {
   getSystemName,
   isAdmin,
   isMobile,
+  navVisible,
   showSuccess,
 } from '../helpers';
+import type { UiMode } from '../helpers';
 import '../index.css';
 import type { IconProps } from 'semantic-ui-react';
 
-// Header Buttons
-let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: boolean }[] = [
+// Header Buttons. `modes` limits an entry to the audiences that use it: a
+// chat-only account never sees the token table, an API-only account never sees
+// the chat. Administrators see everything regardless.
+let headerButtons: {
+  name: string;
+  to: string;
+  icon: IconProps['name'];
+  admin?: boolean;
+  modes?: UiMode[];
+}[] = [
   {
     name: 'header.channel',
     to: '/channel',
@@ -37,24 +48,34 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     admin: true,
   },
   {
+    name: 'header.quickStart',
+    to: '/quickstart',
+    icon: 'rocket',
+    modes: ['api', 'both'],
+  },
+  {
     name: 'header.chat',
     to: '/chat',
     icon: 'comments',
+    modes: ['chat', 'both'],
   },
   {
     name: 'header.imagePlayground',
     to: '/playground/image',
     icon: 'image',
+    modes: ['chat', 'both'],
   },
   {
     name: 'header.decisionPlayground',
     to: '/playground/decision',
     icon: 'balance scale',
+    modes: ['api', 'both'],
   },
   {
     name: 'header.token',
     to: '/token',
     icon: 'key',
+    modes: ['api', 'both'],
   },
   {
     name: 'header.redemption',
@@ -77,11 +98,13 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
     name: 'header.dashboard',
     to: '/dashboard',
     icon: 'chart bar',
+    modes: ['api', 'both'],
   },
   {
     name: 'header.log',
     to: '/log',
     icon: 'book',
+    modes: ['api', 'both'],
   },
   {
     name: 'header.setting',
@@ -98,6 +121,7 @@ let headerButtons: { name: string; to: string; icon: IconProps['name']; admin?: 
 const Header = () => {
   const { t, i18n } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
+  const [statusState] = useContext(StatusContext);
   let navigate = useNavigate();
 
   const [showSidebar, setShowSidebar] = useState(false);
@@ -118,8 +142,10 @@ const Header = () => {
   };
 
   const renderButtons = (isMobile) => {
+    const mode = statusState.uiMode ?? null;
     return headerButtons.map((button) => {
       if (button.admin && !isAdmin()) return <></>;
+      if (!navVisible(button.modes, mode, isAdmin())) return <></>;
       if (isMobile) {
         return (
           <Menu.Item

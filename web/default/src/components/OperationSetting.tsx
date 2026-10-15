@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Divider, Form, Grid, Header } from 'semantic-ui-react';
+import PriceEditor from './PriceEditor';
 import {
   API,
   showError,
@@ -35,6 +36,7 @@ const OperationSetting = () => {
   });
   const [originInputs, setOriginInputs] = useState({});
   let [loading, setLoading] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   let [historyTimestamp, setHistoryTimestamp] = useState(
     timestamp2string(now.getTime() / 1000 - 30 * 24 * 3600)
   ); // a month ago
@@ -242,39 +244,57 @@ const OperationSetting = () => {
           </Form.Button>
           <Divider />
           <Header as='h3'>{t('setting.operation.ratio.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.operation.ratio.model.title')}
-              name='ModelRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.ModelRatio}
-              placeholder={t('setting.operation.ratio.model.placeholder')}
-            />
-          </Form.Group>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.operation.ratio.completion.title')}
-              name='CompletionRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.CompletionRatio}
-              placeholder={t('setting.operation.ratio.completion.placeholder')}
-            />
-          </Form.Group>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.operation.ratio.group.title')}
-              name='GroupRatio'
-              onChange={handleInputChange}
-              style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-              autoComplete='new-password'
-              value={inputs.GroupRatio}
-              placeholder={t('setting.operation.ratio.group.placeholder')}
-            />
-          </Form.Group>
+          <PriceEditor
+            modelRatio={inputs.ModelRatio}
+            completionRatio={inputs.CompletionRatio}
+            groupRatio={inputs.GroupRatio}
+            onChange={(patch) =>
+              setInputs((current) => ({ ...current, ...patch }))
+            }
+          />
+          <Form.Checkbox
+            toggle
+            label={t('setting.operation.ratio.advanced')}
+            checked={advanced}
+            onChange={() => setAdvanced(!advanced)}
+          />
+          {advanced && (
+            <>
+              <Form.Group widths='equal'>
+                <Form.TextArea
+                  label={t('setting.operation.ratio.model.title')}
+                  name='ModelRatio'
+                  onChange={handleInputChange}
+                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
+                  autoComplete='new-password'
+                  value={inputs.ModelRatio}
+                  placeholder={t('setting.operation.ratio.model.placeholder')}
+                />
+              </Form.Group>
+              <Form.Group widths='equal'>
+                <Form.TextArea
+                  label={t('setting.operation.ratio.completion.title')}
+                  name='CompletionRatio'
+                  onChange={handleInputChange}
+                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
+                  autoComplete='new-password'
+                  value={inputs.CompletionRatio}
+                  placeholder={t('setting.operation.ratio.completion.placeholder')}
+                />
+              </Form.Group>
+              <Form.Group widths='equal'>
+                <Form.TextArea
+                  label={t('setting.operation.ratio.group.title')}
+                  name='GroupRatio'
+                  onChange={handleInputChange}
+                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
+                  autoComplete='new-password'
+                  value={inputs.GroupRatio}
+                  placeholder={t('setting.operation.ratio.group.placeholder')}
+                />
+              </Form.Group>
+            </>
+          )}
           <Form.Button
             onClick={() => {
               submitConfig('ratio').then();

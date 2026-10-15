@@ -2,17 +2,22 @@ package controller
 
 import (
 	"fmt"
+	"math"
+	"net/http"
+	"sort"
+	"strings"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/infinmalum/one-gateway/common/ctxkey"
 	"github.com/infinmalum/one-gateway/model"
 	relay "github.com/infinmalum/one-gateway/relay"
 	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
 	"github.com/infinmalum/one-gateway/relay/apitype"
+	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
 	"github.com/infinmalum/one-gateway/relay/channeltype"
 	"github.com/infinmalum/one-gateway/relay/meta"
 	relaymodel "github.com/infinmalum/one-gateway/relay/model"
-	"net/http"
-	"strings"
 )
 
 // https://platform.openai.com/docs/api-reference/models/list
@@ -216,6 +221,62 @@ func GetUserAvailableModels(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    models,
+	})
+	return
+}
+
+// modelPrice is one row of the user-facing price list. Amounts are reported as
+// quota per million tokens so the console renders them with the same helper as
+// every other figure, honouring DisplayInCurrencyEnabled and QuotaPerUnit.
+type modelPrice struct {
+	Name                  string  `json:"name"`
+	Priced                bool    `json:"priced"`
+	ModelRatio            float64 `json:"model_ratio"`
+	CompletionRatio       float64 `json:"completion_ratio"`
+	QuotaPerMillion       int64   `json:"quota_per_million"`
+	OutputQuotaPerMillion int64   `json:"output_quota_per_million"`
+}
+
+// GetUserPricing lists what the caller's group can use and what that group pays
+// for it, so the console can show a price list without the admin option page.
+// Models without a configured ratio are reported unpriced rather than given the
+// billing fallback, which would advertise a price nobody set.
+func GetUserPricing(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.GetInt(ctxkey.Id)
+	userGroup, err := model.CacheGetUserGroup(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	models, err := model.CacheGetGroupModels(ctx, userGroup)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	groupRatio := billingratio.GetGroupRatio(userGroup)
+	prices := make([]modelPrice, 0, len(models))
+	for _, name := range models {
+		entry := modelPrice{Name: name}
+		if ratio, ok := billingratio.LookupModelRatio(name); ok {
+			completion := billingratio.GetCompletionRatio(name, 0)
+			entry.Priced = true
+			entry.ModelRatio = ratio
+			entry.CompletionRatio = completion
+			entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
+			entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
+		}
+		prices = append(prices, entry)
+	}
+	sort.Slice(prices, func(i, j int) bool { return prices[i].Name < prices[j].Name })
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"group":       userGroup,
+			"group_ratio": groupRatio,
+			"models":      prices,
+		},
 	})
 	return
 }
