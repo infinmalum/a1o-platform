@@ -3,7 +3,7 @@
 
   # One Gateway
 
-  **すべてのモデルプロバイダーに、ひとつの OpenAI 互換エンドポイントを。**
+  **OpenAI・Anthropic・Gemini の各プロトコルをネイティブに話す、すべてのモデルプロバイダー向けゲートウェイ。**
 
   [![CI](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -15,18 +15,20 @@
 
 ---
 
-One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生し、独自に保守されている AI ゲートウェイです。複数のモデルプロバイダーに対して OpenAI 互換の共通エンドポイントを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。One API は JustSong 氏と他の貢献者によって開発されたものであり、One Gateway はその成果を基にしています。
+One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生し、独自に保守されている AI ゲートウェイです。OpenAI（Chat Completions と Responses）・Anthropic Messages・Gemini generateContent の各 API 形式をネイティブにサポートし、ひとつのデプロイで複数のモデルプロバイダーを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。One API は JustSong 氏と他の貢献者によって開発されたものであり、One Gateway はその成果を基にしています。
 
 > [!NOTE]
 > このリポジトリは One API とは独立して保守されています。One API のリリース、Docker イメージ、デモサイト、Issue は One Gateway のリリースやサポート窓口ではありません。
 
 ## 主な特徴
 
-- 🌉 **ひとつのエンドポイント、複数のプロバイダー** — chat・completions・embeddings・画像・音声・バックグラウンド Responses を共通の `/v1` API で提供。
-- 🔀 **スマートルーティング** — チャネルの負荷分散、モデル名マッピング、グループ別倍率、最初のバイトがクライアントに届く前の自動リトライ。
-- 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、すべてのリクエストを倍率に基づいて正確に精算。
-- 🖥️ **Web コンソール** — チャネル・ユーザー・トークン・ログを一画面で管理。
-- 💾 **柔軟なストレージ** — 初期状態で SQLite、共有ストレージに MySQL / PostgreSQL、キャッシュと同期には Redis を利用可能。
+- 🔌 **4 つのネイティブ API 形式** — OpenAI Chat Completions、OpenAI Responses（照会・キャンセル可能なバックグラウンド実行を含む）、Anthropic Messages、Gemini `generateContent`。同じトークンで embeddings・画像・音声・モデレーションも利用可能。
+- 🌉 **プロトコル間ブリッジ** — クライアントと上流の形式が異なっても、リクエストとレスポンスを相互変換します（ストリーミング対応）。OpenAI クライアントは Anthropic・Gemini・Responses の上流へ、Anthropic クライアントは OpenAI chat・Gemini の上流へ接続できます。
+- 🔀 **スマートルーティング** — 37 種類のプロバイダーアダプター、チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
+- 🤖 **内蔵チャットランタイム** — サーバー側のエージェントツールループ。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
+- 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
+- 🖥️ **Web コンソール** — ダッシュボード、チャネル、アップストリームアカウント、ユーザー、トークン、ログ、設定を一画面で管理。内蔵チャットページと画像・デシジョンプレイグラウンド付き。
+- 💾 **柔軟なストレージ** — 初期状態で SQLite、共有ストレージに MySQL / PostgreSQL、キャッシュと同期には Redis を利用可能。master/slave のマルチノード構成にも対応。
 - 🛠️ **モダンな技術スタック** — Go バックエンドと TypeScript + Vite フロントエンド。フロントエンドのビルド前には必ず型チェックを実行。
 
 対応モデルと機能はチャネルの実装によって異なります。本番運用前に設定画面で確認し、対象モデルをテストしてください。
@@ -76,7 +78,21 @@ go build -o one-gateway .
 
 マルチノード構成では、すべてのノードを同じ MySQL / PostgreSQL データベースに接続し、同じ `SESSION_SECRET` を共有して、ノードの役割とキャッシュ同期を設定してください。設定の正確な一覧は [`common/config`](common/config) のコードを参照してください。
 
-ログイン後、**チャネル** ページでプロバイダーのキーを登録し、**トークン** ページでアクセストークンを作成します。OpenAI 互換クライアントのエンドポイントを `http://localhost:3000/v1` に設定し、作成したトークンを API キーとして指定してください：
+ログイン後、**チャネル** ページでプロバイダーのキーを登録し、**トークン** ページでアクセストークンを作成します。クライアントはそれぞれの形式で対応するエンドポイントにアクセスし、同じトークンがすべてのエンドポイントで使えます:
+
+| クライアント形式 | エンドポイント |
+| --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses`（バックグラウンド実行: `GET /v1/responses/{id}`、`POST /v1/responses/{id}/cancel`） |
+| Anthropic Messages | `POST /v1/messages` |
+| Gemini | `POST /v1beta/models/{モデル名}:generateContent` または `:streamGenerateContent`（`/v1` でも利用可） |
+| OpenAI Embeddings | `POST /v1/embeddings` |
+| OpenAI 画像 / 音声 / モデレーション | `POST /v1/images/generations`、`/v1/audio/speech`、`/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/moderations` |
+| SystemOne 評価 | `POST /v1/systemone` |
+
+上流チャネルがクライアントと同じ形式である必要はありません。ゲートウェイがプロトコル間をブリッジするため、Anthropic 形式のクライアントを OpenAI chat や Gemini チャネルで処理でき、OpenAI Chat リクエストは Responses ブリッジ経由で ChatGPT サブスクリプションアカウントでも実行できます。
+
+OpenAI 互換クライアントのエンドポイントを `http://localhost:3000/v1` に設定し、作成したトークンを API キーとして指定してください：
 
 ```sh
 curl http://localhost:3000/v1/chat/completions \

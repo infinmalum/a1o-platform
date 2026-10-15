@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 import axios from 'axios';
+import BusinessOverview from '../../components/BusinessOverview';
 import './Dashboard.css';
 
 // 在 Dashboard 组件内添加自定义配置
@@ -235,6 +236,7 @@ const Dashboard = () => {
 
   return (
     <div className='dashboard-container'>
+      <BusinessOverview />
       {/* 三个并排的折线图 */}
       <Grid columns={3} stackable className='charts-grid'>
         <Grid.Column>

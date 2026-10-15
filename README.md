@@ -3,7 +3,7 @@
 
   # One Gateway
 
-  **One OpenAI-compatible endpoint for every model provider.**
+  **One gateway that speaks OpenAI, Anthropic, and Gemini — for every model provider.**
 
   [![CI](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -15,18 +15,20 @@
 
 ---
 
-One Gateway is an independently maintained AI gateway, originally derived from [One API](https://github.com/songquanpeng/one-api). It fronts many model providers with a single OpenAI-compatible API and ships a web console for channels, users, tokens, quotas, and usage logs. One API was created by JustSong and its contributors; One Gateway builds on their work.
+One Gateway is an independently maintained AI gateway, originally derived from [One API](https://github.com/songquanpeng/one-api). It fronts many model providers through one deployment that natively speaks the OpenAI (Chat Completions and Responses), Anthropic, and Gemini API formats, and ships a web console for channels, users, tokens, quotas, and usage logs. One API was created by JustSong and its contributors; One Gateway builds on their work.
 
 > [!NOTE]
 > This repository is maintained independently of One API. One API's releases, Docker images, demo sites, and issue trackers are not releases or support channels for One Gateway.
 
 ## Highlights
 
-- 🌉 **One endpoint, many providers** — a unified `/v1` API for chat, completions, embeddings, images, audio, and background Responses.
-- 🔀 **Smart routing** — channel load balancing, model mappings, group rates, and automatic retries before the first byte reaches the client.
-- 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, and rate-based settlement for every request.
-- 🖥️ **Web console** — manage channels, users, tokens, and logs in one place.
-- 💾 **Flexible storage** — SQLite out of the box; MySQL or PostgreSQL for shared storage; Redis for caching and synchronization.
+- 🔌 **Four native API formats** — OpenAI Chat Completions, OpenAI Responses (including background runs you can poll or cancel), Anthropic Messages, and Gemini `generateContent`, plus embeddings, images, audio, and moderations endpoints under the same token.
+- 🌉 **Cross-protocol bridging** — requests and responses are converted between client and upstream formats, streaming included: OpenAI clients reach Anthropic, Gemini, and Responses upstreams, and Anthropic clients reach OpenAI-chat and Gemini upstreams.
+- 🔀 **Smart routing** — 37 provider adaptors, channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
+- 🤖 **Built-in chat runtime** — a server-side agent tool loop with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
+- 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
+- 🖥️ **Web console** — dashboard, channels, upstream accounts, users, tokens, logs, and settings in one place, with a built-in chat page and image/decision playgrounds.
+- 💾 **Flexible storage** — SQLite out of the box; MySQL or PostgreSQL for shared storage; Redis for caching and synchronization; master/slave multi-node deployments.
 - 🛠️ **Modern stack** — a Go backend with TypeScript and Vite frontends; every frontend build runs its type check first.
 
 Provider and model support varies by channel implementation. Check the channel settings and test a model before relying on it in production.
@@ -76,7 +78,21 @@ Set environment variables before starting the server. Common settings are:
 
 For multiple instances, point every node at the same MySQL or PostgreSQL database, use the same `SESSION_SECRET`, and configure node roles and cache synchronization. The source of truth for supported settings is the [`common/config`](common/config) package.
 
-After signing in, add a provider key on **Channels**, then create an access token on **Tokens**. Point any OpenAI-compatible client at `http://localhost:3000/v1` and use that token as its API key:
+After signing in, add a provider key on **Channels**, then create an access token on **Tokens**. Clients speak their native format at the matching endpoint, and the same token authenticates all of them:
+
+| Client format | Endpoint |
+| --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses` (background runs: `GET /v1/responses/{id}`, `POST /v1/responses/{id}/cancel`) |
+| Anthropic Messages | `POST /v1/messages` |
+| Gemini | `POST /v1beta/models/{model}:generateContent` or `:streamGenerateContent` (also mounted under `/v1`) |
+| OpenAI Embeddings | `POST /v1/embeddings` |
+| OpenAI images / audio / moderations | `POST /v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/moderations` |
+| SystemOne evaluation | `POST /v1/systemone` |
+
+The upstream channel does not have to speak the client's format: the gateway bridges between protocols, so an Anthropic-format client can be served by an OpenAI-chat or Gemini channel, and OpenAI Chat requests can run on ChatGPT subscription accounts through Responses bridging.
+
+An OpenAI-compatible client points at `http://localhost:3000/v1` and uses that token as its API key:
 
 ```sh
 curl http://localhost:3000/v1/chat/completions \

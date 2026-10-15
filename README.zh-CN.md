@@ -3,7 +3,7 @@
 
   # One Gateway
 
-  **一个 OpenAI 兼容接口,连接所有模型服务商。**
+  **一个网关原生支持 OpenAI、Anthropic、Gemini 三种协议,连接所有模型服务商。**
 
   [![CI](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -15,18 +15,20 @@
 
 ---
 
-One Gateway 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它用统一的 OpenAI 兼容接口连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；One Gateway 建立在他们的工作之上。
+One Gateway 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它以一套部署原生支持 OpenAI（Chat Completions 与 Responses）、Anthropic Messages、Gemini generateContent 三种 API 协议，连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；One Gateway 建立在他们的工作之上。
 
 > [!NOTE]
 > 本仓库独立维护。原项目的版本、Docker 镜像、演示站点和 issue 列表不代表 One Gateway 的发布与支持渠道。
 
 ## 功能亮点
 
-- 🌉 **一个接口，多家服务商** —— 统一的 `/v1` 接口，覆盖 chat、completions、embeddings、图像、音频和后台 Responses。
-- 🔀 **智能路由** —— 渠道负载均衡、模型映射、分组倍率，以及首字节返回前的自动重试。
-- 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码，每个请求都按倍率精确结算。
-- 🖥️ **管理控制台** —— 渠道、用户、令牌、日志一站管理。
-- 💾 **灵活存储** —— 开箱即用 SQLite；共享存储支持 MySQL / PostgreSQL；缓存与同步可配合 Redis。
+- 🔌 **四种原生 API 协议** —— OpenAI Chat Completions、OpenAI Responses（支持可查询、可取消的后台任务）、Anthropic Messages、Gemini `generateContent`，同一个令牌还能调用 embeddings、图像、音频和内容审核接口。
+- 🌉 **跨协议桥接** —— 请求与响应会在客户端协议和上游协议之间自动转换，流式同样支持：OpenAI 客户端可以打到 Anthropic、Gemini、Responses 上游，Anthropic 客户端可以打到 OpenAI chat 和 Gemini 上游。
+- 🔀 **智能路由** —— 内置 37 个服务商适配器，渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
+- 🤖 **内置 chat 运行时** —— 服务端 agent 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
+- 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
+- 🖥️ **管理控制台** —— 仪表盘、渠道、上游账号、用户、令牌、日志、设置一站管理，内置 chat 页面与图像/决策 Playground。
+- 💾 **灵活存储** —— 开箱即用 SQLite；共享存储支持 MySQL / PostgreSQL；缓存与同步可配合 Redis；支持 master/slave 多节点部署。
 - 🛠️ **现代技术栈** —— Go 后端搭配 TypeScript + Vite 前端，每次前端构建都会先做类型检查。
 
 不同渠道对模型和功能的支持并不完全相同。正式使用前，请在渠道设置中确认并测试目标模型。
@@ -76,7 +78,21 @@ go build -o one-gateway .
 
 多节点部署时，所有节点应连接同一个 MySQL 或 PostgreSQL 数据库，使用相同的 `SESSION_SECRET`，并配置节点角色与缓存同步。具体可用配置以 [`common/config`](common/config) 中的代码为准。
 
-登录后，在 **渠道** 页面填写模型服务商密钥，再在 **令牌** 页面创建访问令牌。将任意 OpenAI 兼容客户端的地址设为 `http://localhost:3000/v1`，并使用刚创建的令牌作为 API Key：
+登录后，在 **渠道** 页面填写模型服务商密钥，再在 **令牌** 页面创建访问令牌。客户端按各自协议访问对应端点，同一令牌即可认证所有端点：
+
+| 客户端协议 | 端点 |
+| --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses`（后台任务：`GET /v1/responses/{id}`、`POST /v1/responses/{id}/cancel`） |
+| Anthropic Messages | `POST /v1/messages` |
+| Gemini | `POST /v1beta/models/{模型名}:generateContent` 或 `:streamGenerateContent`（`/v1` 下同样可用） |
+| OpenAI Embeddings | `POST /v1/embeddings` |
+| OpenAI 图像 / 音频 / 审核 | `POST /v1/images/generations`、`/v1/audio/speech`、`/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/moderations` |
+| SystemOne 评测 | `POST /v1/systemone` |
+
+上游渠道不必与客户端使用同一协议：网关会在两者之间转换。例如 Anthropic 协议的客户端可以由 OpenAI chat 或 Gemini 渠道服务，OpenAI Chat 请求也能通过 Responses 桥接跑在 ChatGPT 订阅账号上。
+
+OpenAI 兼容客户端将地址设为 `http://localhost:3000/v1`，并使用刚创建的令牌作为 API Key：
 
 ```sh
 curl http://localhost:3000/v1/chat/completions \

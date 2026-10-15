@@ -1,5 +1,5 @@
-import React, { lazy, Suspense, useContext, useEffect } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
+import { Route, Routes, useNavigate } from 'react-router-dom';
 import Loading from './components/Loading';
 import User from './pages/User';
 import { PrivateRoute } from './components/PrivateRoute';
@@ -9,7 +9,9 @@ import NotFound from './pages/NotFound';
 import Setting from './pages/Setting';
 import EditUser from './pages/User/EditUser';
 import AddUser from './pages/User/AddUser';
-import { API, getLogo, getSystemName, showError, showNotice } from './helpers';
+import { API, getLogo, getSystemName, isAdmin, showError, showNotice, landingForMode } from './helpers';
+import type { UiMode } from './helpers';
+import ModeChooser from './components/ModeChooser';
 import PasswordResetForm from './components/PasswordResetForm';
 import GitHubOAuth from './components/GitHubOAuth';
 import PasswordResetConfirm from './components/PasswordResetConfirm';
@@ -32,10 +34,27 @@ import Dashboard from './pages/Dashboard';
 
 const Home = lazy(() => import('./pages/Home'));
 const About = lazy(() => import('./pages/About'));
+const QuickStart = lazy(() => import('./pages/QuickStart'));
 
 function App() {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
+  const [modeChooserOpen, setModeChooserOpen] = useState(false);
+  const navigate = useNavigate();
+
+  // Ask a new non-admin account once, after sign-in, what it is here for; the
+  // choice trims the navigation and is changeable from the settings page.
+  useEffect(() => {
+    if (userState.user && !isAdmin() && !statusState.uiMode) {
+      setModeChooserOpen(true);
+    }
+  }, [userState.user, statusState.uiMode]);
+
+  const chooseMode = (mode: UiMode) => {
+    statusDispatch({ type: 'setUiMode', payload: mode });
+    setModeChooserOpen(false);
+    navigate(landingForMode(mode));
+  };
 
   const loadUser = () => {
     let user = localStorage.getItem('user');
@@ -96,7 +115,9 @@ function App() {
   }, []);
 
   return (
-    <Routes>
+    <>
+      <ModeChooser open={modeChooserOpen} onChoose={chooseMode} />
+      <Routes>
       <Route
         path='/'
         element={
@@ -124,17 +145,21 @@ function App() {
       <Route
         path='/channel/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditChannel />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditChannel />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/channel/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditChannel />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditChannel />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
@@ -148,17 +173,21 @@ function App() {
       <Route
         path='/token/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditToken />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditToken />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/token/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditToken />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditToken />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
@@ -172,17 +201,21 @@ function App() {
       <Route
         path='/redemption/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditRedemption />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditRedemption />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/redemption/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditRedemption />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditRedemption />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
@@ -196,25 +229,31 @@ function App() {
       <Route
         path='/user/edit/:id'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditUser />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditUser />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/user/edit'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <EditUser />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <EditUser />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
         path='/user/add'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <AddUser />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <AddUser />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
@@ -304,9 +343,11 @@ function App() {
       <Route
         path='/chat'
         element={
-          <Suspense fallback={<Loading></Loading>}>
-            <Chat />
-          </Suspense>
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <Chat />
+            </Suspense>
+          </PrivateRoute>
         }
       />
       <Route
@@ -333,8 +374,19 @@ function App() {
           </PrivateRoute>
         }
       />
+      <Route
+        path='/quickstart'
+        element={
+          <PrivateRoute>
+            <Suspense fallback={<Loading></Loading>}>
+              <QuickStart />
+            </Suspense>
+          </PrivateRoute>
+        }
+      />
       <Route path='*' element={<NotFound />} />
     </Routes>
+    </>
   );
 }
 

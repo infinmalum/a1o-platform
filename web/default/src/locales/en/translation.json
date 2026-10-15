@@ -16,7 +16,8 @@
     "decisionPlayground": "Decision Playground",
     "login": "Login",
     "logout": "Logout",
-    "register": "Register"
+    "register": "Register",
+    "quickStart": "Quick start"
   },
   "topup": {
     "title": "Top Up Center",
@@ -709,6 +710,20 @@
         },
         "buttons": {
           "save": "Save Ratio Settings"
+        },
+        "advanced": "Advanced (edit the ratio JSON directly)",
+        "price": {
+          "hint": "Enter prices and the ratios are derived for you. The list shows the models your channels serve; search to price any other model.",
+          "search": "Search model name",
+          "model": "Model",
+          "input": "Input ($/million tokens)",
+          "output": "Output ($/million tokens)",
+          "unpriced": "Unpriced",
+          "empty": "No matching model",
+          "perMillion": "Prices are in USD per million tokens; the ratio conversion follows the configured quota unit.",
+          "groupTitle": "Group ratios",
+          "group": "Group",
+          "groupRatio": "Ratio"
         }
       },
       "log": {
@@ -798,7 +813,7 @@
         }
       },
       "copyright": {
-        "notice": "Removing One API's copyright notice requires authorization. Project maintenance requires significant effort, if this project is meaningful to you, please actively support it."
+        "notice": "Keep the upstream One API (JustSong, MIT) copyright notice in the footer; original changes in this project are Apache-2.0. See NOTICE and LICENSE.upstream for attribution and scope."
       }
     }
   },
@@ -961,6 +976,92 @@
     "sandboxToggle": "Enable code sandbox (process-level isolation; use with care)",
     "sandboxNetworkToggle": "Allow sandboxed code network access (runs in an isolated network namespace by default; hosts without unshare support will fail the run)",
     "maxToolIterations": "Max tool iterations",
-    "maxFileBytes": "Attachment size limit (bytes)"
+    "maxFileBytes": "Attachment size limit (bytes)",
+    "balance": "Balance"
+  },
+  "uiMode": {
+    "title": "How will you use this?",
+    "subtitle": "Pick one and we will only show what you need. You can change it later in Settings.",
+    "hint": "Administrators are unaffected and always see every management page.",
+    "saved": "Interface mode updated",
+    "settingNotice": "Decides which pages the navigation shows. Not sure? Pick \"both\".",
+    "chat": {
+      "title": "Just chat",
+      "description": "Talk to models, upload files, use tools."
+    },
+    "api": {
+      "title": "Call the API",
+      "description": "Get an API key for your own app or client."
+    },
+    "both": {
+      "title": "Both",
+      "description": "Chat and API, everything enabled."
+    }
+  },
+  "quickStart": {
+    "title": "Quick start",
+    "subtitle": "Three steps to wire One Gateway into your app: copy the address, create a key, paste an example.",
+    "copy": "Copy",
+    "copied": "Copied to clipboard",
+    "copyFailed": "Copy failed, please select the text manually",
+    "step1": {
+      "title": "Your API address",
+      "description": "Every request goes here; OpenAI-compatible clients take it as-is."
+    },
+    "step2": {
+      "title": "Create an API key",
+      "description": "Create one on the Tokens page; you can limit which models, how long, and how much it may spend. The key is your credential — keep it private.",
+      "button": "Create a token"
+    },
+    "step3": {
+      "title": "Copy a request example",
+      "description": "The gateway speaks four protocols; pick the one your client uses.",
+      "clientHint": "For NextChat, Cherry Studio, LobeChat and similar clients, set the API address to the one above and the API key to your token."
+    },
+    "protocols": {
+      "openaiChat": "OpenAI Chat Completions",
+      "openaiResponses": "OpenAI Responses",
+      "anthropic": "Anthropic Messages",
+      "gemini": "Gemini"
+    },
+    "pricing": {
+      "title": "Models and prices",
+      "description": "Models available to the \"{{group}}\" group and what it pays.",
+      "groupRatio": "That group has a ratio of {{ratio}}.",
+      "search": "Search models",
+      "model": "Model",
+      "input": "Input",
+      "output": "Output",
+      "unpriced": "Unpriced",
+      "empty": "No matching model",
+      "perMillion": "Prices are per million tokens.",
+      "usageLink": "See my usage"
+    }
+  },
+  "business": {
+    "title": "Business overview",
+    "attention": "{{count}} upstream(s) need attention",
+    "costNotice": "This counts what the gateway charged and how it was used. Upstream cost and margin need your own record of what each model costs to buy; the gateway has no such data, so nothing is estimated here.",
+    "todayConsumed": "Charged today",
+    "todayTopup": "Paid in today",
+    "todayRequests": "Requests today",
+    "todayActiveUsers": "Active users today",
+    "weekConsumed": "Charged, 7 days",
+    "weekTopup": "Paid in, 7 days",
+    "weekRequests": "Requests, 7 days",
+    "totalUsers": "Accounts",
+    "topModels": "Top models today",
+    "noUsageToday": "No calls yet today",
+    "upstream": {
+      "title": "Upstream health",
+      "total": "Channels",
+      "enabled": "Enabled",
+      "autoDisabled": "Auto-disabled",
+      "manuallyDisabled": "Disabled",
+      "lowBalance": "Low balance",
+      "balanceUnknown": "Balance unknown",
+      "lowBalanceHint": "Balance under ${{threshold}} counts as low; channels whose balance was never fetched are counted separately.",
+      "manage": "Manage channels"
+    }
   }
 }

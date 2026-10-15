@@ -255,3 +255,63 @@ func SearchLogsByDayAndModel(userId, start, end int) (LogStatistics []*LogStatis
 
 	return LogStatistics, err
 }
+
+// BusinessLogStats aggregates the log facts the admin dashboard reports for one
+// time window. ConsumedQuota is the revenue side of the books: what users were
+// charged. TopupQuota is what they paid in.
+type BusinessLogStats struct {
+	ConsumedQuota int64 `json:"consumed_quota"`
+	TopupQuota    int64 `json:"topup_quota"`
+	Requests      int64 `json:"requests"`
+	ActiveUsers   int64 `json:"active_users"`
+}
+
+func GetBusinessLogStats(startTimestamp int64, endTimestamp int64) (stats BusinessLogStats, err error) {
+	ifnull := "ifnull"
+	if common.UsingPostgreSQL {
+		ifnull = "COALESCE"
+	}
+	sumQuota := func(logType int, target *int64) error {
+		return LOG_DB.Table("logs").
+			Select(fmt.Sprintf("%s(sum(quota),0)", ifnull)).
+			Where("type = ? AND created_at BETWEEN ? AND ?", logType, startTimestamp, endTimestamp).
+			Scan(target).Error
+	}
+	if err = sumQuota(LogTypeConsume, &stats.ConsumedQuota); err != nil {
+		return stats, err
+	}
+	if err = sumQuota(LogTypeTopup, &stats.TopupQuota); err != nil {
+		return stats, err
+	}
+	if err = LOG_DB.Model(&Log{}).
+		Where("type = ? AND created_at BETWEEN ? AND ?", LogTypeConsume, startTimestamp, endTimestamp).
+		Count(&stats.Requests).Error; err != nil {
+		return stats, err
+	}
+	// Every logged action counts as activity, so a top-up or an admin edit
+	// still marks the account as active.
+	if err = LOG_DB.Model(&Log{}).
+		Where("created_at BETWEEN ? AND ?", startTimestamp, endTimestamp).
+		Distinct("user_id").Count(&stats.ActiveUsers).Error; err != nil {
+		return stats, err
+	}
+	return stats, nil
+}
+
+// ModelQuotaStat is one row of the admin dashboard's model leaderboard.
+type ModelQuotaStat struct {
+	ModelName string `json:"model_name"`
+	Quota     int64  `json:"quota"`
+	Requests  int64  `json:"requests"`
+}
+
+func TopModelsByQuota(startTimestamp int64, endTimestamp int64, limit int) (stats []*ModelQuotaStat, err error) {
+	err = LOG_DB.Model(&Log{}).
+		Select("model_name, sum(quota) as quota, count(1) as requests").
+		Where("type = ? AND created_at BETWEEN ? AND ?", LogTypeConsume, startTimestamp, endTimestamp).
+		Group("model_name").
+		Order("quota desc").
+		Limit(limit).
+		Scan(&stats).Error
+	return stats, err
+}

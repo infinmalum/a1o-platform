@@ -712,6 +712,19 @@ func UpdateModelRatioByJSONString(jsonStr string) error {
 	return json.Unmarshal([]byte(jsonStr), &ModelRatio)
 }
 
+// LookupModelRatio resolves a configured model ratio without GetModelRatio's
+// last-resort default and error log. Price lists ask about every model a group
+// can reach, so an unpriced model must report "unknown" instead of logging.
+func LookupModelRatio(name string) (float64, bool) {
+	modelRatioLock.RLock()
+	defer modelRatioLock.RUnlock()
+	if ratio, ok := ModelRatio[name]; ok {
+		return ratio, true
+	}
+	ratio, ok := DefaultModelRatio[name]
+	return ratio, ok
+}
+
 func GetModelRatio(name string, channelType int) float64 {
 	modelRatioLock.RLock()
 	defer modelRatioLock.RUnlock()

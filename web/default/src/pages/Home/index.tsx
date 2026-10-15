@@ -135,7 +135,7 @@ const Home = () => {
                           label={t('home.system_status.info.source')}
                         >
                           <a
-                            href='https://github.com/songquanpeng/one-api'
+                            href='https://github.com/infinmalum/one-gateway'
                             target='_blank'
                             style={{ color: '#2185d0' }}
                           >

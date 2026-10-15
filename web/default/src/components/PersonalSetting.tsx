@@ -13,18 +13,22 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   API,
   copy,
+  isAdmin,
   showError,
   showInfo,
   showNotice,
   showSuccess,
 } from '../helpers';
+import type { UiMode } from '../helpers';
 import Turnstile from 'react-turnstile';
 import { UserContext } from '../context/User';
+import { StatusContext } from '../context/Status';
 import { onGitHubOAuthClicked, onLarkOAuthClicked } from './utils';
 
 const PersonalSetting = () => {
   const { t } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   let navigate = useNavigate();
 
   const [inputs, setInputs] = useState({
@@ -37,6 +41,15 @@ const PersonalSetting = () => {
   const [showWeChatBindModal, setShowWeChatBindModal] = useState(false);
   const [showEmailBindModal, setShowEmailBindModal] = useState(false);
   const [showAccountDeleteModal, setShowAccountDeleteModal] = useState(false);
+  // Read from the shared status state rather than storage so the buttons here
+  // and the navigation always agree.
+  const uiMode: UiMode | null = statusState.uiMode ?? null;
+
+  const changeUiMode = (next: UiMode) => {
+    statusDispatch({ type: 'setUiMode', payload: next });
+    showSuccess(t('uiMode.saved'));
+  };
+
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -223,6 +236,25 @@ const PersonalSetting = () => {
           style={{ marginTop: '10px' }}
         />
       )}
+      {!isAdmin() && (
+        <>
+          <Divider />
+          <Header as='h3'>{t('uiMode.title')}</Header>
+          <Message>{t('uiMode.settingNotice')}</Message>
+          <Button.Group>
+            {(['chat', 'api', 'both'] as UiMode[]).map((option) => (
+              <Button
+                key={option}
+                active={uiMode === option}
+                onClick={() => changeUiMode(option)}
+              >
+                {t(`uiMode.${option}.title`)}
+              </Button>
+            ))}
+          </Button.Group>
+        </>
+      )}
+
       <Divider />
       <Header as='h3'>{t('setting.personal.binding.title')}</Header>
       {status.wechat_login && (

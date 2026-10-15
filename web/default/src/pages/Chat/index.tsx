@@ -5,6 +5,8 @@ import ChatMessageList, { type DisplayMessage } from './ChatMessageList';
 import ChatComposer from './ChatComposer';
 import ChatSettingsModal, { type ChatSettingsValue } from './ChatSettingsModal';
 import ChatToolsModal from './ChatToolsModal';
+import { API } from '../../helpers';
+import { renderQuota } from '../../helpers/render';
 import {
   chatApi,
   runTurn,
@@ -34,7 +36,25 @@ const Chat = () => {
   const [renameTarget, setRenameTarget] = React.useState<ChatSession | null>(null);
   const [renameValue, setRenameValue] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ChatSession | null>(null);
+  const [quota, setQuota] = React.useState(0);
   const abortRef = React.useRef<AbortController | null>(null);
+
+  // Chat spends the same balance as the API, so show it where the user is
+  // rather than making them open a separate page to find out.
+  React.useEffect(() => {
+    const loadQuota = async () => {
+      try {
+        const res = await API.get('/api/user/self');
+        const { success, data } = res.data;
+        if (success && data) {
+          setQuota(data.quota ?? 0);
+        }
+      } catch {
+        // the interceptor toasts the error
+      }
+    };
+    loadQuota().then();
+  }, []);
 
   const reloadSessions = React.useCallback(async () => {
     try {
@@ -378,6 +398,19 @@ const Chat = () => {
                 </List.Item>
               ))}
             </List>
+          </div>
+          <div
+            style={{
+              padding: '8px 12px',
+              borderTop: '1px solid #e8e8e8',
+              color: '#666',
+              fontSize: '0.85em',
+              display: 'flex',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{t('chat.balance')}</span>
+            <span>{renderQuota(quota, t)}</span>
           </div>
           <div style={{ padding: 10, borderTop: '1px solid #e8e8e8', display: 'flex', gap: 6 }}>
             <Button basic fluid size='small' onClick={() => setToolsOpen(true)}>

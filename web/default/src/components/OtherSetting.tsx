@@ -89,12 +89,12 @@ const OtherSetting = () => {
   };
 
   const openGitHubRelease = () => {
-    window.location.href = 'https://github.com/songquanpeng/one-api/releases/latest';
+    window.location.href = 'https://github.com/infinmalum/one-gateway/releases/latest';
   };
 
   const checkUpdate = async () => {
     const res = await API.get(
-      'https://api.github.com/repos/songquanpeng/one-api/releases/latest'
+      'https://api.github.com/repos/infinmalum/one-gateway/releases/latest'
     );
     const { tag_name, body } = res.data;
     if (tag_name === import.meta.env.REACT_APP_VERSION) {

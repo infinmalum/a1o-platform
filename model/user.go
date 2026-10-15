@@ -59,6 +59,13 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
+// CountUsers reports how many live accounts exist, for the admin dashboard.
+// Deleted accounts are excluded so the number matches the user list.
+func CountUsers() (count int64, err error) {
+	err = DB.Model(&User{}).Where("status != ?", UserStatusDeleted).Count(&count).Error
+	return count, err
+}
+
 func GetAllUsers(startIdx int, num int, order string) (users []*User, err error) {
 	query := DB.Limit(num).Offset(startIdx).Omit("password", "access_token").Where("status != ?", UserStatusDeleted)
 
