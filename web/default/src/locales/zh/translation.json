@@ -794,7 +794,7 @@
         }
       },
       "copyright": {
-        "notice": "移除 One API 的版权标识必须首先获得授权，项目维护需要花费大量精力，如果本项目对你有意义，请主动支持本项目。"
+        "notice": "页脚中上游 One API（JustSong，MIT 许可）的版权标识需要保留；本项目原创修改采用 Apache 2.0，归属与适用范围见仓库的 NOTICE 与 LICENSE.upstream。"
       }
     }
   },

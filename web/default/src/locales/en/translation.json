@@ -798,7 +798,7 @@
         }
       },
       "copyright": {
-        "notice": "Removing One API's copyright notice requires authorization. Project maintenance requires significant effort, if this project is meaningful to you, please actively support it."
+        "notice": "Keep the upstream One API (JustSong, MIT) copyright notice in the footer; original changes in this project are Apache-2.0. See NOTICE and LICENSE.upstream for attribution and scope."
       }
     }
   },

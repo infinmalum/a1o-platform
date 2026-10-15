@@ -11,7 +11,7 @@ import {
   Segment,
   Card,
 } from 'semantic-ui-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
 import { API, getLogo, showError, showSuccess, showWarning } from '../helpers';
@@ -30,8 +30,22 @@ const LoginForm = () => {
   const { username, password } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
   let navigate = useNavigate();
+  const location = useLocation();
   const [status, setStatus] = useState<import('../types/site').SiteStatus>({});
   const logo = getLogo();
+
+  // PrivateRoute records the page that bounced the visitor to /login, so a
+  // sign-in from /chat returns to /chat instead of always landing on /token.
+  const redirectAfterLogin = (fallback: string) => {
+    const from = (
+      location.state as { from?: { pathname?: string; search?: string } } | null
+    )?.from;
+    if (from?.pathname && from.pathname !== '/login') {
+      navigate(`${from.pathname}${from.search ?? ''}`, { replace: true });
+      return;
+    }
+    navigate(fallback);
+  };
 
   useEffect(() => {
     if (searchParams.get('expired')) {
@@ -57,7 +71,7 @@ const LoginForm = () => {
     if (success) {
       userDispatch({ type: 'login', payload: data });
       localStorage.setItem('user', JSON.stringify(data));
-      navigate('/');
+      redirectAfterLogin('/');
       showSuccess(t('messages.success.login'));
       setShowWeChatLoginModal(false);
     } else {
@@ -86,7 +100,7 @@ const LoginForm = () => {
           showSuccess(t('messages.success.login'));
           showWarning(t('messages.error.root_password'));
         } else {
-          navigate('/token');
+          redirectAfterLogin('/token');
           showSuccess(t('messages.success.login'));
         }
       } else {
