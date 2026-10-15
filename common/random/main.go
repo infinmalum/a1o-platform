@@ -1,10 +1,13 @@
 package random
 
 import (
-	"github.com/google/uuid"
+	crand "crypto/rand"
+	"fmt"
+	"math/big"
 	"math/rand"
 	"strings"
-	"time"
+
+	"github.com/google/uuid"
 )
 
 func GetUUID() string {
@@ -16,15 +19,23 @@ func GetUUID() string {
 const keyChars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const keyNumbers = "0123456789"
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
+// secureIntn returns a cryptographically secure random int in [0, n). These
+// values back API keys, OAuth state, and verification codes, so a time-seeded
+// PRNG is not acceptable here.
+func secureIntn(n int) int {
+	v, err := crand.Int(crand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		// Without entropy we cannot mint a secret at all; failing loudly is
+		// better than returning a predictable one.
+		panic(fmt.Sprintf("crypto/rand unavailable: %v", err))
+	}
+	return int(v.Int64())
 }
 
 func GenerateKey() string {
-	rand.Seed(time.Now().UnixNano())
 	key := make([]byte, 48)
 	for i := 0; i < 16; i++ {
-		key[i] = keyChars[rand.Intn(len(keyChars))]
+		key[i] = keyChars[secureIntn(len(keyChars))]
 	}
 	uuid_ := GetUUID()
 	for i := 0; i < 32; i++ {
@@ -38,24 +49,24 @@ func GenerateKey() string {
 }
 
 func GetRandomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
 	key := make([]byte, length)
 	for i := 0; i < length; i++ {
-		key[i] = keyChars[rand.Intn(len(keyChars))]
+		key[i] = keyChars[secureIntn(len(keyChars))]
 	}
 	return string(key)
 }
 
 func GetRandomNumberString(length int) string {
-	rand.Seed(time.Now().UnixNano())
 	key := make([]byte, length)
 	for i := 0; i < length; i++ {
-		key[i] = keyNumbers[rand.Intn(len(keyNumbers))]
+		key[i] = keyNumbers[secureIntn(len(keyNumbers))]
 	}
 	return string(key)
 }
 
-// RandRange returns a random number between min and max (max is not included)
+// RandRange returns a random number between min and max (max is not included).
+// Only used for non-security purposes (e.g. channel selection jitter), so the
+// math/rand global (auto-seeded since Go 1.20) is fine.
 func RandRange(min, max int) int {
 	return min + rand.Intn(max-min)
 }

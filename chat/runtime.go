@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
 )
 
@@ -142,16 +143,38 @@ func (r *Runtime) runLoop(ctx context.Context, emit Emitter, turn TurnRequest, t
 		legMessages = append(legMessages, item.msg)
 	}
 
+	// The persisted history must never end with an assistant tool_calls row
+	// missing its tool messages: the next turn's upstream rejects that
+	// sequence outright. pendingCalls tracks the calls of the latest leg
+	// whose results have not been stored yet; the deferred flush fabricates
+	// placeholder tool rows for whatever remains on any exit path.
+	var pendingCalls []LegToolCall
+	defer func() {
+		for _, call := range pendingCalls {
+			row := &model.ChatMessage{
+				SessionId:  turn.Session.Id,
+				Role:       model.ChatRoleTool,
+				Content:    "[工具执行被中断，未取得结果]",
+				ToolCallId: call.ID,
+				Name:       call.Name,
+			}
+			if err := model.InsertChatMessage(row); err != nil {
+				logger.SysError("failed to persist interrupted tool placeholder: " + err.Error())
+			}
+		}
+	}()
+
 	totalPrompt, totalCompletion := 0, 0
 	for iteration := 0; ; iteration++ {
 		if iteration > maxIterations {
 			return r.fail(emit, fmt.Errorf("已达工具调用轮数上限（%d）", maxIterations))
 		}
-		result, legErr := r.runLeg(ctx, emit, turn, legMessages, tools)
+		result, persistedCalls, legErr := r.runLeg(ctx, emit, turn, legMessages, tools)
 		totalPrompt += result.PromptTokens
 		totalCompletion += result.CompletionTokens
 		emit(Event{Type: EventUsage, PromptTokens: result.PromptTokens, CompletionTokens: result.CompletionTokens})
 
+		pendingCalls = persistedCalls
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -181,6 +204,12 @@ func (r *Runtime) runLoop(ctx context.Context, emit Emitter, turn TurnRequest, t
 			if err := model.InsertChatMessage(row); err != nil {
 				return r.fail(emit, fmt.Errorf("保存工具结果失败: %w", err))
 			}
+			for i := range pendingCalls {
+				if pendingCalls[i].ID == call.ID {
+					pendingCalls = append(pendingCalls[:i], pendingCalls[i+1:]...)
+					break
+				}
+			}
 			legMessages = append(legMessages, openAIMessage{
 				Role: model.ChatRoleTool, Content: callResult.Content,
 				ToolCallID: call.ID, Name: call.Name,
@@ -192,19 +221,22 @@ func (r *Runtime) runLoop(ctx context.Context, emit Emitter, turn TurnRequest, t
 }
 
 // runLeg streams one model leg: it pre-creates the assistant row, streams
-// deltas, then persists content, tool calls, and token usage.
-func (r *Runtime) runLeg(ctx context.Context, emit Emitter, turn TurnRequest, messages []openAIMessage, tools *toolSet) (LegResult, error) {
+// deltas, then persists content, tool calls, and token usage. It returns the
+// tool calls that are actually stored on the assistant row — nil when the
+// row write failed or the model hallucinated calls while no tools were
+// offered, because either way the stored history has no tool_calls to answer.
+func (r *Runtime) runLeg(ctx context.Context, emit Emitter, turn TurnRequest, messages []openAIMessage, tools *toolSet) (LegResult, []LegToolCall, error) {
 	maxTokens := turn.Session.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = int(DefaultMaxOutputTokens)
 	}
 	body, err := composeBody(turn.Session, messages, tools.defs, int64(maxTokens))
 	if err != nil {
-		return LegResult{}, err
+		return LegResult{}, nil, err
 	}
 	row := &model.ChatMessage{SessionId: turn.Session.Id, Role: model.ChatRoleAssistant}
 	if err := model.InsertChatMessage(row); err != nil {
-		return LegResult{}, fmt.Errorf("保存消息失败: %w", err)
+		return LegResult{}, nil, fmt.Errorf("保存消息失败: %w", err)
 	}
 	emit(Event{Type: EventMessageStart, MessageId: row.Id})
 
@@ -215,18 +247,20 @@ func (r *Runtime) runLeg(ctx context.Context, emit Emitter, turn TurnRequest, me
 
 	row.Content = result.Content
 	row.Tokens = result.CompletionTokens
-	if len(result.ToolCalls) > 0 {
+	var persistedCalls []LegToolCall
+	if len(result.ToolCalls) > 0 && len(tools.defs) > 0 {
 		raw, _ := json.Marshal(toWireToolCalls(result.ToolCalls))
 		encoded := string(raw)
 		row.ToolCalls = &encoded
+		persistedCalls = result.ToolCalls
 	}
 	if err := model.UpdateChatMessage(row); err != nil {
-		return result, fmt.Errorf("保存消息失败: %w", err)
+		return result, nil, fmt.Errorf("保存消息失败: %w", err)
 	}
 	if ctx.Err() != nil {
-		return result, ctx.Err()
+		return result, persistedCalls, ctx.Err()
 	}
-	return result, legErr
+	return result, persistedCalls, legErr
 }
 
 // executeTool dispatches one tool call with its own timeout.

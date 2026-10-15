@@ -9,7 +9,7 @@ import {
   Message,
 } from 'semantic-ui-react';
 import { useTranslation } from 'react-i18next';
-import { API, copy, getLogo, showError, showNotice } from '../helpers';
+import { API, getLogo, showError, showSuccess } from '../helpers';
 import { useSearchParams } from 'react-router-dom';
 
 const PasswordResetConfirm = () => {
@@ -17,24 +17,25 @@ const PasswordResetConfirm = () => {
   const [inputs, setInputs] = useState({
     email: '',
     token: '',
+    password: '',
+    confirmPassword: '',
   });
-  const { email, token } = inputs;
+  const { email, token, password, confirmPassword } = inputs;
   const [loading, setLoading] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
+  const [done, setDone] = useState(false);
   const logo = getLogo();
 
   const [countdown, setCountdown] = useState(30);
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   useEffect(() => {
-    let token = searchParams.get('token');
-    let email = searchParams.get('email');
-    setInputs({
-      token,
-      email,
-    });
-  }, []);
+    setInputs((prev) => ({
+      ...prev,
+      token: searchParams.get('token') || '',
+      email: searchParams.get('email') || '',
+    }));
+  }, [searchParams]);
 
   useEffect(() => {
     let countdownInterval = null;
@@ -42,29 +43,40 @@ const PasswordResetConfirm = () => {
       countdownInterval = setInterval(() => {
         setCountdown(countdown - 1);
       }, 1000);
-    } else if (countdown === 0) {
+    } else if (countdown === 0 && !done) {
       setDisableButton(false);
       setCountdown(30);
     }
     return () => clearInterval(countdownInterval);
-  }, [disableButton, countdown]);
+  }, [disableButton, countdown, done]);
 
-  async function handleSubmit(e) {
+  async function handleSubmit() {
+    if (!email || done) return;
+    if (password.length < 8 || password.length > 20) {
+      showError(t('auth.reset.confirm.password_rule'));
+      return;
+    }
+    if (password !== confirmPassword) {
+      showError(t('auth.reset.confirm.password_mismatch'));
+      return;
+    }
     setDisableButton(true);
-    if (!email) return;
     setLoading(true);
-    const res = await API.post(`/api/user/reset`, {
+    const res = await API.post('/api/user/reset', {
       email,
       token,
+      password,
     });
     const { success, message } = res.data;
     if (success) {
-      let password = res.data.data;
-      setNewPassword(password);
-      await copy(password);
-      showNotice(t('messages.notice.password_copied', { password }));
+      setDone(true);
+      showSuccess(t('auth.reset.confirm.success_notice'));
     } else {
       showError(message);
+      if (!done) {
+        setDisableButton(false);
+        setCountdown(30);
+      }
     }
     setLoading(false);
   }
@@ -99,27 +111,36 @@ const PasswordResetConfirm = () => {
                 readOnly
                 style={{ marginBottom: '1em' }}
               />
-              {newPassword && (
-                <Form.Input
-                  fluid
-                  icon='lock'
-                  iconPosition='left'
-                  placeholder={t('auth.reset.confirm.new_password')}
-                  name='newPassword'
-                  value={newPassword}
-                  readOnly
-                  style={{
-                    marginBottom: '1em',
-                    cursor: 'pointer',
-                    backgroundColor: '#f8f9fa',
-                  }}
-                  onClick={(e) => {
-                    e.target.select();
-                    navigator.clipboard.writeText(newPassword);
-                    showNotice(t('auth.reset.confirm.notice'));
-                  }}
-                />
-              )}
+              <Form.Input
+                fluid
+                icon='lock'
+                iconPosition='left'
+                type='password'
+                placeholder={t('auth.reset.confirm.new_password')}
+                name='password'
+                value={password}
+                autoComplete='new-password'
+                disabled={done}
+                onChange={(e) =>
+                  setInputs({ ...inputs, password: e.target.value })
+                }
+                style={{ marginBottom: '1em' }}
+              />
+              <Form.Input
+                fluid
+                icon='lock'
+                iconPosition='left'
+                type='password'
+                placeholder={t('auth.reset.confirm.confirm_password')}
+                name='confirmPassword'
+                value={confirmPassword}
+                autoComplete='new-password'
+                disabled={done}
+                onChange={(e) =>
+                  setInputs({ ...inputs, confirmPassword: e.target.value })
+                }
+                style={{ marginBottom: '1em' }}
+              />
               <Button
                 fluid
                 size='large'
@@ -137,13 +158,13 @@ const PasswordResetConfirm = () => {
                   : t('auth.reset.confirm.button')}
               </Button>
             </Form>
-            {newPassword && (
-              <Message style={{ background: 'transparent', boxShadow: 'none' }}>
-                <p style={{ fontSize: '0.9em', color: '#666' }}>
-                  {t('auth.reset.confirm.notice')}
-                </p>
-              </Message>
-            )}
+            <Message style={{ background: 'transparent', boxShadow: 'none' }}>
+              <p style={{ fontSize: '0.9em', color: '#666' }}>
+                {done
+                  ? t('auth.reset.confirm.success_notice')
+                  : t('auth.reset.confirm.notice')}
+              </p>
+            </Message>
           </Card.Content>
         </Card>
       </Grid.Column>

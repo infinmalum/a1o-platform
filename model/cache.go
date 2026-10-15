@@ -97,10 +97,13 @@ func CacheGetUserQuota(ctx context.Context, id int) (quota int64, err error) {
 	}
 	quota, err = strconv.ParseInt(quotaString, 10, 64)
 	if err != nil {
-		return 0, nil
+		// A malformed cache entry must not read as "no quota": refresh from
+		// the database, which also repairs the cached value.
+		logger.Infof(ctx, "user %d's cached quota is malformed, refreshing from db", id)
+		return fetchAndUpdateUserQuota(ctx, id)
 	}
 	if quota <= config.PreConsumedQuota { // when user's quota is less than pre-consumed quota, we need to fetch from db
-		logger.Infof(ctx, "user %d's cached quota is too low: %d, refreshing from db", quota, id)
+		logger.Infof(ctx, "user %d's cached quota is too low: %d, refreshing from db", id, quota)
 		return fetchAndUpdateUserQuota(ctx, id)
 	}
 	return quota, nil

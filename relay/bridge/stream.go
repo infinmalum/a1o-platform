@@ -32,6 +32,16 @@ type StreamConverter interface {
 
 const maxStreamEvent = 2 << 20
 
+// Generated identifier prefixes follow each protocol's own convention: OpenAI
+// chunk and tool call IDs use hyphens, Anthropic message and tool-use IDs use
+// underscores.
+const (
+	chatCompletionIDPrefix   = "chatcmpl-"
+	chatToolCallIDPrefix     = "call_"
+	anthropicMessageIDPrefix = "msg_"
+	anthropicToolUseIDPrefix = "toolu_"
+)
+
 type sseReader struct {
 	scanner *bufio.Scanner
 	pending []byte
@@ -123,6 +133,17 @@ func writeStreamError(dst StreamWriter, message string) error {
 		return err
 	}
 	return writeStreamEvent(dst, payload)
+}
+
+// writeAnthropicStreamError reports a mid-stream conversion failure to an
+// Anthropic client as a terminal error event, so the stream never ends by
+// silent truncation.
+func writeAnthropicStreamError(dst StreamWriter, message string) error {
+	payload, err := json.Marshal(map[string]any{"type": "error", "error": map[string]string{"type": "gateway_stream_error", "message": message}})
+	if err != nil {
+		return err
+	}
+	return writeAnthropicEvent(dst, "error", payload)
 }
 
 func emitChatChunk(dst StreamWriter, id string, created int64, model string, delta map[string]any, finish string, extra map[string]any) error {

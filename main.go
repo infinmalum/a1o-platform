@@ -20,6 +20,7 @@ import (
 	"github.com/infinmalum/one-gateway/middleware"
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
+	"github.com/infinmalum/one-gateway/relay/credential"
 	"github.com/infinmalum/one-gateway/router"
 	// Registers the ChatGPT subscription profile's refresher and capability
 	// validator in the upstream registry.
@@ -44,6 +45,11 @@ func main() {
 	// Initialize SQL Database
 	model.InitDB()
 	model.InitLogDB()
+	// Seal user-supplied MCP credentials (Env/Headers) with the same master
+	// key infrastructure as upstream account credentials.
+	model.CredentialSealerFactory = func() (model.CredentialSealer, error) {
+		return credential.DefaultStore()
+	}
 
 	var err error
 	err = model.CreateRootAccountIfNeed()

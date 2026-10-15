@@ -11,12 +11,19 @@ import (
 	"github.com/infinmalum/one-gateway/common/ctxkey"
 )
 
+// MaxRequestBodySize bounds how much of a request body the gateway buffers,
+// and how far a gzip-encoded request body may decompress. It sits well above
+// the largest legitimate multimodal payloads (base64 images) but stops
+// decompression bombs from ballooning gateway memory. It is a variable so
+// tests can lower it.
+var MaxRequestBodySize = int64(64 << 20) // 64 MiB
+
 func GetRequestBody(c *gin.Context) ([]byte, error) {
 	requestBody, _ := c.Get(ctxkey.KeyRequestBody)
 	if requestBody != nil {
 		return requestBody.([]byte), nil
 	}
-	requestBody, err := io.ReadAll(c.Request.Body)
+	requestBody, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, MaxRequestBodySize))
 	if err != nil {
 		return nil, err
 	}

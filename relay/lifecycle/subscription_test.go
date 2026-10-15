@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -447,6 +448,142 @@ func TestSubscription429CoolsDownAndFailsOver(t *testing.T) {
 	require.Greater(t, fixture.cooldowns.Remaining(fixture.account.Id, "gpt-5"), 20*time.Second)
 	// The retry settled on the API channel.
 	require.Equal(t, []int{fixture.apiChannel.Id}, fixture.consumeLogChannels())
+}
+
+func TestSubscription429CooldownUsesClientModelName(t *testing.T) {
+	fixture := newSubscriptionFixture(t)
+	withPolicy(t, config.RoutingPolicySubscriptionThenAPI)
+	fixture.upstreamRespond = func(w http.ResponseWriter, r *http.Request, authz string, hit int) {
+		if authz == "Bearer "+fixture.accessToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"rate limited"}}`)
+			return
+		}
+		writeSubscriptionSSE(w)
+	}
+
+	// The channel maps the client model to a different upstream model.
+	recorder := fixture.forward(subscriptionBody(t, nil), func(input *Request) {
+		input.Channel.ModelMapping = map[string]string{"gpt-5": "gpt-5-mapped"}
+	})
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	// The mapping really applied before the 429 hit: the first upstream
+	// request carried the mapped model, the retry (API channel) the original.
+	fixture.upstreamMu.Lock()
+	firstBody := map[string]json.RawMessage{}
+	require.NoError(t, json.Unmarshal(fixture.upstreamBodies[0], &firstBody))
+	fixture.upstreamMu.Unlock()
+	require.Equal(t, `"gpt-5-mapped"`, string(firstBody["model"]))
+	require.Equal(t, `"gpt-5"`, string(fixture.lastBody()["model"]))
+	// The cooldown is keyed by the client-facing model the selector queries.
+	// Keying by the mapped name let the 429'd account keep being selected.
+	require.True(t, fixture.cooldowns.Active(fixture.account.Id, "gpt-5"))
+	require.False(t, fixture.cooldowns.Active(fixture.account.Id, "gpt-5-mapped"))
+	// Selection for the client model now skips the cooling account.
+	selected, httpErr := SelectChannel(Selection{Group: "default", Model: "gpt-5", Type: -1, Source: model.ChannelSourceAny})
+	require.Nil(t, httpErr)
+	require.Equal(t, fixture.apiChannel.Id, selected.Id)
+}
+
+// countingRefresher fakes a provider refresh: it counts round trips and
+// simulates provider latency so concurrent callers pile up behind the flight.
+type countingRefresher struct {
+	calls   *int32
+	token   string
+	start   chan struct{}
+	release chan struct{}
+}
+
+func (r countingRefresher) Refresh(ctx context.Context, accountID int, current credential.Document) (credential.Document, error) {
+	atomic.AddInt32(r.calls, 1)
+	if r.start != nil {
+		r.start <- struct{}{}
+		<-r.release
+	} else {
+		time.Sleep(50 * time.Millisecond)
+	}
+	next := *current.OAuth
+	next.AccessToken = r.token
+	return credential.Document{Kind: current.Kind, OAuth: &next}, nil
+}
+
+// TestCoordinatorRefreshCollapsesConcurrentCalls pins the singleflight
+// contract: N concurrent 401-driven refreshes of one account perform a single
+// provider round trip, because every refresh consumes the rotating refresh
+// token.
+func TestCoordinatorRefreshCollapsesConcurrentCalls(t *testing.T) {
+	fixture := newSubscriptionFixture(t)
+
+	var calls int32
+	rotated := testToken(t, "rotated")
+	refresher := countingRefresher{calls: &calls, token: rotated}
+
+	const callers = 8
+	var wg sync.WaitGroup
+	docs := make([]credential.Document, callers)
+	errs := make([]error, callers)
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			docs[i], errs[i] = fixture.creds.coordinator.Refresh(context.Background(), fixture.account.Id, refresher)
+		}(i)
+	}
+	wg.Wait()
+
+	require.EqualValues(t, 1, atomic.LoadInt32(&calls), "concurrent refreshes must collapse into one provider call")
+	for i := 0; i < callers; i++ {
+		require.NoError(t, errs[i])
+		require.Equal(t, rotated, docs[i].OAuth.AccessToken)
+	}
+	// The account now stores the rotated token.
+	doc, err := fixture.creds.coordinator.Resolve(fixture.account.Id)
+	require.NoError(t, err)
+	require.Equal(t, rotated, doc.OAuth.AccessToken)
+}
+
+// TestCoordinatorRefreshSurvivesCallerCancellation verifies the rotation runs
+// detached from the caller's request: a client that disconnects mid-refresh
+// cannot abort the token rotation halfway, because the provider may already
+// have consumed the rotating refresh token.
+func TestCoordinatorRefreshSurvivesCallerCancellation(t *testing.T) {
+	fixture := newSubscriptionFixture(t)
+
+	var calls int32
+	rotated := testToken(t, "rotated-late")
+	start := make(chan struct{})
+	release := make(chan struct{})
+	refresher := countingRefresher{calls: &calls, token: rotated, start: start, release: release}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	type outcome struct {
+		doc credential.Document
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		doc, err := fixture.creds.coordinator.Refresh(ctx, fixture.account.Id, refresher)
+		done <- outcome{doc: doc, err: err}
+	}()
+
+	<-start
+	cancel()
+	close(release)
+
+	select {
+	case result := <-done:
+		require.NoError(t, result.err)
+		require.Equal(t, rotated, result.doc.OAuth.AccessToken)
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh did not finish after caller cancellation")
+	}
+	// The rotation was persisted despite the cancelled caller.
+	doc, err := fixture.creds.coordinator.Resolve(fixture.account.Id)
+	require.NoError(t, err)
+	require.Equal(t, rotated, doc.OAuth.AccessToken)
+	require.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }
 
 func TestSubscriptionCapabilityFallback(t *testing.T) {

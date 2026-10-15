@@ -216,7 +216,7 @@ func messagesBlocksToGemini(raw json.RawMessage, assistant bool, toolNames map[s
 // extension while response content and finish states Messages cannot
 // represent are rejected.
 func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, "candidates", "promptFeedback", "usageMetadata", "modelVersion", "responseId", "modelStatus")
+	fields, err := object(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -232,15 +232,12 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := object(rawCandidates[0], "content", "finishReason", "safetyRatings", "citationMetadata", "tokenCount", "groundingAttributions", "groundingMetadata", "avgLogprobs", "logprobsResult", "urlContextMetadata", "index", "finishMessage")
+	candidate, err := object(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	if len(candidate["index"]) != 0 {
-		var index int
-		if json.Unmarshal(candidate["index"], &index) != nil || index != 0 {
-			return nil, native.Usage{}, errors.New("Gemini candidate index must be zero")
-		}
+	if err := geminiCandidateIndex(candidate["index"]); err != nil {
+		return nil, native.Usage{}, err
 	}
 	finish := rawString(candidate["finishReason"])
 	content, err := object(candidate["content"], "role", "parts")
@@ -307,24 +304,13 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 		return nil, native.Usage{}, err
 	}
 	usage := native.Usage{Input: prompt, Output: output, Seen: true, Complete: true}
-	metadata := map[string]json.RawMessage{"usageMetadata": fields["usageMetadata"]}
-	for _, name := range []string{"modelVersion", "modelStatus", "promptFeedback"} {
-		if len(fields[name]) != 0 {
-			metadata[name] = fields[name]
-		}
-	}
-	for name, value := range candidate {
-		if name != "content" && name != "finishReason" {
-			metadata[name] = value
-		}
-	}
 	result := map[string]any{
 		"id": id, "type": "message", "role": "assistant", "model": requestedModel,
 		"content":     blocks,
 		"stop_reason": stop, "stop_sequence": nil,
 		"usage": map[string]int64{"input_tokens": prompt - cached, "cache_creation_input_tokens": 0, "cache_read_input_tokens": cached, "output_tokens": output},
 	}
-	if len(metadata) > 0 {
+	if metadata := geminiProviderMetadata(fields, candidate); len(metadata) > 0 {
 		result["provider_metadata"] = map[string]any{"gemini": metadata}
 	}
 	converted, err := json.Marshal(result)

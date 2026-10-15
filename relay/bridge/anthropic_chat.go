@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/infinmalum/one-gateway/relay/native"
 )
@@ -258,35 +259,21 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	if role != "assistant" {
 		return nil, native.Usage{}, errors.New("Chat response message must be assistant")
 	}
-	blocks, err := textBlocks(message["content"])
+	blocks, err := chatTextBlocks(message["content"])
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
 	if len(message["tool_calls"]) != 0 {
-		var calls []json.RawMessage
-		if json.Unmarshal(message["tool_calls"], &calls) != nil {
-			return nil, native.Usage{}, errors.New("tool_calls must be an array")
+		calls, err := chatToolCalls(message["tool_calls"])
+		if err != nil {
+			return nil, native.Usage{}, err
 		}
-		for _, raw := range calls {
-			call, err := object(raw, "id", "type", "function")
+		for _, call := range calls {
+			input, err := chatToolArgsObject(call.Arguments)
 			if err != nil {
 				return nil, native.Usage{}, err
 			}
-			var callID, kind string
-			_ = json.Unmarshal(call["id"], &callID)
-			_ = json.Unmarshal(call["type"], &kind)
-			function, err := object(call["function"], "name", "arguments")
-			if err != nil || callID == "" || kind != "function" {
-				return nil, native.Usage{}, errors.New("only function tool calls can be converted")
-			}
-			var name, arguments string
-			_ = json.Unmarshal(function["name"], &name)
-			_ = json.Unmarshal(function["arguments"], &arguments)
-			var input map[string]any
-			if name == "" || json.Unmarshal([]byte(arguments), &input) != nil || input == nil {
-				return nil, native.Usage{}, errors.New("tool call arguments must be a JSON object")
-			}
-			blocks = append(blocks, map[string]any{"type": "tool_use", "id": callID, "name": name, "input": input})
+			blocks = append(blocks, map[string]any{"type": "tool_use", "id": call.ID, "name": call.Name, "input": input})
 		}
 	}
 	if len(blocks) == 0 {
@@ -324,26 +311,15 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	return converted, usage, err
 }
 
+// messagesText reads Anthropic system or tool_result content, which is either
+// a plain string or an array of text blocks.
 func messagesText(raw json.RawMessage) (string, error) {
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := chatContentString(raw); ok {
 		return text, nil
 	}
-	var blocks []json.RawMessage
-	if json.Unmarshal(raw, &blocks) != nil {
-		return "", errors.New("content must be text or text blocks")
+	parts, err := chatTextPartList(raw)
+	if err != nil {
+		return "", err
 	}
-	for _, blockRaw := range blocks {
-		block, err := object(blockRaw, "type", "text")
-		if err != nil {
-			return "", err
-		}
-		var kind, part string
-		_ = json.Unmarshal(block["type"], &kind)
-		if kind != "text" || json.Unmarshal(block["text"], &part) != nil {
-			return "", errors.New("only text blocks can be converted")
-		}
-		text += part
-	}
-	return text, nil
+	return strings.Join(parts, ""), nil
 }

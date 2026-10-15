@@ -72,6 +72,10 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 		Body:   nil,
 		Header: make(http.Header),
 	}
+	// The upstream call inherits this context (DoRequestHelper builds its
+	// request with c.Request.Context()), so sweep deadlines/cancellations
+	// apply to the actual outbound request.
+	testRequest = testRequest.WithContext(ctx)
 	testRequest.Header.Set("Content-Type", "application/json")
 	transport := adaptor.NewContext(testRequest, recorder)
 	apiType := channeltype.ToAPIType(channel.Type)
@@ -126,7 +130,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 			}
 			logContent = fmt.Sprintf("渠道 %s 测试失败，错误：%s", channel.Name, errorMessage)
 		}
-		go model.RecordTestLog(ctx, &model.Log{
+		go model.RecordTestLog(context.WithoutCancel(ctx), &model.Log{
 			ChannelId:   channel.Id,
 			ModelName:   modelName,
 			Content:     logContent,
@@ -232,12 +236,22 @@ func testChannels(ctx context.Context, notify bool, scope string) error {
 	if disableThreshold == 0 {
 		disableThreshold = 10000000 // a impossible value
 	}
+	// Run detached from the triggering request and bound each channel probe
+	// with a timeout: without them a hung upstream stalls the sweep forever,
+	// and an admin closing the browser tab cancels the remaining channels.
+	perTestTimeout := time.Duration(config.RelayTimeout) * time.Second
+	if perTestTimeout <= 0 {
+		perTestTimeout = 60 * time.Second
+	}
+	runCtx := context.WithoutCancel(ctx)
 	go func() {
 		for _, channel := range channels {
 			isChannelEnabled := channel.Status == model.ChannelStatusEnabled
 			tik := time.Now()
 			testRequest := buildTestRequest("")
-			_, err, openaiErr := testChannel(ctx, channel, testRequest)
+			channelCtx, cancel := context.WithTimeout(runCtx, perTestTimeout)
+			_, err, openaiErr := testChannel(channelCtx, channel, testRequest)
+			cancel()
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 			if isChannelEnabled && milliseconds > disableThreshold {

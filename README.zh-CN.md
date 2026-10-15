@@ -15,7 +15,7 @@
 
 ---
 
-One Gateway 是 [One API](https://github.com/songquanpeng/one-api) 的社区派生项目。它用统一的 OpenAI 兼容接口连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。原项目由 JustSong 及其他贡献者创建和维护；本项目建立在他们的工作之上。
+One Gateway 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它用统一的 OpenAI 兼容接口连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；One Gateway 建立在他们的工作之上。
 
 > [!NOTE]
 > 本仓库独立维护。原项目的版本、Docker 镜像、演示站点和 issue 列表不代表 One Gateway 的发布与支持渠道。
@@ -42,9 +42,9 @@ docker build -t one-gateway:local .
 docker run -d --name one-gateway --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" one-gateway:local
 ```
 
-打开 <http://localhost:3000>。数据库首次初始化时会创建 `root` 账号，密码为 `123456`。**首次登录后请立即修改密码。**挂载目录保存默认的 SQLite 数据库，更换容器时应保留该目录。对外提供服务时还应配置 HTTPS 和固定的 `SESSION_SECRET`。
+打开 <http://localhost:3000>。数据库首次初始化时会创建 `root` 账号，密码为启动日志中打印一次的随机密码（也可通过 `INITIAL_ROOT_PASSWORD` 预先指定）。**首次登录后请立即修改密码。**挂载目录保存默认的 SQLite 数据库，更换容器时应保留该目录。对外提供服务时还应配置 HTTPS 和固定的 `SESSION_SECRET`。
 
-仓库的 `docker-compose.yml` 会在本地构建本项目，并将镜像标记为 `one-gateway:local`。为兼容已有部署，数据库名称与数据目录保持不变。
+仓库的 `docker-compose.yml` 会在本地构建本项目，镜像标记为 `one-gateway:local`，数据库与数据目录均使用 `one-gateway` 命名。如果你沿用了早期继承 `one-api` 命名的 compose 文件，切换前需要先迁移数据库和 `data/` 目录。
 
 ## 从源码构建
 
@@ -74,7 +74,7 @@ go build -o one-gateway .
 | `NODE_TYPE` | 多节点部署时的 `master` 或 `slave`。 |
 | `FRONTEND_BASE_URL` | 从节点可选的前端跳转地址。 |
 
-多节点部署时，所有节点应连接同一个 MySQL 或 PostgreSQL 数据库，使用相同的 `SESSION_SECRET`，并配置节点角色与缓存同步。具体可用配置以 [`common/config`](common/config) 中的代码为准；原项目文档也有更完整的环境变量说明。
+多节点部署时，所有节点应连接同一个 MySQL 或 PostgreSQL 数据库，使用相同的 `SESSION_SECRET`，并配置节点角色与缓存同步。具体可用配置以 [`common/config`](common/config) 中的代码为准。
 
 登录后，在 **渠道** 页面填写模型服务商密钥，再在 **令牌** 页面创建访问令牌。将任意 OpenAI 兼容客户端的地址设为 `http://localhost:3000/v1`，并使用刚创建的令牌作为 API Key：
 
@@ -87,8 +87,6 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## 文档
 
-- [管理接口参考](docs/API.md)
-- [中继架构说明](docs/relay-rewrite-plan.md)
 - [前端主题说明](web/README.md)
 - [TypeScript 迁移说明](docs/typescript-migration.md)
 
@@ -98,7 +96,7 @@ curl http://localhost:3000/v1/chat/completions \
 - 修改嵌入的前端资源前，运行 `npm run build --prefix web/default`。
 - 修改后端时，运行 `go test ./...`。
 
-请在[本仓库的 issue 列表](https://github.com/infinmalum/one-gateway/issues)反馈派生项目的问题与改动。反馈前可先确认问题是否也存在于原项目。
+请在[本仓库的 issue 列表](https://github.com/infinmalum/one-gateway/issues)反馈问题与改动。
 
 ## 来源与许可证
 

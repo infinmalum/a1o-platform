@@ -36,7 +36,12 @@ type NativeReservation struct {
 // ReserveNativeQuota uses the provider's output limit plus the configured
 // input allowance as the provisional charge. The final provider usage replaces
 // this charge after the response, including when a stream is interrupted.
-func ReserveNativeQuota(ctx context.Context, reservation NativeReservation, maxOutputTokens int64) (*NativeReservation, error) {
+// The reservation is taken by pointer: the struct carries a mutex, so it must
+// never be copied.
+func ReserveNativeQuota(ctx context.Context, reservation *NativeReservation, maxOutputTokens int64) (*NativeReservation, error) {
+	if reservation == nil {
+		return nil, errors.New("reservation is nil")
+	}
 	if maxOutputTokens < 0 {
 		return nil, errors.New("output token limit must not be negative")
 	}
@@ -53,13 +58,16 @@ func ReserveNativeQuota(ctx context.Context, reservation NativeReservation, maxO
 	if err != nil {
 		return nil, err
 	}
-	return &reservation, nil
+	return reservation, nil
 }
 
 // ReserveFixedQuota reserves an exact operation charge, such as image size
 // pricing or audio input length, instead of a token-based estimate. The
 // amounts themselves come from the caller's ratio computation.
-func ReserveFixedQuota(ctx context.Context, reservation NativeReservation, amount int64) (*NativeReservation, error) {
+func ReserveFixedQuota(ctx context.Context, reservation *NativeReservation, amount int64) (*NativeReservation, error) {
+	if reservation == nil {
+		return nil, errors.New("reservation is nil")
+	}
 	if amount < 0 {
 		return nil, errors.New("fixed quota must not be negative")
 	}
@@ -73,7 +81,7 @@ func ReserveFixedQuota(ctx context.Context, reservation NativeReservation, amoun
 	if err != nil {
 		return nil, err
 	}
-	return &reservation, nil
+	return reservation, nil
 }
 
 func (r *NativeReservation) Refund(ctx context.Context) {

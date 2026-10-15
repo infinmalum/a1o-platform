@@ -5,11 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
+	"strconv"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
 )
+
+// refreshFlightTimeout bounds one credential rotation. The account's refresh
+// flight is held for the whole window, so a hung token endpoint must not
+// block the account indefinitely.
+const refreshFlightTimeout = time.Minute
 
 // Refresher rotates one account's credential, for example by exchanging an
 // OAuth refresh token. It must not write the database itself; the coordinator
@@ -19,12 +27,15 @@ type Refresher interface {
 	Refresh(ctx context.Context, accountID int, current Document) (Document, error)
 }
 
-// Coordinator resolves sealed credentials and serializes refreshes per
-// account. The per-account lock covers one process; the database version
-// check catches concurrent writes from other processes.
+// Coordinator resolves sealed credentials and collapses concurrent refreshes
+// per account into a single round trip. Refresh tokens usually rotate on
+// every use, so queued refreshes would burn provider quota and risk
+// invalidating the token chain; waiters receive the in-flight refresh's
+// outcome instead. The database version check still catches concurrent
+// writes from other processes.
 type Coordinator struct {
-	store *Store
-	locks sync.Map // account ID -> *sync.Mutex
+	store   *Store
+	refresh singleflight.Group
 }
 
 func NewCoordinator(store *Store) *Coordinator {
@@ -36,11 +47,6 @@ func NewCoordinator(store *Store) *Coordinator {
 // configuration.
 func (c *Coordinator) Enabled() bool {
 	return c != nil && c.store != nil
-}
-
-func (c *Coordinator) accountLock(accountID int) *sync.Mutex {
-	lock, _ := c.locks.LoadOrStore(accountID, &sync.Mutex{})
-	return lock.(*sync.Mutex)
 }
 
 // Resolve returns the current credential document of an enabled account.
@@ -62,8 +68,13 @@ func (c *Coordinator) Resolve(accountID int) (Document, error) {
 	return ParseDocument(payload)
 }
 
-// Refresh re-reads the account under the per-account lock, runs refresher,
-// and writes the rotated document only when the version still matches.
+// Refresh re-reads the account, runs refresher, and writes the rotated
+// document only when the version still matches. Concurrent calls for the same
+// account collapse into one execution; waiters get the winner's outcome. The
+// rotation runs detached from the caller's request context under
+// refreshFlightTimeout: a disconnecting client must not abort a token
+// rotation halfway, because the provider may already have consumed the
+// rotating refresh token.
 func (c *Coordinator) Refresh(ctx context.Context, accountID int, refresher Refresher) (Document, error) {
 	if !c.Enabled() {
 		return Document{}, ErrStoreDisabled
@@ -71,10 +82,19 @@ func (c *Coordinator) Refresh(ctx context.Context, accountID int, refresher Refr
 	if refresher == nil {
 		return Document{}, errors.New("no credential refresher is registered")
 	}
-	lock := c.accountLock(accountID)
-	lock.Lock()
-	defer lock.Unlock()
+	result, err, _ := c.refresh.Do(strconv.Itoa(accountID), func() (any, error) {
+		flightCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refreshFlightTimeout)
+		defer cancel()
+		return c.rotate(flightCtx, accountID, refresher)
+	})
+	if err != nil {
+		return Document{}, err
+	}
+	return result.(Document), nil
+}
 
+// rotate performs one serialized credential rotation for an account.
+func (c *Coordinator) rotate(ctx context.Context, accountID int, refresher Refresher) (Document, error) {
 	account, err := model.GetUpstreamAccountById(accountID, true)
 	if err != nil {
 		return Document{}, err

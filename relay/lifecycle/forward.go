@@ -265,8 +265,12 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				}
 				if response.StatusCode == http.StatusTooManyRequests && attempt.UpstreamAccountID != 0 {
 					// Respect the provider reset window so selection skips
-					// this account until the cooldown expires.
-					coolDownAccount(attempt.UpstreamAccountID, mappedModel, response.Header)
+					// this account until the cooldown expires. The cooldown
+					// is keyed by the client-facing model: channel selection
+					// checks readiness before ModelMapping is applied, so a
+					// mapped name would never match the lookup and the 429'd
+					// account would keep being selected.
+					coolDownAccount(attempt.UpstreamAccountID, input.Model, response.Header)
 				}
 				if response.StatusCode == http.StatusUnauthorized && attempt.UpstreamAccountID != 0 {
 					// One bounded refresh/replay per account, within the
@@ -390,9 +394,9 @@ func reserve(ctx context.Context, input Request, channel Channel, mappedModel st
 		Group: input.Principal.Group, SystemPromptReset: channel.SystemPrompt != "" && supportsSystemPrompt(upstreamProtocol),
 	}
 	if input.FixedQuota > 0 {
-		return billing.ReserveFixedQuota(ctx, payload, input.FixedQuota)
+		return billing.ReserveFixedQuota(ctx, &payload, input.FixedQuota)
 	}
-	return billing.ReserveNativeQuota(ctx, payload, input.MaxOutputTokens)
+	return billing.ReserveNativeQuota(ctx, &payload, input.MaxOutputTokens)
 }
 
 // settleFixedQuota streams a fixed-charge response to the client and charges

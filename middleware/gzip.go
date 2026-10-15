@@ -2,9 +2,11 @@ package middleware
 
 import (
 	"compress/gzip"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/infinmalum/one-gateway/common"
 )
 
 func GzipDecodeMiddleware() gin.HandlerFunc {
@@ -17,8 +19,10 @@ func GzipDecodeMiddleware() gin.HandlerFunc {
 			}
 			defer gzipReader.Close()
 
-			// Replace the request body with the decompressed data
-			c.Request.Body = io.NopCloser(gzipReader)
+			// Replace the request body with the decompressed data, capped so
+			// a small compressed payload cannot expand into an OOM; reads
+			// past the cap fail loudly instead of silently truncating.
+			c.Request.Body = http.MaxBytesReader(c.Writer, io.NopCloser(gzipReader), common.MaxRequestBodySize)
 		}
 
 		// Continue processing the request

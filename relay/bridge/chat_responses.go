@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/infinmalum/one-gateway/relay/native"
@@ -25,19 +26,11 @@ type chatResponses struct {
 // by the strict field whitelist; profile-level restrictions such as
 // temperature are mapped faithfully and rejected by the account validator.
 func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
-	if model == "" {
-		return nil, errors.New("model is required")
-	}
-	fields, err := object(body, "model", "messages", "stream", "stream_options", "max_tokens",
-		"max_completion_tokens", "temperature", "top_p", "tools", "tool_choice",
-		"parallel_tool_calls", "response_format", "metadata", "user")
+	head, err := parseChatRequestHead(body, model, "stream_options", "parallel_tool_calls", "response_format", "metadata", "user")
 	if err != nil {
 		return nil, err
 	}
-	var stream bool
-	if err := decode(fields["stream"], &stream); err != nil {
-		return nil, errors.New("stream must be boolean")
-	}
+	fields := head.fields
 	r.includeUsage = false
 	if nonNull(fields["stream_options"]) {
 		options, err := object(fields["stream_options"], "include_usage")
@@ -48,24 +41,10 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 			return nil, errors.New("stream_options include_usage must be boolean")
 		}
 	}
-	var maxTokens, maxCompletion int64
-	if err := decode(fields["max_tokens"], &maxTokens); err != nil || maxTokens < 0 {
-		return nil, errors.New("max_tokens must not be negative")
-	}
-	if err := decode(fields["max_completion_tokens"], &maxCompletion); err != nil || maxCompletion < 0 {
-		return nil, errors.New("max_completion_tokens must not be negative")
-	}
-	if maxTokens > 0 && maxCompletion > 0 && maxTokens != maxCompletion {
-		return nil, errors.New("conflicting Chat token limits")
-	}
-	var messages []json.RawMessage
-	if err := json.Unmarshal(fields["messages"], &messages); err != nil || len(messages) == 0 {
-		return nil, errors.New("messages must be a non-empty array")
-	}
 	request := map[string]any{"model": model, "stream": true, "store": false}
 	var instructions []string
 	var input []any
-	for _, raw := range messages {
+	for _, raw := range head.messages {
 		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id")
 		if err != nil {
 			return nil, fmt.Errorf("invalid Chat message: %w", err)
@@ -139,7 +118,7 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 	if len(instructions) > 0 {
 		request["instructions"] = joinSystem(instructions)
 	}
-	if limit := max(maxTokens, maxCompletion); limit > 0 {
+	if limit := head.limit; limit > 0 {
 		request["max_output_tokens"] = limit
 	}
 	for _, key := range []string{"temperature", "top_p", "metadata", "user"} {
@@ -180,31 +159,20 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 	return json.Marshal(request)
 }
 
-// chatTextContent reads string or text-only content parts.
+// chatTextContent reads string or text-only content parts, rejecting
+// malformed parts instead of silently joining empty text.
 func chatTextContent(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return "", errors.New("content is required")
 	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := chatContentString(raw); ok {
 		return text, nil
 	}
-	var parts []json.RawMessage
-	if json.Unmarshal(raw, &parts) != nil {
-		return "", errors.New("content must be text or text parts")
+	parts, err := chatTextPartList(raw)
+	if err != nil {
+		return "", err
 	}
-	joined := ""
-	for _, part := range parts {
-		item, err := object(part, "type", "text")
-		if err != nil {
-			return "", err
-		}
-		if rawString(item["type"]) != "text" {
-			return "", fmt.Errorf("Chat content part %q cannot be converted", rawString(item["type"]))
-		}
-		joined += rawString(item["text"])
-	}
-	return joined, nil
+	return strings.Join(parts, ""), nil
 }
 
 // chatInputParts converts user content parts. Images pass as data or remote
@@ -229,7 +197,11 @@ func chatInputParts(raw json.RawMessage) ([]any, error) {
 		}
 		switch rawString(item["type"]) {
 		case "text":
-			result = append(result, map[string]string{"type": "input_text", "text": rawString(item["text"])})
+			var text string
+			if len(item) != 2 || json.Unmarshal(item["text"], &text) != nil {
+				return nil, errors.New("Chat text part requires text")
+			}
+			result = append(result, map[string]string{"type": "input_text", "text": text})
 		case "image_url":
 			image := map[string]any{"type": "input_image"}
 			var url string
@@ -257,37 +229,16 @@ func chatInputParts(raw json.RawMessage) ([]any, error) {
 }
 
 func chatFunctionCalls(raw json.RawMessage) ([]any, error) {
-	var calls []json.RawMessage
-	if json.Unmarshal(raw, &calls) != nil {
-		return nil, errors.New("tool_calls must be an array")
+	calls, err := chatToolCalls(raw)
+	if err != nil {
+		return nil, err
 	}
 	var result []any
-	for _, callRaw := range calls {
-		call, err := object(callRaw, "id", "type", "function")
-		if err != nil {
-			return nil, err
-		}
-		var id, kind string
-		_ = json.Unmarshal(call["id"], &id)
-		_ = json.Unmarshal(call["type"], &kind)
-		if id == "" || kind != "function" {
-			return nil, errors.New("only named function tool calls can be converted")
-		}
-		function, err := object(call["function"], "name", "arguments")
-		if err != nil {
-			return nil, err
-		}
-		var name, arguments string
-		_ = json.Unmarshal(function["name"], &name)
-		_ = json.Unmarshal(function["arguments"], &arguments)
-		if name == "" {
-			return nil, errors.New("function tool call name is required")
-		}
-		if json.Valid([]byte(arguments)) {
-			result = append(result, map[string]any{"type": "function_call", "call_id": id, "name": name, "arguments": arguments})
-		} else {
+	for _, call := range calls {
+		if !json.Valid([]byte(call.Arguments)) {
 			return nil, errors.New("function tool arguments must be valid JSON")
 		}
+		result = append(result, map[string]any{"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments})
 	}
 	return result, nil
 }

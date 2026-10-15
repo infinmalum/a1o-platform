@@ -15,10 +15,10 @@
 
 ---
 
-One Gateway は [One API](https://github.com/songquanpeng/one-api) のコミュニティフォークです。複数のモデルプロバイダーに対して OpenAI 互換の共通エンドポイントを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。元の One API は JustSong 氏と他の貢献者によって開発・保守されており、このフォークはその成果を基にしています。
+One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生し、独自に保守されている AI ゲートウェイです。複数のモデルプロバイダーに対して OpenAI 互換の共通エンドポイントを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。One API は JustSong 氏と他の貢献者によって開発されたものであり、One Gateway はその成果を基にしています。
 
 > [!NOTE]
-> このリポジトリは独立したフォークです。元プロジェクトのリリース、Docker イメージ、デモサイト、Issue は One Gateway のリリースやサポート窓口ではありません。
+> このリポジトリは One API とは独立して保守されています。One API のリリース、Docker イメージ、デモサイト、Issue は One Gateway のリリースやサポート窓口ではありません。
 
 ## 主な特徴
 
@@ -33,7 +33,7 @@ One Gateway は [One API](https://github.com/songquanpeng/one-api) のコミュ�
 
 ## Docker ですぐに起動する
 
-リポジトリのルートで、このフォークのイメージをビルドします。
+リポジトリのルートでイメージをビルドします。
 
 ```sh
 git clone https://github.com/infinmalum/one-gateway.git
@@ -42,9 +42,9 @@ docker build -t one-gateway:local .
 docker run -d --name one-gateway --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" one-gateway:local
 ```
 
-<http://localhost:3000> を開いてください。新しいデータベースでは、ユーザー名 `root`、パスワード `123456` のアカウントが作成されます。**初回ログイン後、直ちにパスワードを変更してください。**マウントしたディレクトリには標準の SQLite データベースが保存されるため、コンテナを更新しても保持してください。外部公開する場合は HTTPS と固定の `SESSION_SECRET` も設定してください。
+<http://localhost:3000> を開いてください。新しいデータベースでは、起動ログに一度だけ出力されるランダムなパスワードで `root` アカウントが作成されます（`INITIAL_ROOT_PASSWORD` で事前指定も可能です）。**初回ログイン後、直ちにパスワードを変更してください。**マウントしたディレクトリには標準の SQLite データベースが保存されるため、コンテナを更新しても保持してください。外部公開する場合は HTTPS と固定の `SESSION_SECRET` も設定してください。
 
-同梱の `docker-compose.yml` はこのフォークをローカルでビルドし、イメージに `one-gateway:local` タグを付けます。既存の環境との互換性のため、データベース名とデータの保存先は変更していません。
+同梱の `docker-compose.yml` はイメージをローカルでビルドし、`one-gateway:local` タグを付けます。データベース名とデータの保存先は `one-gateway` 系の名前に統一されています。以前の `one-api` 系の名前を使う compose ファイルで運用している場合は、切り替え前にデータベースと `data/` ディレクトリを移行してください。
 
 ## ソースからビルドする
 
@@ -74,7 +74,7 @@ go build -o one-gateway .
 | `NODE_TYPE` | マルチノード構成での `master` または `slave`。 |
 | `FRONTEND_BASE_URL` | スレーブノードのフロントエンドリダイレクト先（任意）。 |
 
-マルチノード構成では、すべてのノードを同じ MySQL / PostgreSQL データベースに接続し、同じ `SESSION_SECRET` を共有して、ノードの役割とキャッシュ同期を設定してください。設定の正確な一覧は [`common/config`](common/config) のコードと、元プロジェクトドキュメントの環境変数の節を参照してください。
+マルチノード構成では、すべてのノードを同じ MySQL / PostgreSQL データベースに接続し、同じ `SESSION_SECRET` を共有して、ノードの役割とキャッシュ同期を設定してください。設定の正確な一覧は [`common/config`](common/config) のコードを参照してください。
 
 ログイン後、**チャネル** ページでプロバイダーのキーを登録し、**トークン** ページでアクセストークンを作成します。OpenAI 互換クライアントのエンドポイントを `http://localhost:3000/v1` に設定し、作成したトークンを API キーとして指定してください：
 
@@ -87,8 +87,6 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## ドキュメント
 
-- [管理 API リファレンス](docs/API.md)
-- [リレーアーキテクチャの解説](docs/relay-rewrite-plan.md)
 - [フロントエンドテーマの説明](web/README.md)
 - [TypeScript 移行メモ](docs/typescript-migration.md)
 
@@ -98,8 +96,8 @@ curl http://localhost:3000/v1/chat/completions \
 - 埋め込みアセットを変更する前に、`npm run build --prefix web/default` を実行してください。
 - バックエンドの変更には `go test ./...` を使用します。
 
-フォーク固有の不具合や変更は[このリポジトリの Issue](https://github.com/infinmalum/one-gateway/issues) で報告してください。報告前に、その挙動が元プロジェクトにも存在するか確認をお願いします。
+不具合や変更は[このリポジトリの Issue](https://github.com/infinmalum/one-gateway/issues) で報告してください。
 
 ## 由来とライセンス
 
-One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。このフォークの独自の変更は [Apache License 2.0](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。
+One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。One Gateway の独自の変更は [Apache License 2.0](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。

@@ -20,6 +20,7 @@ import { chatApi, type ChatMCPServer, type ChatSkill } from '../pages/Chat/chatA
 const GlobalChatOptions: React.FC = () => {
   const { t } = useTranslation();
   const [sandbox, setSandbox] = React.useState(false);
+  const [sandboxNetwork, setSandboxNetwork] = React.useState(false);
   const [budget, setBudget] = React.useState(32000);
   const [maxIterations, setMaxIterations] = React.useState(8);
   const [maxFileBytes, setMaxFileBytes] = React.useState(0);
@@ -34,6 +35,7 @@ const GlobalChatOptions: React.FC = () => {
           options[item.key] = item.value;
         });
         setSandbox(options.ChatSandboxEnabled === 'true');
+        setSandboxNetwork(options.ChatSandboxNetworkEnabled === 'true');
         setBudget(Number(options.ChatContextBudgetTokens) || 32000);
         setMaxIterations(Number(options.ChatMaxToolIterations) || 8);
         setMaxFileBytes(Number(options.ChatMaxFileBytes) || 0);
@@ -47,6 +49,7 @@ const GlobalChatOptions: React.FC = () => {
     setLoading(true);
     try {
       await API.put('/api/option/', { key: 'ChatSandboxEnabled', value: String(sandbox) });
+      await API.put('/api/option/', { key: 'ChatSandboxNetworkEnabled', value: String(sandboxNetwork) });
       await API.put('/api/option/', { key: 'ChatContextBudgetTokens', value: String(budget) });
       await API.put('/api/option/', { key: 'ChatMaxToolIterations', value: String(maxIterations) });
       if (maxFileBytes > 0) {
@@ -68,6 +71,14 @@ const GlobalChatOptions: React.FC = () => {
           label={t('chat.sandboxToggle')}
           checked={sandbox}
           onChange={() => setSandbox(!sandbox)}
+        />
+      </Form.Field>
+      <Form.Field>
+        <Checkbox
+          toggle
+          label={t('chat.sandboxNetworkToggle')}
+          checked={sandboxNetwork}
+          onChange={() => setSandboxNetwork(!sandboxNetwork)}
         />
       </Form.Field>
       <Form.Group widths='three'>

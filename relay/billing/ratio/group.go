@@ -2,8 +2,10 @@ package ratio
 
 import (
 	"encoding/json"
-	"github.com/infinmalum/one-gateway/common/logger"
+	"sort"
 	"sync"
+
+	"github.com/infinmalum/one-gateway/common/logger"
 )
 
 var groupRatioLock sync.RWMutex
@@ -14,11 +16,27 @@ var GroupRatio = map[string]float64{
 }
 
 func GroupRatio2JSONString() string {
+	groupRatioLock.RLock()
+	defer groupRatioLock.RUnlock()
 	jsonBytes, err := json.Marshal(GroupRatio)
 	if err != nil {
 		logger.SysError("error marshalling model ratio: " + err.Error())
 	}
 	return string(jsonBytes)
+}
+
+// GroupRatioNames returns the configured group names, sorted. Callers must
+// use this instead of ranging over GroupRatio, which races with option
+// updates that swap the map.
+func GroupRatioNames() []string {
+	groupRatioLock.RLock()
+	defer groupRatioLock.RUnlock()
+	names := make([]string, 0, len(GroupRatio))
+	for name := range GroupRatio {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func UpdateGroupRatioByJSONString(jsonStr string) error {

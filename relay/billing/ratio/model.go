@@ -17,6 +17,7 @@ const (
 )
 
 var modelRatioLock sync.RWMutex
+var completionRatioLock sync.RWMutex
 
 // ModelRatio
 // https://platform.openai.com/docs/models/model-endpoint-compatibility
@@ -682,11 +683,26 @@ func AddNewMissingRatio(oldRatio string) string {
 }
 
 func ModelRatio2JSONString() string {
+	modelRatioLock.RLock()
+	defer modelRatioLock.RUnlock()
 	jsonBytes, err := json.Marshal(ModelRatio)
 	if err != nil {
 		logger.SysError("error marshalling model ratio: " + err.Error())
 	}
 	return string(jsonBytes)
+}
+
+// ModelRatioNames returns the configured model names for read-only iteration.
+// Ranging over ModelRatio directly is a data race: option updates swap the map
+// concurrently with requests.
+func ModelRatioNames() []string {
+	modelRatioLock.RLock()
+	defer modelRatioLock.RUnlock()
+	names := make([]string, 0, len(ModelRatio))
+	for name := range ModelRatio {
+		names = append(names, name)
+	}
+	return names
 }
 
 func UpdateModelRatioByJSONString(jsonStr string) error {
@@ -723,6 +739,8 @@ func GetModelRatio(name string, channelType int) float64 {
 }
 
 func CompletionRatio2JSONString() string {
+	completionRatioLock.RLock()
+	defer completionRatioLock.RUnlock()
 	jsonBytes, err := json.Marshal(CompletionRatio)
 	if err != nil {
 		logger.SysError("error marshalling completion ratio: " + err.Error())
@@ -731,11 +749,15 @@ func CompletionRatio2JSONString() string {
 }
 
 func UpdateCompletionRatioByJSONString(jsonStr string) error {
+	completionRatioLock.Lock()
+	defer completionRatioLock.Unlock()
 	CompletionRatio = make(map[string]float64)
 	return json.Unmarshal([]byte(jsonStr), &CompletionRatio)
 }
 
 func GetCompletionRatio(name string, channelType int) float64 {
+	completionRatioLock.RLock()
+	defer completionRatioLock.RUnlock()
 	if strings.HasPrefix(name, "qwen-") && strings.HasSuffix(name, "-internet") {
 		name = strings.TrimSuffix(name, "-internet")
 	}

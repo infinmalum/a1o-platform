@@ -10,16 +10,16 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data/oneapi:/data
+      - ./data/one-gateway:/data
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=oneapi:123456@tcp(db:3306)/one-api  # 修改此行，或注释掉以使用 SQLite 作为数据库
+      - SQL_DSN=onegateway:${MYSQL_PASSWORD:-onegateway}@tcp(db:3306)/one-gateway  # 修改此行，或注释掉以使用 SQLite 作为数据库
       - REDIS_CONN_STRING=redis://redis
       - SESSION_SECRET=random_string  # 修改为随机字符串
       - TZ=Asia/Shanghai
 #      - NODE_TYPE=slave  # 多机部署时从节点取消注释该行
 #      - SYNC_FREQUENCY=60  # 需要定期从数据库加载数据时取消注释该行
-#      - FRONTEND_BASE_URL=https://openai.justsong.cn  # 多机部署时从节点取消注释该行
+#      - FRONTEND_BASE_URL=https://your-domain.com  # 多机部署时从节点取消注释该行
     depends_on:
       - redis
       - db
@@ -44,7 +44,7 @@ services:
       - '3306:3306'
     environment:
       TZ: Asia/Shanghai   # 设置时区
-      MYSQL_ROOT_PASSWORD: 'OneAPI@justsong' # 设置 root 用户的密码
-      MYSQL_USER: oneapi   # 创建专用用户
-      MYSQL_PASSWORD: '123456'    # 设置专用用户密码
-      MYSQL_DATABASE: one-api   # 自动创建数据库
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-onegateway_root} # 设置 root 用户的密码，生产环境务必通过环境变量覆盖
+      MYSQL_USER: onegateway   # 创建专用用户
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-onegateway}    # 专用用户密码，需与上方 SQL_DSN 一致
+      MYSQL_DATABASE: one-gateway   # 自动创建数据库

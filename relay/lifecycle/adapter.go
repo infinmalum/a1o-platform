@@ -55,9 +55,9 @@ func ForwardAdapter(ctx context.Context, input Request, attempt AdapterAttempt) 
 		var reservation *billing.NativeReservation
 		var err error
 		if input.FixedQuota > 0 {
-			reservation, err = billing.ReserveFixedQuota(ctx, payload, input.FixedQuota)
+			reservation, err = billing.ReserveFixedQuota(ctx, &payload, input.FixedQuota)
 		} else {
-			reservation, err = billing.ReserveNativeQuota(ctx, payload, input.MaxOutputTokens)
+			reservation, err = billing.ReserveNativeQuota(ctx, &payload, input.MaxOutputTokens)
 		}
 		if err != nil {
 			return &HTTPError{Status: http.StatusForbidden, Message: err.Error()}

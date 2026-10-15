@@ -1,8 +1,6 @@
 package bridge
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,34 +16,14 @@ import (
 // convert their body; the upstream stream action is selected by the
 // transport.
 func ChatToGemini(body []byte, model string) ([]byte, error) {
-	if model == "" {
-		return nil, errors.New("model is required")
-	}
-	fields, err := object(body, "model", "messages", "stream", "max_tokens", "max_completion_tokens", "temperature", "top_p", "stop", "tools", "tool_choice")
+	head, err := parseChatRequestHead(body, model, "stop")
 	if err != nil {
 		return nil, err
 	}
-	var stream bool
-	if err := decode(fields["stream"], &stream); err != nil {
-		return nil, errors.New("stream must be boolean")
-	}
-	var messages []json.RawMessage
-	if json.Unmarshal(fields["messages"], &messages) != nil || len(messages) == 0 {
-		return nil, errors.New("messages must be a non-empty array")
-	}
-	var maxTokens, maxCompletion int64
-	if err := decode(fields["max_tokens"], &maxTokens); err != nil || maxTokens < 0 {
-		return nil, errors.New("max_tokens must not be negative")
-	}
-	if err := decode(fields["max_completion_tokens"], &maxCompletion); err != nil || maxCompletion < 0 {
-		return nil, errors.New("max_completion_tokens must not be negative")
-	}
-	if maxTokens > 0 && maxCompletion > 0 && maxTokens != maxCompletion {
-		return nil, errors.New("conflicting Chat token limits")
-	}
+	fields := head.fields
 	config := map[string]any{}
-	if limit := max(maxTokens, maxCompletion); limit > 0 {
-		config["maxOutputTokens"] = limit
+	if head.limit > 0 {
+		config["maxOutputTokens"] = head.limit
 	}
 	for _, pair := range [][2]string{{"temperature", "temperature"}, {"top_p", "topP"}} {
 		if len(fields[pair[0]]) != 0 {
@@ -57,11 +35,11 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 		}
 	}
 	if len(fields["stop"]) != 0 {
-		var single string
-		var stops []string
-		if json.Unmarshal(fields["stop"], &single) == nil {
-			stops = []string{single}
-		} else if json.Unmarshal(fields["stop"], &stops) != nil || len(stops) > 5 {
+		stops, err := chatStopSequences(fields["stop"])
+		if err != nil {
+			return nil, err
+		}
+		if len(stops) > 5 {
 			return nil, errors.New("stop must contain at most five strings")
 		}
 		config["stopSequences"] = stops
@@ -84,7 +62,7 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 	var contents []any
 	var system []string
 	toolNames := map[string]string{}
-	for _, raw := range messages {
+	for _, raw := range head.messages {
 		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id")
 		if err != nil {
 			return nil, fmt.Errorf("invalid Chat message: %w", err)
@@ -124,10 +102,10 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			var calls []json.RawMessage
+			var calls []chatToolCall
 			if len(message["tool_calls"]) != 0 {
-				if json.Unmarshal(message["tool_calls"], &calls) != nil {
-					return nil, errors.New("tool_calls must be an array")
+				if calls, err = chatToolCalls(message["tool_calls"]); err != nil {
+					return nil, err
 				}
 			}
 			if len(calls) > 0 {
@@ -170,34 +148,18 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 	return json.Marshal(request)
 }
 
-func chatToolCallToGemini(call json.RawMessage, toolNames map[string]string) (map[string]any, error) {
-	item, err := object(call, "id", "type", "function")
+func chatToolCallToGemini(call chatToolCall, toolNames map[string]string) (map[string]any, error) {
+	input, err := chatToolArgsObject(call.Arguments)
 	if err != nil {
 		return nil, err
 	}
-	var id, kind string
-	_ = json.Unmarshal(item["id"], &id)
-	_ = json.Unmarshal(item["type"], &kind)
-	function, err := object(item["function"], "name", "arguments")
-	if err != nil {
-		return nil, err
+	if existing, ok := toolNames[call.ID]; ok && existing != call.Name {
+		return nil, errors.New("tool_call id maps to conflicting function names")
 	}
-	var name, arguments string
-	_ = json.Unmarshal(function["name"], &name)
-	_ = json.Unmarshal(function["arguments"], &arguments)
-	var input map[string]any
-	if name == "" || kind != "function" || json.Unmarshal([]byte(arguments), &input) != nil || input == nil {
-		return nil, errors.New("function tool arguments must be a JSON object")
-	}
-	if id != "" {
-		if existing, ok := toolNames[id]; ok && existing != name {
-			return nil, errors.New("tool_call id maps to conflicting function names")
-		}
-		toolNames[id] = name
-	}
-	functionCall := map[string]any{"name": name, "args": input}
-	if id != "" {
-		functionCall["id"] = id
+	toolNames[call.ID] = call.Name
+	functionCall := map[string]any{"name": call.Name, "args": input}
+	if call.ID != "" {
+		functionCall["id"] = call.ID
 	}
 	return map[string]any{"functionCall": functionCall}, nil
 }
@@ -279,26 +241,16 @@ func chatUserPartsToGemini(raw json.RawMessage) ([]map[string]any, error) {
 }
 
 func geminiTextParts(raw json.RawMessage) ([]map[string]any, error) {
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
+	if text, ok := chatContentString(raw); ok {
 		return []map[string]any{{"text": text}}, nil
 	}
-	var rawParts []json.RawMessage
-	if json.Unmarshal(raw, &rawParts) != nil || len(rawParts) == 0 {
+	texts, err := chatTextPartList(raw)
+	if err != nil || len(texts) == 0 {
 		return nil, errors.New("Gemini conversion requires text content")
 	}
-	var parts []map[string]any
-	for _, rawPart := range rawParts {
-		part, err := object(rawPart, "type", "text")
-		if err != nil {
-			return nil, err
-		}
-		var kind, value string
-		_ = json.Unmarshal(part["type"], &kind)
-		if kind != "text" || len(part) != 2 || json.Unmarshal(part["text"], &value) != nil {
-			return nil, errors.New("Gemini conversion supports only Chat text parts")
-		}
-		parts = append(parts, map[string]any{"text": value})
+	parts := make([]map[string]any, 0, len(texts))
+	for _, text := range texts {
+		parts = append(parts, map[string]any{"text": text})
 	}
 	return parts, nil
 }
@@ -308,32 +260,29 @@ func geminiTextParts(raw json.RawMessage) ([]map[string]any, error) {
 // Function calls become tool calls with the upstream call ID when present;
 // thought parts have no Chat representation and fail.
 func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, "candidates", "promptFeedback", "usageMetadata", "modelVersion", "responseId", "modelStatus")
+	fields, err := object(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
 	var id string
 	_ = json.Unmarshal(fields["responseId"], &id)
 	if id == "" {
-		var randomID [12]byte
-		if _, err := rand.Read(randomID[:]); err != nil {
-			return nil, native.Usage{}, errors.New("failed to create Chat response ID")
+		generated, err := newStreamID(chatCompletionIDPrefix)
+		if err != nil {
+			return nil, native.Usage{}, err
 		}
-		id = "chatcmpl_" + hex.EncodeToString(randomID[:])
+		id = generated
 	}
 	var rawCandidates []json.RawMessage
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := object(rawCandidates[0], "content", "finishReason", "safetyRatings", "citationMetadata", "tokenCount", "groundingAttributions", "groundingMetadata", "avgLogprobs", "logprobsResult", "urlContextMetadata", "index", "finishMessage")
+	candidate, err := object(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	if len(candidate["index"]) != 0 {
-		var index int
-		if json.Unmarshal(candidate["index"], &index) != nil || index != 0 {
-			return nil, native.Usage{}, errors.New("Gemini candidate index must be zero")
-		}
+	if err := geminiCandidateIndex(candidate["index"]); err != nil {
+		return nil, native.Usage{}, err
 	}
 	var finish string
 	_ = json.Unmarshal(candidate["finishReason"], &finish)
@@ -404,18 +353,7 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	if cached > 0 {
 		result["usage"].(map[string]any)["prompt_tokens_details"] = map[string]int64{"cached_tokens": cached}
 	}
-	metadata := map[string]json.RawMessage{"usageMetadata": fields["usageMetadata"]}
-	for _, name := range []string{"modelVersion", "modelStatus", "promptFeedback"} {
-		if len(fields[name]) != 0 {
-			metadata[name] = fields[name]
-		}
-	}
-	for name, value := range candidate {
-		if name != "content" && name != "finishReason" {
-			metadata[name] = value
-		}
-	}
-	result["provider_metadata"] = map[string]any{"gemini": metadata}
+	result["provider_metadata"] = map[string]any{"gemini": geminiProviderMetadata(fields, candidate)}
 	converted, err := json.Marshal(result)
 	return converted, usage, err
 }

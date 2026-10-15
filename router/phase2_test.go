@@ -336,7 +336,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	if err := db.Create(&proxyChannel).Error; err != nil {
 		t.Fatal(err)
 	}
-	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/oneapi/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
+	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/onegateway/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
 	proxyRequest.Header.Set("Authorization", "Bearer sk-phase2-key")
 	proxyResponse := httptest.NewRecorder()
 	router.ServeHTTP(proxyResponse, proxyRequest)

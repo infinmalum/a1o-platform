@@ -202,7 +202,7 @@ func TestGeminiToChatGeneratesIDWhenUpstreamOmitsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(converted), `"id":"chatcmpl_`) || !strings.Contains(string(converted), `"finish_reason":"length"`) || usage.Input != 2 || usage.Output != 1 {
+	if !strings.Contains(string(converted), `"id":"chatcmpl-`) || !strings.Contains(string(converted), `"finish_reason":"length"`) || usage.Input != 2 || usage.Output != 1 {
 		t.Fatalf("Gemini fallback ID or finish reason failed: %s usage %+v", converted, usage)
 	}
 }

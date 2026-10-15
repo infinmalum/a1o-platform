@@ -8,5 +8,5 @@ var UsingSQLite = false
 var UsingPostgreSQL = false
 var UsingMySQL = false
 
-var SQLitePath = "one-api.db"
+var SQLitePath = "one-gateway.db"
 var SQLiteBusyTimeout = env.Int("SQLITE_BUSY_TIMEOUT", 3000)

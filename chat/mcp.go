@@ -3,16 +3,20 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/sync/singleflight"
 
+	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/model"
 )
 
@@ -23,12 +27,19 @@ const (
 	mcpMaxNameLength  = 64
 )
 
+// mcpFailureBackoff is how long a failed connection is remembered before the
+// next retry, so a dead server does not stall every turn again.
+const mcpFailureBackoff = 30 * time.Second
+
 // MCPManager maintains one MCP client session per configured server, keyed by
-// the row's update time so edits reconnect lazily. Failing servers are
-// skipped; they never block a turn.
+// the row's update time so edits reconnect lazily. Connections are dialed
+// outside the manager lock and collapsed per server version, so one slow or
+// broken server only affects its own tools; recent failures fail fast.
 type MCPManager struct {
 	mu       sync.Mutex
 	sessions map[string]*mcpSession
+	failures map[string]mcpFailure
+	connects singleflight.Group
 }
 
 type mcpSession struct {
@@ -36,9 +47,17 @@ type mcpSession struct {
 	tools   []*mcp.Tool
 }
 
+type mcpFailure struct {
+	err      error
+	failedAt time.Time
+}
+
 // NewMCPManager creates an empty manager.
 func NewMCPManager() *MCPManager {
-	return &MCPManager{sessions: map[string]*mcpSession{}}
+	return &MCPManager{
+		sessions: map[string]*mcpSession{},
+		failures: map[string]mcpFailure{},
+	}
 }
 
 // MCPTool couples a server's tool with the virtual name the model sees.
@@ -99,53 +118,170 @@ func (m *MCPManager) CallTool(ctx context.Context, server *model.ChatMCPServer, 
 }
 
 // ensure connects (or reuses) the session for one server and caches its tool
-// listing. Callers must treat err as "this server is unavailable".
+// listing. Concurrent connects for the same server version collapse into one
+// dial, and a recent failure is returned without touching the network.
+// Callers must treat err as "this server is unavailable".
 func (m *MCPManager) ensure(ctx context.Context, server *model.ChatMCPServer) (*mcpSession, error) {
 	key := fmt.Sprintf("%d@%d", server.Id, server.UpdatedTime)
-	prefix := fmt.Sprintf("%d@", server.Id)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if entry, ok := m.sessions[key]; ok {
-		return entry, nil
-	}
-	for existing, entry := range m.sessions {
-		if strings.HasPrefix(existing, prefix) {
-			_ = entry.session.Close()
-			delete(m.sessions, existing)
+	if entry, failure, ok := m.cacheLookup(key); ok {
+		if entry != nil {
+			return entry, nil
 		}
+		return nil, failure
 	}
-	transport, err := transportFor(server)
+	result, err, _ := m.connects.Do(key, func() (any, error) {
+		// The flight may have started after a previous one finished; serve
+		// its outcome instead of dialing again.
+		if entry, failure, ok := m.cacheLookup(key); ok {
+			if entry != nil {
+				return entry, nil
+			}
+			return nil, failure
+		}
+		return m.connect(ctx, server, key)
+	})
 	if err != nil {
 		return nil, err
 	}
+	return result.(*mcpSession), nil
+}
+
+// cacheLookup checks the session and failure caches under the manager lock.
+// ok is false when the key needs a fresh dial; otherwise exactly one of
+// entry/failure is set.
+func (m *MCPManager) cacheLookup(key string) (entry *mcpSession, failure error, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if entry, cached := m.sessions[key]; cached {
+		return entry, nil, true
+	}
+	if failure, cached := m.failures[key]; cached {
+		if time.Since(failure.failedAt) < mcpFailureBackoff {
+			return nil, failure.err, true
+		}
+		delete(m.failures, key)
+	}
+	return nil, nil, false
+}
+
+// connect dials one server version. It runs outside the manager lock; only
+// cache updates take the lock. The dial context is detached from the calling
+// turn so a cancelled turn cannot abort a connection other turns are waiting
+// on; the connect/list timeouts bound the work.
+func (m *MCPManager) connect(ctx context.Context, server *model.ChatMCPServer, key string) (*mcpSession, error) {
+	prefix := fmt.Sprintf("%d@", server.Id)
+	transport, err := transportFor(server)
+	if err != nil {
+		m.recordFailure(key, err)
+		return nil, err
+	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "one-gateway-chat", Version: "1.0"}, nil)
-	connectCtx, cancelConnect := context.WithTimeout(ctx, mcpConnectTimeout)
+	dialCtx := context.WithoutCancel(ctx)
+	connectCtx, cancelConnect := context.WithTimeout(dialCtx, mcpConnectTimeout)
 	defer cancelConnect()
 	session, err := client.Connect(connectCtx, transport, nil)
 	if err != nil {
-		return nil, fmt.Errorf("MCP 服务器 %s 连接失败: %w", server.Name, err)
+		err = fmt.Errorf("MCP 服务器 %s 连接失败: %w", server.Name, err)
+		m.recordFailure(key, err)
+		return nil, err
 	}
-	listCtx, cancelList := context.WithTimeout(ctx, mcpListTimeout)
+	listCtx, cancelList := context.WithTimeout(dialCtx, mcpListTimeout)
 	defer cancelList()
 	listing, err := session.ListTools(listCtx, nil)
 	if err != nil {
 		_ = session.Close()
-		return nil, fmt.Errorf("MCP 服务器 %s 工具列表失败: %w", server.Name, err)
+		err = fmt.Errorf("MCP 服务器 %s 工具列表失败: %w", server.Name, err)
+		m.recordFailure(key, err)
+		return nil, err
 	}
 	entry := &mcpSession{session: session, tools: listing.Tools}
+	m.mu.Lock()
 	m.sessions[key] = entry
+	var stale []*mcpSession
+	for existing, old := range m.sessions {
+		if existing != key && strings.HasPrefix(existing, prefix) {
+			stale = append(stale, old)
+			delete(m.sessions, existing)
+		}
+	}
+	delete(m.failures, key)
+	m.mu.Unlock()
+	for _, old := range stale {
+		_ = old.session.Close()
+	}
 	return entry, nil
+}
+
+// recordFailure remembers a connection failure for the backoff window and
+// drops entries that already expired so the cache stays bounded.
+func (m *MCPManager) recordFailure(key string, err error) {
+	now := time.Now()
+	m.mu.Lock()
+	for existing, failure := range m.failures {
+		if now.Sub(failure.failedAt) >= mcpFailureBackoff {
+			delete(m.failures, existing)
+		}
+	}
+	m.failures[key] = mcpFailure{err: err, failedAt: now}
+	m.mu.Unlock()
+}
+
+// mcpEnvAllowlist is the set of environment variables stdio MCP servers may
+// inherit from the gateway. It deliberately excludes anything that can carry
+// secrets (credential master keys, SQL DSN, session secret, proxy
+// credentials); admins who need more can pass extra vars through the server's
+// own Env field.
+var mcpEnvAllowlist = []string{
+	"PATH",
+	"HOME",
+	"TMPDIR",
+	"LANG",
+	"LC_ALL",
+	"TZ",
+	"SSL_CERT_FILE",
+	"SSL_CERT_DIR",
+	"NODE_EXTRA_CA_CERTS",
+}
+
+// mcpChildEnv builds the filtered environment for a stdio MCP child process.
+func mcpChildEnv() []string {
+	var env []string
+	for _, name := range mcpEnvAllowlist {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+	return env
 }
 
 // transportFor builds the MCP transport for one server row.
 func transportFor(server *model.ChatMCPServer) (mcp.Transport, error) {
 	switch server.Transport {
 	case model.ChatMCPServerStdio:
+		// A stdio server launches an administrator-configured command on the
+		// gateway host. Launches are gated behind ChatMCPStdioEnabled and the
+		// ChatMCPStdioAllowlist, the command resolves through LookPath, and
+		// arguments pass as argv — never through a shell.
+		if !config.ChatMCPStdioEnabled {
+			return nil, errors.New("stdio MCP 服务器已被禁用：请在管理后台开启 ChatMCPStdioEnabled 后再配置命令行服务器")
+		}
 		if strings.TrimSpace(server.Command) == "" {
 			return nil, fmt.Errorf("MCP 服务器 %s 缺少命令", server.Name)
 		}
-		cmd := exec.Command(server.Command, decodeStringList(server.Args)...)
-		cmd.Env = append(os.Environ(), decodeStringList(server.Env)...)
+		resolved, err := exec.LookPath(strings.TrimSpace(server.Command))
+		if err != nil {
+			return nil, fmt.Errorf("MCP 服务器 %s 的命令不可用: %w", server.Name, err)
+		}
+		if !mcpStdioCommandAllowed(resolved) {
+			return nil, fmt.Errorf("MCP 服务器 %s 的命令 %q 不在 ChatMCPStdioAllowlist 允许列表中", server.Name, resolved)
+		}
+		// resolved is an absolute path from LookPath; the child is launched
+		// from an argv list without any shell interpretation.
+		cmd := &exec.Cmd{
+			Path: resolved,
+			Args: append([]string{resolved}, decodeStringList(server.Args)...),
+			Env:  append(mcpChildEnv(), decodeStringList(server.Env)...),
+		}
 		return &mcp.CommandTransport{Command: cmd}, nil
 	case model.ChatMCPServerHTTP:
 		if strings.TrimSpace(server.URL) == "" {
@@ -159,6 +295,21 @@ func transportFor(server *model.ChatMCPServer) (mcp.Transport, error) {
 	default:
 		return nil, fmt.Errorf("未知的 MCP 传输类型 %q", server.Transport)
 	}
+}
+
+// mcpStdioCommandAllowed reports whether the resolved stdio server command is
+// permitted by the ChatMCPStdioAllowlist. Entries are comma-separated
+// executable names matched against the resolved path's base name; "*" allows
+// every command and an empty list allows none.
+func mcpStdioCommandAllowed(resolved string) bool {
+	base := filepath.Base(resolved)
+	for _, entry := range strings.Split(config.ChatMCPStdioAllowlist, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "*" || entry == base {
+			return true
+		}
+	}
+	return false
 }
 
 // headerTransport attaches configured headers to every request.
