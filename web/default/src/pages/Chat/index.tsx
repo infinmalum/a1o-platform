@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Confirm, Icon, Input, List, Modal } from 'semantic-ui-react';
+import { Button, Confirm, Dropdown, Icon, Input, List, Modal } from 'semantic-ui-react';
 import ChatMessageList, { type DisplayMessage } from './ChatMessageList';
 import ChatComposer from './ChatComposer';
 import ChatSettingsModal, { type ChatSettingsValue } from './ChatSettingsModal';
@@ -28,6 +28,9 @@ const Chat = () => {
   const [skills, setSkills] = React.useState<ChatSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([]);
   const [models, setModels] = React.useState<string[]>([]);
+  // The model for the next created session; existing sessions carry their
+  // own model, which the header picker rewrites directly.
+  const [defaultModel, setDefaultModel] = React.useState('');
   const [bootstrap, setBootstrap] = React.useState<ChatBootstrap | null>(null);
   const [streaming, setStreaming] = React.useState(false);
   const [streamError, setStreamError] = React.useState('');
@@ -113,7 +116,7 @@ const Chat = () => {
   }, [reloadSessions]);
 
   const createSession = async () => {
-    const fallback = models[0] || 'gpt-4o-mini';
+    const fallback = defaultModel || models[0] || 'gpt-4o-mini';
     try {
       const session = await chatApi.createSession({ model: fallback });
       await reloadSessions();
@@ -285,6 +288,26 @@ const Chat = () => {
     });
   };
 
+  const changeModel = async (model: string) => {
+    if (!model) return;
+    if (!activeSession) {
+      setDefaultModel(model);
+      return;
+    }
+    try {
+      // The turn runner reads the session model fresh from the database, so
+      // rewriting it here takes effect on the very next message.
+      const updated = await chatApi.updateSession(activeSession.id, {
+        ...activeSession,
+        model,
+      });
+      setActiveSession(updated);
+      await reloadSessions();
+    } catch {
+      // interceptor toasts the error
+    }
+  };
+
   const stop = () => {
     abortRef.current?.abort();
   };
@@ -436,8 +459,19 @@ const Chat = () => {
             }}
           >
             <strong>{activeSession?.title || t('chat.title')}</strong>
-            <span style={{ color: '#888', fontSize: '0.85em' }}>
-              {activeSession ? activeSession.model : ''}
+            <span style={{ minWidth: 200 }}>
+              <Dropdown
+                search
+                selection
+                scrolling
+                fluid
+                size='small'
+                placeholder={t('chat.model')}
+                disabled={models.length === 0}
+                options={models.map((model) => ({ key: model, text: model, value: model }))}
+                value={activeSession ? activeSession.model : defaultModel || models[0] || ''}
+                onChange={(event, data) => changeModel(String(data.value))}
+              />
             </span>
           </div>
           <ChatMessageList messages={messages} emptyHint={t('chat.emptyHint')} />

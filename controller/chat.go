@@ -441,6 +441,26 @@ func applyChatSkillPayload(skill *model.ChatSkill, payload *chatSkillPayload) er
 	return skill.SetToolList(payload.Tools)
 }
 
+// chatSkillViews projects skills for the API with their stored JSON columns
+// decoded; the result is never nil so empty lists serialize as [].
+func chatSkillViews(skills []*model.ChatSkill) []model.ChatSkillView {
+	views := make([]model.ChatSkillView, 0, len(skills))
+	for _, skill := range skills {
+		views = append(views, skill.View())
+	}
+	return views
+}
+
+// chatMCPServerViews projects MCP servers for the API with their stored JSON
+// columns decoded; the result is never nil so empty lists serialize as [].
+func chatMCPServerViews(servers []*model.ChatMCPServer) []model.ChatMCPServerView {
+	views := make([]model.ChatMCPServerView, 0, len(servers))
+	for _, server := range servers {
+		views = append(views, server.View())
+	}
+	return views
+}
+
 // GetChatSkills lists global and personal skills for the caller.
 func GetChatSkills(c *gin.Context) {
 	skills, err := model.ListAvailableSkills(c.GetInt(ctxkey.Id))
@@ -448,7 +468,7 @@ func GetChatSkills(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skills})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": chatSkillViews(skills)})
 }
 
 // CreateChatSkill creates a personal skill.
@@ -467,7 +487,7 @@ func CreateChatSkill(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill.View()})
 }
 
 // UpdateChatSkill rewrites one personal skill.
@@ -496,7 +516,7 @@ func UpdateChatSkill(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill.View()})
 }
 
 // DeleteChatSkill removes one personal skill.
@@ -520,7 +540,7 @@ func GetGlobalChatSkills(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skills})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": chatSkillViews(skills)})
 }
 
 // CreateGlobalChatSkill creates a global skill.
@@ -539,7 +559,7 @@ func CreateGlobalChatSkill(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill.View()})
 }
 
 // UpdateGlobalChatSkill rewrites one global skill.
@@ -567,7 +587,7 @@ func UpdateGlobalChatSkill(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": skill.View()})
 }
 
 // DeleteGlobalChatSkill removes one global skill.
@@ -662,7 +682,7 @@ func GetChatMCPServers(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": servers})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": chatMCPServerViews(servers)})
 }
 
 // CreateChatMCPServer creates a global MCP server.
@@ -681,7 +701,7 @@ func CreateChatMCPServer(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": server})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": server.View()})
 }
 
 // UpdateChatMCPServer rewrites one global MCP server.
@@ -709,7 +729,7 @@ func UpdateChatMCPServer(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": server})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": server.View()})
 }
 
 // DeleteChatMCPServer removes one global MCP server.
@@ -740,7 +760,7 @@ func GetChatUserMCPServers(c *gin.Context) {
 			owned = append(owned, server)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": owned})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": chatMCPServerViews(owned)})
 }
 
 // CreateChatUserMCPServer creates a personal HTTP MCP server.
@@ -759,7 +779,7 @@ func CreateChatUserMCPServer(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": server})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": server.View()})
 }
 
 // UpdateChatUserMCPServer rewrites one personal HTTP MCP server.
@@ -788,7 +808,7 @@ func UpdateChatUserMCPServer(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": server})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": server.View()})
 }
 
 // DeleteChatUserMCPServer removes one personal MCP server.

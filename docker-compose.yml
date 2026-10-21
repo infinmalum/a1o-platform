@@ -17,6 +17,7 @@ services:
       - REDIS_CONN_STRING=redis://redis
       - SESSION_SECRET=random_string  # 修改为随机字符串
       - TZ=Asia/Shanghai
+#      - INITIAL_ROOT_PASSWORD=change-me  # 不设置时首次打开控制台会进入 /setup 向导创建管理员；无头部署必须设置该变量
 #      - NODE_TYPE=slave  # 多机部署时从节点取消注释该行
 #      - SYNC_FREQUENCY=60  # 需要定期从数据库加载数据时取消注释该行
 #      - FRONTEND_BASE_URL=https://your-domain.com  # 多机部署时从节点取消注释该行

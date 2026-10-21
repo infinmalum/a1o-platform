@@ -34,7 +34,8 @@ const SkillPane: React.FC = () => {
 
   const reload = React.useCallback(async () => {
     try {
-      setSkills(await chatApi.listSkills());
+      const list = await chatApi.listSkills();
+      setSkills(Array.isArray(list) ? list : []);
     } catch {
       // interceptor toasts the error
     }
@@ -220,7 +221,8 @@ const UserMCPPane: React.FC = () => {
 
   const reload = React.useCallback(async () => {
     try {
-      setServers(await chatApi.listUserMCPServers());
+      const list = await chatApi.listUserMCPServers();
+      setServers(Array.isArray(list) ? list : []);
     } catch {
       // interceptor toasts the error
     }

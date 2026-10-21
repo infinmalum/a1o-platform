@@ -21,22 +21,29 @@ import (
 var DB *gorm.DB
 var LOG_DB *gorm.DB
 
+// HasAnyUser reports whether the installation already has an account; a
+// fresh database routes the operator through the /setup wizard instead.
+func HasAnyUser() (bool, error) {
+	var count int64
+	err := DB.Model(&User{}).Count(&count).Error
+	return count > 0, err
+}
+
 func CreateRootAccountIfNeed() error {
 	var user User
 	//if user.Status != util.UserStatusEnabled {
 	if err := DB.First(&user).Error; err != nil {
 		password := config.InitialRootPassword
-		if password != "" {
-			logger.SysLog("no user exists, creating root user with the password from INITIAL_ROOT_PASSWORD")
-		} else {
-			// A publicly known default password is a takeover vector on
-			// internet-facing deployments, so mint a per-deployment one and
-			// surface it exactly once; the operator must rotate it after
-			// first login.
-			password = random.GetRandomString(20)
-			logger.SysLog("no user exists, creating a root user for you: username is root, and the generated password is on the next line — log in and change it immediately")
-			logger.SysLog("initial root password: " + password)
+		if password == "" {
+			// Without INITIAL_ROOT_PASSWORD the operator picks the root
+			// password through the /setup wizard on the first console
+			// visit. Headless deployments that never open a browser must
+			// set the variable; minting a password here and burying it in
+			// the logs serves nobody.
+			logger.SysLog("no user exists: open the console to create the root account via /setup, or set INITIAL_ROOT_PASSWORD for headless bootstrap")
+			return nil
 		}
+		logger.SysLog("no user exists, creating root user with the password from INITIAL_ROOT_PASSWORD")
 		hashedPassword, err := common.Password2Hash(password)
 		if err != nil {
 			return err

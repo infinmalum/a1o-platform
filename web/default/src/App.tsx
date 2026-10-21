@@ -1,10 +1,12 @@
 import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import Loading from './components/Loading';
+import ErrorBoundary from './components/ErrorBoundary';
 import User from './pages/User';
 import { PrivateRoute } from './components/PrivateRoute';
 import RegisterForm from './components/RegisterForm';
 import LoginForm from './components/LoginForm';
+import SetupForm from './components/SetupForm';
 import NotFound from './pages/NotFound';
 import Setting from './pages/Setting';
 import EditUser from './pages/User/EditUser';
@@ -71,6 +73,12 @@ function App() {
         // Check data exists
         localStorage.setItem('status', JSON.stringify(data));
         statusDispatch({ type: 'set', payload: data });
+        // A fresh installation routes every page into the setup wizard;
+        // the backend re-checks before the setup endpoint does anything.
+        if (data.initialized === false && window.location.pathname !== '/setup') {
+          navigate('/setup', { replace: true });
+          return;
+        }
         localStorage.setItem('system_name', data.system_name);
         localStorage.setItem('logo', data.logo);
         localStorage.setItem('footer_html', data.footer_html);
@@ -115,7 +123,7 @@ function App() {
   }, []);
 
   return (
-    <>
+    <ErrorBoundary>
       <ModeChooser open={modeChooserOpen} onChoose={chooseMode} />
       <Routes>
       <Route
@@ -273,6 +281,14 @@ function App() {
         }
       />
       <Route
+        path='/setup'
+        element={
+          <Suspense fallback={<Loading></Loading>}>
+            <SetupForm />
+          </Suspense>
+        }
+      />
+      <Route
         path='/register'
         element={
           <Suspense fallback={<Loading></Loading>}>
@@ -386,7 +402,7 @@ function App() {
       />
       <Route path='*' element={<NotFound />} />
     </Routes>
-    </>
+    </ErrorBoundary>
   );
 }
 

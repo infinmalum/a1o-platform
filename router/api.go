@@ -15,6 +15,7 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	{
 		apiRouter.GET("/status", controller.GetStatus)
+		apiRouter.POST("/setup", middleware.CriticalRateLimit(), controller.Setup)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/dashboard/business", middleware.AdminAuth(), controller.GetBusinessDashboard)
 		apiRouter.GET("/notice", controller.GetNotice)

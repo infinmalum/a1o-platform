@@ -48,7 +48,14 @@ func main() {
 	// Seal user-supplied MCP credentials (Env/Headers) with the same master
 	// key infrastructure as upstream account credentials.
 	model.CredentialSealerFactory = func() (model.CredentialSealer, error) {
-		return credential.DefaultStore()
+		store, err := credential.DefaultStore()
+		if store == nil {
+			// A nil *Store must become a nil interface: the typed-nil would
+			// slip past the nil checks in model.credentialSealer and panic
+			// on first use when UPSTREAM_CREDENTIAL_KEYS is unset.
+			return nil, err
+		}
+		return store, err
 	}
 
 	var err error

@@ -136,7 +136,8 @@ const GlobalMCPPane: React.FC = () => {
 
   const reload = React.useCallback(async () => {
     try {
-      setServers(await chatApi.adminListMCPServers());
+      const list = await chatApi.adminListMCPServers();
+      setServers(Array.isArray(list) ? list : []);
     } catch {
       // interceptor toasts the error
     }
@@ -311,7 +312,8 @@ const GlobalSkillPane: React.FC = () => {
 
   const reload = React.useCallback(async () => {
     try {
-      setSkills(await chatApi.adminListSkills());
+      const list = await chatApi.adminListSkills();
+      setSkills(Array.isArray(list) ? list : []);
     } catch {
       // interceptor toasts the error
     }

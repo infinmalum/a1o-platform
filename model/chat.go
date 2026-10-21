@@ -115,6 +115,70 @@ type ChatMCPServer struct {
 	UpdatedTime int64   `json:"updated_time" gorm:"bigint"`
 }
 
+// decodeJSONColumn decodes one stored JSON column; empty and malformed
+// values degrade to the zero value instead of failing the reader.
+func decodeJSONColumn[T any](raw *string) (decoded T) {
+	if raw == nil || *raw == "" {
+		return
+	}
+	_ = json.Unmarshal([]byte(*raw), &decoded)
+	return
+}
+
+// ChatSkillView is the API projection of ChatSkill with the stored tool list
+// decoded, so clients receive a real array instead of a JSON-encoded string.
+type ChatSkillView struct {
+	Id           int      `json:"id"`
+	OwnerId      int      `json:"owner_id"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Instructions string   `json:"instructions"`
+	Tools        []string `json:"tools"`
+	Enabled      bool     `json:"enabled"`
+}
+
+func (s *ChatSkill) View() ChatSkillView {
+	return ChatSkillView{
+		Id:           s.Id,
+		OwnerId:      s.OwnerId,
+		Name:         s.Name,
+		Description:  s.Description,
+		Instructions: s.Instructions,
+		Tools:        decodeJSONColumn[[]string](s.Tools),
+		Enabled:      s.Enabled,
+	}
+}
+
+// ChatMCPServerView is the API projection of ChatMCPServer with the stored
+// Args/Env/Headers JSON columns decoded into real values.
+type ChatMCPServerView struct {
+	Id        int               `json:"id"`
+	OwnerId   int               `json:"owner_id"`
+	Name      string            `json:"name"`
+	Transport string            `json:"transport"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args"`
+	Env       map[string]string `json:"env"`
+	URL       string            `json:"url"`
+	Headers   map[string]string `json:"headers"`
+	Enabled   bool              `json:"enabled"`
+}
+
+func (s *ChatMCPServer) View() ChatMCPServerView {
+	return ChatMCPServerView{
+		Id:        s.Id,
+		OwnerId:   s.OwnerId,
+		Name:      s.Name,
+		Transport: s.Transport,
+		Command:   s.Command,
+		Args:      decodeJSONColumn[[]string](s.Args),
+		Env:       decodeJSONColumn[map[string]string](s.Env),
+		URL:       s.URL,
+		Headers:   decodeJSONColumn[map[string]string](s.Headers),
+		Enabled:   s.Enabled,
+	}
+}
+
 func (s *ChatSession) SkillIdList() []int {
 	if s.SkillIds == nil || *s.SkillIds == "" {
 		return nil
