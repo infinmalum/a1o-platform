@@ -85,6 +85,16 @@ func GetCompatibleChannelMeta(channelType int) (string, []string) {
 		return "alibailian", alibailian.ModelList
 	case channeltype.GeminiOpenAICompatible:
 		return "geminiv2", geminiv2.ModelList
+	case channeltype.Zhipu:
+		// Retired native adapters: the vendor model lists went stale, so no
+		// presets ship here — upstreams are fetched live instead.
+		return "zhipu", nil
+	case channeltype.Tencent:
+		return "hunyuan", nil
+	case channeltype.Cohere:
+		return "cohere", nil
+	case channeltype.Ollama:
+		return "ollama", nil
 	default:
 		return "openai", ModelList
 	}

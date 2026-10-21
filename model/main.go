@@ -189,6 +189,7 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&ChatMCPServer{}); err != nil {
 		return err
 	}
+	MigrateChannelTypes()
 	return nil
 }
 

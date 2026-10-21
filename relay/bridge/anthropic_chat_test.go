@@ -94,7 +94,35 @@ func TestAnthropicToChatResponsePreservesUsageAndRejectsLossyFeatures(t *testing
 	if _, _, err := ChatToAnthropicResponse([]byte(strings.Replace(string(input), `"finish_reason":"tool_calls"`, `"finish_reason":"content_filter"`, 1)), "client-model"); err == nil {
 		t.Fatal("content filter was converted to a refusal")
 	}
-	if _, _, err := ChatToAnthropicResponse([]byte(strings.Replace(string(input), `,"usage":{"prompt_tokens":8,"completion_tokens":3,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":2}}`, ``, 1)), "client-model"); err == nil {
-		t.Fatal("Chat response without usage produced an invalid Messages response")
+	// A response without usage still converts; billing falls back to the
+	// reserved quota because the reported usage is marked unseen.
+	withoutUsage, usage, err := ChatToAnthropicResponse([]byte(strings.Replace(string(input), `,"usage":{"prompt_tokens":8,"completion_tokens":3,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":2}}`, ``, 1)), "client-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Seen || usage.Input != 0 || usage.Output != 0 {
+		t.Fatalf("usage-less response claimed provider usage: %+v", usage)
+	}
+	if !strings.Contains(string(withoutUsage), `"input_tokens":0`) {
+		t.Fatalf("usage-less response lost zero usage: %s", withoutUsage)
+	}
+	// DeepSeek-compatible providers report cache hits as dedicated fields.
+	deepSeek, usage, err := ChatToAnthropicResponse([]byte(`{"id":"chat_1","object":"chat.completion","system_fingerprint":"fp_1","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok","reasoning_content":"chain"}}],"usage":{"prompt_tokens":8,"completion_tokens":3,"prompt_cache_hit_tokens":5,"prompt_cache_miss_tokens":3}}`), "client-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !usage.Seen || usage.Input != 8 || usage.Output != 3 {
+		t.Fatalf("DeepSeek usage was not preserved: %+v", usage)
+	}
+	if !strings.Contains(string(deepSeek), `"cache_read_input_tokens":5`) || !strings.Contains(string(deepSeek), `"input_tokens":3`) {
+		t.Fatalf("DeepSeek cache-hit tokens were not mapped: %s", deepSeek)
+	}
+	// An empty completion converts to an empty content array.
+	empty, _, err := ChatToAnthropicResponse([]byte(`{"id":"chat_1","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":1,"completion_tokens":0}}`), "client-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(empty), `"content":[]`) {
+		t.Fatalf("empty completion did not convert to an empty content array: %s", empty)
 	}
 }

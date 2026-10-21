@@ -54,5 +54,10 @@ const (
 	OpenAICompatible
 	GeminiOpenAICompatible
 	TypeSafe
+	// OpenAIResponses targets upstreams that serve the Responses API
+	// (/v1/responses) rather than Chat Completions; it shares the OpenAI
+	// family wire but is routed to its own channel kind so admins can pick
+	// the right endpoint per upstream.
+	OpenAIResponses
 	Dummy
 )

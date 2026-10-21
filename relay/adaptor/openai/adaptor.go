@@ -60,6 +60,20 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 		return alibailian.GetRequestURL(meta)
 	case channeltype.GeminiOpenAICompatible:
 		return geminiv2.GetRequestURL(meta)
+	case channeltype.Zhipu:
+		// https://open.bigmodel.cn/api/paas/v4/chat/completions
+		return GetFullRequestURL(
+			meta.BaseURL,
+			strings.Replace(meta.RequestURLPath, "/v1/", "/api/paas/v4/", 1),
+			meta.ChannelType,
+		), nil
+	case channeltype.Cohere:
+		// https://api.cohere.ai/compatibility/v1/chat/completions
+		return GetFullRequestURL(
+			meta.BaseURL,
+			strings.Replace(meta.RequestURLPath, "/v1/", "/compatibility/v1/", 1),
+			meta.ChannelType,
+		), nil
 	default:
 		return GetFullRequestURL(meta.BaseURL, meta.RequestURLPath, meta.ChannelType), nil
 	}

@@ -38,18 +38,26 @@ func applyChannelSource(query *gorm.DB, source ChannelSource) *gorm.DB {
 // protocol request. A mixed-provider group must not randomly choose a channel
 // that requires an unimplemented cross-protocol conversion.
 func GetRandomSatisfiedChannelByType(group, model string, channelType int, ignoreFirstPriority bool) (*Channel, error) {
-	return GetRandomSatisfiedChannelByTypeExcluding(group, model, channelType, ignoreFirstPriority, nil, ChannelSourceAPIOnly)
+	return GetRandomSatisfiedChannelByTypesExcluding(group, model, []int{channelType}, ignoreFirstPriority, nil, ChannelSourceAPIOnly)
 }
 
 // GetRandomSatisfiedChannelExcluding serves protocol-neutral retries for
 // legacy routes, whose provider type is selected from all compatible channels.
 func GetRandomSatisfiedChannelExcluding(group, model string, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
-	return GetRandomSatisfiedChannelByTypeExcluding(group, model, -1, ignoreFirstPriority, excluded, source)
+	return GetRandomSatisfiedChannelByTypesExcluding(group, model, nil, ignoreFirstPriority, excluded, source)
 }
 
 // GetRandomSatisfiedChannelByTypeExcluding chooses a compatible channel that
 // has not already failed during the current native request.
 func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType int, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
+	return GetRandomSatisfiedChannelByTypesExcluding(group, model, []int{channelType}, ignoreFirstPriority, excluded, source)
+}
+
+// GetRandomSatisfiedChannelByTypesExcluding chooses a compatible channel whose
+// type is one of channelTypes (empty means any type) and that has not already
+// failed during the current native request. The list lets one protocol pick
+// from every channel kind that speaks its wire format.
+func GetRandomSatisfiedChannelByTypesExcluding(group, model string, channelTypes []int, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
 	var abilities []Ability
 	groupColumn := "`group`"
 	if common.UsingPostgreSQL {
@@ -67,8 +75,8 @@ func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType i
 	}
 	var channels []Channel
 	query := DB.Where("id IN ? AND status = ?", ids, ChannelStatusEnabled)
-	if channelType >= 0 {
-		query = query.Where("type = ?", channelType)
+	if len(channelTypes) > 0 {
+		query = query.Where("type IN ?", channelTypes)
 	}
 	query = applyChannelSource(query, source)
 	if err := query.Find(&channels).Error; err != nil {

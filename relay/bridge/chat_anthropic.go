@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
+	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/relay/native"
 )
 
@@ -176,7 +179,7 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 }
 
 func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
+	fields, err := responseObject(body, "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -185,7 +188,7 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		return nil, native.Usage{}, errors.New("Anthropic content must be an array")
 	}
 	for _, raw := range rawBlocks {
-		block, err := object(raw, "type", "text", "id", "name", "input")
+		block, err := responseObject(raw, "type", "text", "id", "name", "input")
 		if err != nil {
 			return nil, native.Usage{}, err
 		}
@@ -210,7 +213,7 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		}
 	}
 	if len(fields["usage"]) != 0 {
-		if _, err := object(fields["usage"], "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"); err != nil {
+		if _, err := responseObject(fields["usage"], "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"); err != nil {
 			return nil, native.Usage{}, err
 		}
 	}
@@ -304,6 +307,9 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	return converted, usage, err
 }
 
+// object parses a JSON object and returns only the permitted keys; unknown
+// fields fail the conversion. Request conversion uses it so a field the
+// client asked for is never silently discarded.
 func object(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
 	var value map[string]json.RawMessage
 	if json.Unmarshal(raw, &value) != nil || value == nil {
@@ -317,6 +323,34 @@ func object(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
 		if !permitted[key] {
 			return nil, fmt.Errorf("field %q cannot be converted", key)
 		}
+	}
+	return value, nil
+}
+
+// responseObject is the upstream-response counterpart of object: unknown
+// fields are dropped with a warning instead of failing the conversion, so an
+// additive provider envelope change never turns into a gateway outage.
+// Content-shape errors (missing required fields, unconvertible block kinds)
+// still fail their converters.
+func responseObject(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
+	var value map[string]json.RawMessage
+	if json.Unmarshal(raw, &value) != nil || value == nil {
+		return nil, errors.New("expected a JSON object")
+	}
+	permitted := make(map[string]bool, len(allowed))
+	for _, key := range allowed {
+		permitted[key] = true
+	}
+	var dropped []string
+	for key := range value {
+		if !permitted[key] {
+			dropped = append(dropped, key)
+			delete(value, key)
+		}
+	}
+	if len(dropped) > 0 {
+		sort.Strings(dropped)
+		logger.SysWarnf("bridge dropped upstream fields it cannot represent: %s", strings.Join(dropped, ", "))
 	}
 	return value, nil
 }

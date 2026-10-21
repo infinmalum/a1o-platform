@@ -27,6 +27,9 @@ func For(inbound, upstream native.Protocol) (Converter, error) {
 	if inbound == native.OpenAIChat && upstream == native.Gemini {
 		return chatGemini{}, nil
 	}
+	if inbound == native.Gemini && upstream == native.OpenAIChat {
+		return geminiChat{}, nil
+	}
 	if inbound == native.Anthropic && upstream == native.Gemini {
 		return messagesGemini{}, nil
 	}
@@ -74,4 +77,14 @@ func (messagesGemini) Request(body []byte, model string) ([]byte, error) {
 
 func (messagesGemini) Response(body []byte, model string) ([]byte, native.Usage, error) {
 	return GeminiToMessages(body, model)
+}
+
+type geminiChat struct{}
+
+func (geminiChat) Request(body []byte, model string) ([]byte, error) {
+	return GeminiToChatRequest(body, model)
+}
+
+func (geminiChat) Response(body []byte, model string) ([]byte, native.Usage, error) {
+	return ChatToGeminiResponse(body, model)
 }

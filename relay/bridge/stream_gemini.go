@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,9 +86,7 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid Gemini content: %w", err)
 	}
-	if len(extra) > 0 {
-		return nil, fmt.Errorf("Gemini content field %q cannot be converted", firstKey(extra))
-	}
+	ignoreExtras(extra)
 	if role := rawString(content["role"]); role != "" && role != "model" {
 		return nil, errors.New("Gemini response content role must be model")
 	}
@@ -103,6 +102,285 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 		event.parts = append(event.parts, part)
 	}
 	return event, nil
+}
+
+// Stream converts Chat Completions chunks into Gemini GenerateContent events.
+// Text and reasoning deltas emit immediately; function call deltas accumulate
+// because Gemini carries complete functionCall parts. The terminal events are
+// written only after the upstream [DONE] marker so an interrupted upstream
+// stream never looks complete to the client.
+func (geminiChat) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
+	state := &chatToGeminiStream{dst: dst, model: requestedModel, tools: map[int]*chatToolAccumulator{}}
+	reader := newSSEReader(src)
+	fail := func(err error) (native.Usage, error) {
+		_ = writeGeminiStreamError(dst, err.Error())
+		return state.usage, err
+	}
+	for {
+		data, err := reader.next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fail(err)
+		}
+		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+			if err := state.finish(); err != nil {
+				return fail(err)
+			}
+			return state.usage, nil
+		}
+		if err := state.chunk(data); err != nil {
+			return fail(err)
+		}
+	}
+	if state.finished {
+		return state.usage, nil
+	}
+	return fail(errors.New("Chat stream ended before [DONE]"))
+}
+
+type chatToolAccumulator struct {
+	id        string
+	name      string
+	arguments string
+}
+
+type chatToGeminiStream struct {
+	dst        StreamWriter
+	model      string
+	id         string
+	stopReason string
+	usage      native.Usage
+	cached     int64
+	tools      map[int]*chatToolAccumulator
+	toolList   []int
+	events     int
+	finished   bool
+}
+
+func (s *chatToGeminiStream) chunk(data []byte) error {
+	fields, extra, err := rawObject(data, "id", "object", "created", "model", "choices", "usage")
+	if err != nil {
+		return fmt.Errorf("invalid Chat chunk: %w", err)
+	}
+	ignoreExtras(extra)
+	if id := rawString(fields["id"]); id != "" {
+		s.id = id
+	}
+	if nonNull(fields["usage"]) {
+		if err := s.observeUsage(fields["usage"]); err != nil {
+			return err
+		}
+	}
+	var choices []json.RawMessage
+	if json.Unmarshal(fields["choices"], &choices) != nil {
+		return errors.New("Chat chunk choices must be an array")
+	}
+	if len(choices) > 1 {
+		return errors.New("Chat chunk must contain one choice")
+	}
+	if len(choices) == 0 {
+		return nil
+	}
+	choice, choiceExtra, err := rawObject(choices[0], "index", "delta", "finish_reason")
+	if err != nil {
+		return fmt.Errorf("invalid Chat choice: %w", err)
+	}
+	ignoreExtras(choiceExtra)
+	if index, err := parseIntField(choice["index"], "choice index"); err != nil || index != 0 {
+		return errors.New("Chat response choice index must be zero")
+	}
+	if finish := rawString(choice["finish_reason"]); finish != "" {
+		mapped, err := chatFinishReasonToGemini(finish)
+		if err != nil {
+			return err
+		}
+		s.stopReason = mapped
+	}
+	if !nonNull(choice["delta"]) {
+		return nil
+	}
+	return s.delta(choice["delta"])
+}
+
+func (s *chatToGeminiStream) observeUsage(raw json.RawMessage) error {
+	// DeepSeek-compatible providers add dedicated cache-hit fields; they map
+	// onto cachedContentTokenCount in the terminal event.
+	usage, extra, err := rawObject(raw, "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
+	if err != nil {
+		return fmt.Errorf("invalid Chat usage: %w", err)
+	}
+	ignoreExtras(extra)
+	var fields struct {
+		PromptTokens     int64 `json:"prompt_tokens"`
+		CompletionTokens int64 `json:"completion_tokens"`
+		PromptDetails    struct {
+			CachedTokens int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
+		PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
+	}
+	if json.Unmarshal(raw, &fields) != nil || fields.PromptTokens < 0 || fields.CompletionTokens < 0 {
+		return errors.New("invalid Chat usage")
+	}
+	if nonNull(usage["prompt_tokens"]) {
+		s.usage.Input = max(s.usage.Input, fields.PromptTokens)
+		s.usage.Seen = true
+	}
+	if nonNull(usage["completion_tokens"]) {
+		s.usage.Output = max(s.usage.Output, fields.CompletionTokens)
+		s.usage.Seen = true
+	}
+	s.cached = max(s.cached, fields.PromptDetails.CachedTokens, fields.PromptCacheHitTokens)
+	return nil
+}
+
+func (s *chatToGeminiStream) delta(raw json.RawMessage) error {
+	delta, extra, err := rawObject(raw, "role", "content", "tool_calls", "refusal", "reasoning_content")
+	if err != nil {
+		return fmt.Errorf("invalid Chat delta: %w", err)
+	}
+	ignoreExtras(extra)
+	if role := rawString(delta["role"]); role != "" && role != "assistant" {
+		return errors.New("Chat response role must be assistant")
+	}
+	if nonNull(delta["refusal"]) {
+		return errors.New("Chat refusal cannot be converted")
+	}
+	if nonNull(delta["content"]) {
+		var text string
+		if json.Unmarshal(delta["content"], &text) != nil {
+			return errors.New("Chat content must be text")
+		}
+		if text != "" {
+			if err := s.emitParts([]map[string]any{{"text": text}}); err != nil {
+				return err
+			}
+		}
+	}
+	if reasoning := rawString(delta["reasoning_content"]); reasoning != "" {
+		if err := s.emitParts([]map[string]any{{"text": reasoning, "thought": true}}); err != nil {
+			return err
+		}
+	}
+	if nonNull(delta["tool_calls"]) {
+		var calls []json.RawMessage
+		if json.Unmarshal(delta["tool_calls"], &calls) != nil {
+			return errors.New("Chat tool_calls must be an array")
+		}
+		for _, callRaw := range calls {
+			if err := s.toolCall(callRaw); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *chatToGeminiStream) toolCall(callRaw json.RawMessage) error {
+	call, extra, err := rawObject(callRaw, "index", "id", "type", "function")
+	if err != nil {
+		return fmt.Errorf("invalid Chat tool call: %w", err)
+	}
+	ignoreExtras(extra)
+	index, err := parseIntField(call["index"], "tool call index")
+	if err != nil {
+		return err
+	}
+	accumulator, seen := s.tools[index]
+	function, _, err := rawObject(call["function"], "name", "arguments")
+	if err != nil {
+		return fmt.Errorf("invalid Chat tool call: %w", err)
+	}
+	if !seen {
+		id, kind, name := rawString(call["id"]), rawString(call["type"]), rawString(function["name"])
+		if id == "" || kind != "function" || name == "" {
+			return errors.New("only named function tool calls can be converted")
+		}
+		accumulator = &chatToolAccumulator{id: id, name: name}
+		s.tools[index] = accumulator
+		s.toolList = append(s.toolList, index)
+	}
+	accumulator.arguments += rawString(function["arguments"])
+	return nil
+}
+
+// emitParts writes one GenerateContent event carrying the given parts.
+func (s *chatToGeminiStream) emitParts(parts []map[string]any) error {
+	s.events++
+	candidate := map[string]any{"index": 0, "content": map[string]any{"role": "model", "parts": parts}}
+	event := map[string]any{"candidates": []any{candidate}, "modelVersion": s.model}
+	if s.id != "" {
+		event["responseId"] = s.id
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return writeStreamEvent(s.dst, payload)
+}
+
+func (s *chatToGeminiStream) finish() error {
+	if s.finished {
+		return nil
+	}
+	if s.events == 0 {
+		return errors.New("Chat stream ended without content")
+	}
+	if s.stopReason == "" {
+		return errors.New("Chat stream ended without a finish reason")
+	}
+	if len(s.toolList) > 0 {
+		var parts []map[string]any
+		for _, index := range s.toolList {
+			accumulator := s.tools[index]
+			args, err := chatToolArgsObject(accumulator.arguments)
+			if err != nil {
+				return err
+			}
+			functionCall := map[string]any{"name": accumulator.name, "args": args}
+			if accumulator.id != "" {
+				functionCall["id"] = accumulator.id
+			}
+			parts = append(parts, map[string]any{"functionCall": functionCall})
+		}
+		if err := s.emitParts(parts); err != nil {
+			return err
+		}
+	}
+	candidate := map[string]any{"index": 0, "finishReason": s.stopReason}
+	event := map[string]any{"candidates": []any{candidate}, "modelVersion": s.model}
+	if s.id != "" {
+		event["responseId"] = s.id
+	}
+	if s.usage.Seen {
+		usageMetadata := map[string]any{"promptTokenCount": s.usage.Input, "candidatesTokenCount": s.usage.Output, "totalTokenCount": s.usage.Input + s.usage.Output}
+		if s.cached > 0 {
+			usageMetadata["cachedContentTokenCount"] = s.cached
+		}
+		event["usageMetadata"] = usageMetadata
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	if err := writeStreamEvent(s.dst, payload); err != nil {
+		return err
+	}
+	s.usage.Complete = true
+	s.finished = true
+	return nil
+}
+
+// writeGeminiStreamError reports a mid-stream conversion failure to a Gemini
+// client in the GenerateContent error envelope, so the stream never ends by
+// silent truncation.
+func writeGeminiStreamError(dst StreamWriter, message string) error {
+	payload, err := json.Marshal(map[string]any{"error": map[string]any{"code": 500, "message": message, "status": "INTERNAL"}})
+	if err != nil {
+		return err
+	}
+	return writeStreamEvent(dst, payload)
 }
 
 // Stream converts Gemini GenerateContent events into Chat Completions chunks.

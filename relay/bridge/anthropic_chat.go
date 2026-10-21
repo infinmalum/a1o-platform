@@ -214,7 +214,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 }
 
 func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, "id", "object", "created", "model", "choices", "usage")
+	fields, err := responseObject(body, "id", "object", "created", "model", "choices", "usage")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -226,12 +226,9 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	if id == "" || objectType != "chat.completion" || json.Unmarshal(fields["choices"], &choices) != nil || len(choices) != 1 {
 		return nil, native.Usage{}, errors.New("Chat response requires an id, chat.completion object, and one choice")
 	}
-	choice, err := object(choices[0], "index", "message", "finish_reason", "logprobs")
+	choice, err := responseObject(choices[0], "index", "message", "finish_reason")
 	if err != nil {
 		return nil, native.Usage{}, err
-	}
-	if len(choice["logprobs"]) != 0 && string(choice["logprobs"]) != "null" {
-		return nil, native.Usage{}, errors.New("Chat logprobs cannot be converted")
 	}
 	var index int
 	if json.Unmarshal(choice["index"], &index) != nil || index != 0 {
@@ -250,7 +247,7 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	default:
 		return nil, native.Usage{}, fmt.Errorf("Chat finish_reason %q cannot be converted", finish)
 	}
-	message, err := object(choice["message"], "role", "content", "tool_calls")
+	message, err := responseObject(choice["message"], "role", "content", "tool_calls")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -277,32 +274,43 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 		}
 	}
 	if len(blocks) == 0 {
-		return nil, native.Usage{}, errors.New("Chat response content is empty")
+		// An empty completion is legal: an upstream may return no content
+		// alongside a finish reason, and Anthropic clients expect an empty
+		// content array rather than a failed request.
+		blocks = []any{}
 	}
-	if len(fields["usage"]) == 0 || string(fields["usage"]) == "null" {
-		return nil, native.Usage{}, errors.New("Chat response usage is required for Messages conversion")
-	}
-	usageFields, err := object(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details")
-	if err != nil {
-		return nil, native.Usage{}, err
-	}
-	if len(usageFields["prompt_tokens_details"]) != 0 {
-		if _, err := object(usageFields["prompt_tokens_details"], "cached_tokens"); err != nil {
+	// DeepSeek-compatible providers report cache hits as dedicated usage
+	// fields instead of prompt_tokens_details. A response without usage still
+	// converts: billing falls back to the reserved quota when usage is unseen.
+	usage := native.Usage{Complete: true}
+	cached := int64(0)
+	messageUsage := map[string]int64{"input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 0}
+	if nonNull(fields["usage"]) {
+		usageFields, err := responseObject(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
+		if err != nil {
 			return nil, native.Usage{}, err
 		}
+		var source struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			PromptDetails    struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+			PromptCacheHitTokens  int64 `json:"prompt_cache_hit_tokens"`
+			PromptCacheMissTokens int64 `json:"prompt_cache_miss_tokens"`
+		}
+		if json.Unmarshal(fields["usage"], &source) != nil || len(usageFields["prompt_tokens"]) == 0 || len(usageFields["completion_tokens"]) == 0 || source.PromptDetails.CachedTokens < 0 || source.PromptCacheHitTokens < 0 || source.PromptCacheMissTokens < 0 || source.PromptTokens < 0 || source.CompletionTokens < 0 {
+			return nil, native.Usage{}, errors.New("invalid Chat usage")
+		}
+		cached = max(source.PromptDetails.CachedTokens, source.PromptCacheHitTokens)
+		if source.PromptTokens < cached {
+			return nil, native.Usage{}, errors.New("invalid Chat usage")
+		}
+		usage.Input = source.PromptTokens
+		usage.Output = source.CompletionTokens
+		usage.Seen = true
+		messageUsage = map[string]int64{"input_tokens": source.PromptTokens - cached, "cache_read_input_tokens": cached, "output_tokens": source.CompletionTokens}
 	}
-	var source struct {
-		PromptTokens     int64 `json:"prompt_tokens"`
-		CompletionTokens int64 `json:"completion_tokens"`
-		PromptDetails    struct {
-			CachedTokens int64 `json:"cached_tokens"`
-		} `json:"prompt_tokens_details"`
-	}
-	if json.Unmarshal(fields["usage"], &source) != nil || len(usageFields["prompt_tokens"]) == 0 || len(usageFields["completion_tokens"]) == 0 || source.PromptDetails.CachedTokens < 0 || source.PromptTokens < source.PromptDetails.CachedTokens || source.PromptTokens < 0 || source.CompletionTokens < 0 {
-		return nil, native.Usage{}, errors.New("invalid Chat usage")
-	}
-	usage := native.Usage{Input: source.PromptTokens, Output: source.CompletionTokens, Seen: true, Complete: true}
-	messageUsage := map[string]int64{"input_tokens": source.PromptTokens - source.PromptDetails.CachedTokens, "cache_read_input_tokens": source.PromptDetails.CachedTokens, "output_tokens": source.CompletionTokens}
 	result := map[string]any{
 		"id": id, "type": "message", "role": "assistant", "model": requestedModel,
 		"content": blocks, "stop_reason": stop, "stop_sequence": nil, "usage": messageUsage,

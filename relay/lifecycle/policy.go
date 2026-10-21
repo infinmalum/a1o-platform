@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/model"
@@ -15,9 +16,12 @@ import (
 // Source selects the credential source of candidates; its zero value keeps
 // the historical API-key-only behavior.
 type Selection struct {
-	Group          string
-	Model          string
-	Type           int
+	Group string
+	Model string
+	// Type pins the channel kind exactly; Types widens the candidate set to
+	// every kind that speaks the requested wire protocol. Types wins when set.
+	Type  int
+	Types []int
 	SpecificID     int
 	IgnorePriority bool
 	Excluded       map[int]bool
@@ -40,7 +44,10 @@ func SelectChannel(input Selection) (*model.Channel, *HTTPError) {
 		if channel.Status != model.ChannelStatusEnabled {
 			return nil, &HTTPError{Status: http.StatusForbidden, Message: "selected channel is disabled"}
 		}
-		if input.Type >= 0 && channel.Type != input.Type {
+		if len(input.Types) > 0 && !slices.Contains(input.Types, channel.Type) {
+			return nil, &HTTPError{Status: http.StatusBadRequest, Message: "selected channel does not support this protocol"}
+		}
+		if input.Type >= 0 && len(input.Types) == 0 && channel.Type != input.Type {
 			return nil, &HTTPError{Status: http.StatusBadRequest, Message: "selected channel does not support this protocol"}
 		}
 		// Pinned channels follow the same source policy as the selector.
@@ -79,6 +86,9 @@ func SelectChannel(input Selection) (*model.Channel, *HTTPError) {
 
 // selectOnce runs one candidate selection with the given exclusion set.
 func selectOnce(input Selection, excluded map[int]bool) (*model.Channel, error) {
+	if len(input.Types) > 0 {
+		return model.GetRandomSatisfiedChannelByTypesExcluding(input.Group, input.Model, input.Types, input.IgnorePriority, excluded, input.Source)
+	}
 	if input.Type >= 0 {
 		return model.GetRandomSatisfiedChannelByTypeExcluding(input.Group, input.Model, input.Type, input.IgnorePriority, excluded, input.Source)
 	}

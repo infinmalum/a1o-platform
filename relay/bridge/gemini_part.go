@@ -32,7 +32,7 @@ type geminiPart struct {
 // calls and display text carrying a thought signature have no Chat or
 // Messages slot and are rejected.
 func parseGeminiResponsePart(raw json.RawMessage) (geminiPart, error) {
-	fields, err := object(raw, "text", "thought", "thoughtSignature", "functionCall")
+	fields, err := responseObject(raw, "text", "thought", "thoughtSignature", "functionCall")
 	if err != nil {
 		return geminiPart{}, err
 	}
@@ -43,7 +43,7 @@ func parseGeminiResponsePart(raw json.RawMessage) (geminiPart, error) {
 		if len(fields["thoughtSignature"]) != 0 {
 			return geminiPart{}, errors.New("Gemini function call carries a thought signature that Chat and Messages cannot represent")
 		}
-		call, err := object(fields["functionCall"], "name", "args", "id")
+		call, err := responseObject(fields["functionCall"], "name", "args", "id")
 		if err != nil {
 			return geminiPart{}, err
 		}

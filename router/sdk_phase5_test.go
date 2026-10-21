@@ -490,7 +490,8 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 	var upstreamCalls atomic.Int64
 	ollamaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalls.Add(1)
-		if r.URL.Path != "/api/embed" {
+		// Ollama channels ride the OpenAI-compatible wire at /v1/embeddings.
+		if r.URL.Path != "/v1/embeddings" {
 			t.Errorf("unexpected provider path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -500,7 +501,7 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 			t.Errorf("Ollama embeddings request lost fields: %s", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"model":"upstream-ollama-embed","embeddings":[[0.1,0.2]]}`)
+		_, _ = io.WriteString(w, `{"object":"list","model":"upstream-ollama-embed","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"usage":{"prompt_tokens":1,"total_tokens":1}}`)
 	}))
 	defer ollamaServer.Close()
 

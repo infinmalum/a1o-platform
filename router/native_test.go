@@ -259,7 +259,9 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	if unsupportedResponse.Code != http.StatusServiceUnavailable || !strings.Contains(unsupportedResponse.Body.String(), `"type":"error"`) || !strings.Contains(unsupportedResponse.Body.String(), "Anthropic") {
 		t.Fatalf("unsupported native channel: status %d body %s", unsupportedResponse.Code, unsupportedResponse.Body.String())
 	}
-	unsupportedGeminiRequest := httptest.NewRequest(http.MethodPost, "/v1beta/models/openai-only:generateContent", strings.NewReader(`{"contents":[{"parts":[{"text":"hello"}]}]}`))
+	// A model no channel carries is refused by both the primary Gemini
+	// selection and the Chat fallback.
+	unsupportedGeminiRequest := httptest.NewRequest(http.MethodPost, "/v1beta/models/orphan-model:generateContent", strings.NewReader(`{"contents":[{"parts":[{"text":"hello"}]}]}`))
 	unsupportedGeminiRequest.Header.Set("x-goog-api-key", "sk-gateway-key")
 	unsupportedGeminiResponse := httptest.NewRecorder()
 	r.ServeHTTP(unsupportedGeminiResponse, unsupportedGeminiRequest)

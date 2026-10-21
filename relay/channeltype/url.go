@@ -17,14 +17,14 @@ var ChannelBaseURLs = []string{
 	"https://api.aigc2d.com",                    // 13
 	"https://api.anthropic.com",                 // 14
 	"https://aip.baidubce.com",                  // 15
-	"https://open.bigmodel.cn",                  // 16
+	"https://open.bigmodel.cn",                   // 16
 	"https://dashscope.aliyuncs.com",            // 17
 	"",                                          // 18
 	"https://ai.360.cn",                         // 19
 	"https://openrouter.ai/api",                 // 20
 	"https://api.aiproxy.io",                    // 21
 	"https://fastgpt.run/api/openapi",           // 22
-	"https://hunyuan.tencentcloudapi.com",       // 23
+	"https://api.hunyuan.cloud.tencent.com",     // 23
 	"https://generativelanguage.googleapis.com", // 24
 	"https://api.moonshot.cn",                   // 25
 	"https://api.baichuan-ai.com",               // 26
@@ -55,7 +55,8 @@ var ChannelBaseURLs = []string{
 
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
 
-	"https://api.typesafe.ai", // 52
+	"https://api.typesafe.ai",     // 52
+	"https://api.openai.com",      // 53
 }
 
 func init() {

@@ -240,7 +240,10 @@ func NativeGemini(c *gin.Context) {
 		writeNativeError(c, native.Gemini, http.StatusBadRequest, errors.New("Gemini contents are required and maxOutputTokens must not be negative"))
 		return
 	}
-	forwardNative(c, nativeInput{protocol: native.Gemini, model: modelName, action: action, stream: action == "streamGenerateContent", maxOutputTokens: fields.GenerationConfig.MaxOutputTokens, body: body})
+	// A Gemini endpoint can serve models that only OpenAI-compatible channels
+	// carry, so the Chat wire is the fallback upstream protocol.
+	forwardNative(c, nativeInput{protocol: native.Gemini, model: modelName, action: action, stream: action == "streamGenerateContent", maxOutputTokens: fields.GenerationConfig.MaxOutputTokens, body: body,
+		fallbackUpstreamProtocols: []native.Protocol{native.OpenAIChat}})
 }
 
 // NativeSystemOne relays TypeSafe evaluation requests. The endpoint is

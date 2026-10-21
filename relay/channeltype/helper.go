@@ -2,35 +2,23 @@ package channeltype
 
 import "github.com/infinmalum/one-gateway/relay/apitype"
 
+// ToAPIType maps a channel type onto its wire protocol. Retired native
+// providers (PaLM, Baidu, Zhipu, Ali, Xunfei, Tencent, Cohere, Ollama,
+// AIProxyLibrary) fall through to OpenAI: their vendors all publish official
+// OpenAI-compatible endpoints now, so the shared OpenAI wire plus the
+// per-type request-URL rules in relay/adaptor/openai replace the old
+// per-vendor adapters.
 func ToAPIType(channelType int) int {
 	apiType := apitype.OpenAI
 	switch channelType {
 	case Anthropic:
 		apiType = apitype.Anthropic
-	case Baidu:
-		apiType = apitype.Baidu
-	case PaLM:
-		apiType = apitype.PaLM
-	case Zhipu:
-		apiType = apitype.Zhipu
-	case Ali:
-		apiType = apitype.Ali
-	case Xunfei:
-		apiType = apitype.Xunfei
-	case AIProxyLibrary:
-		apiType = apitype.AIProxyLibrary
-	case Tencent:
-		apiType = apitype.Tencent
 	case Gemini:
 		apiType = apitype.Gemini
-	case Ollama:
-		apiType = apitype.Ollama
 	case AwsClaude:
 		apiType = apitype.AwsClaude
 	case Coze:
 		apiType = apitype.Coze
-	case Cohere:
-		apiType = apitype.Cohere
 	case Cloudflare:
 		apiType = apitype.Cloudflare
 	case DeepL:
@@ -43,6 +31,8 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.Proxy
 	case TypeSafe:
 		apiType = apitype.SystemOne
+	case OpenAIResponses:
+		apiType = apitype.OpenAIResponses
 	}
 
 	return apiType
