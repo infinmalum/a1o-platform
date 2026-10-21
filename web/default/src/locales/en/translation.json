@@ -250,6 +250,12 @@
       "display": "Equivalent: ${{amount}}",
       "display_short": "${{amount}}",
       "unit": "$"
+    },
+    "quotaInput": {
+      "usd_hint": "{{label}} (USD, ≈ {{quota}} quota)",
+      "quota_hint": "{{label}} (quota, ≈ ${{amount}})",
+      "switch_usd": "USD",
+      "switch_quota": "Raw quota"
     }
   },
   "redemption": {

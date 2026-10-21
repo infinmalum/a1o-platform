@@ -246,7 +246,7 @@ const ImagePlayground = () => {
             max={10}
             value={count}
             onChange={(_, { value }) =>
-              setCount(Math.min(10, Math.max(1, Number(value) || 1)))
+              setCount(Math.min(10, Math.max(1, Math.round(Number(value) || 1))))
             }
           />
         </Form.Group>

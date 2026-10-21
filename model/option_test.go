@@ -5,6 +5,8 @@ import (
 
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // TestUpdateOptionMapBindings pins the declarative binding tables: each
@@ -81,12 +83,60 @@ func TestUpdateOptionMapBindings(t *testing.T) {
 	require.True(t, config.AutomaticDisableChannelEnabled)
 
 	// The routing policy validates its value and leaves the config untouched
-	// on failure, while the option map still records what was sent.
+	// on failure; a rejected value must not enter the option map either.
 	require.Error(t, updateOptionMap("UpstreamRoutingPolicy", "nope"))
 	require.NotEqual(t, "nope", config.UpstreamRoutingPolicy)
-	require.Equal(t, "nope", config.OptionMap["UpstreamRoutingPolicy"])
+	require.NotEqual(t, "nope", config.OptionMap["UpstreamRoutingPolicy"])
+
+	// A non-integer value for an integer option is rejected outright: it must
+	// neither zero the config variable (the old discarded-parse bug) nor land
+	// in the option map.
+	require.Error(t, updateOptionMap("QuotaForNewUser", "2.56"))
+	require.EqualValues(t, 123456, config.QuotaForNewUser)
+	require.NotEqual(t, "2.56", config.OptionMap["QuotaForNewUser"])
+
+	require.Error(t, updateOptionMap("RetryTimes", "abc"))
+	require.EqualValues(t, 7, config.RetryTimes)
+
+	require.Error(t, updateOptionMap("QuotaPerUnit", "not-a-float"))
+	require.EqualValues(t, 1.5, config.QuotaPerUnit)
 
 	// Unknown keys are option-map-only display state.
 	require.NoError(t, updateOptionMap("Notice", "hello"))
 	require.Equal(t, "hello", config.OptionMap["Notice"])
+}
+
+// TestUpdateOptionRejectsInvalidValueBeforePersist pins the API-path repair:
+// a value the bindings reject is returned as an error and never written to
+// the options table, while a valid value is persisted.
+func TestUpdateOptionRejectsInvalidValueBeforePersist(t *testing.T) {
+	previousDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	DB = db
+	t.Cleanup(func() { DB = previousDB })
+
+	previousQuota := config.QuotaForNewUser
+	restoredMap := config.OptionMap
+	if config.OptionMap == nil {
+		config.OptionMap = map[string]string{}
+	}
+	t.Cleanup(func() {
+		config.QuotaForNewUser = previousQuota
+		config.OptionMap = restoredMap
+	})
+
+	require.Error(t, UpdateOption("QuotaForNewUser", "2.56"))
+	var count int64
+	require.NoError(t, DB.Model(&Option{}).Where("key = ?", "QuotaForNewUser").Count(&count).Error)
+	require.EqualValues(t, 0, count)
+
+	require.NoError(t, UpdateOption("QuotaForNewUser", "123456"))
+	require.EqualValues(t, 123456, config.QuotaForNewUser)
+	require.NoError(t, DB.Model(&Option{}).Where("key = ?", "QuotaForNewUser").Count(&count).Error)
+	require.EqualValues(t, 1, count)
+	var stored Option
+	require.NoError(t, DB.First(&stored, "key = ?", "QuotaForNewUser").Error)
+	require.Equal(t, "123456", stored.Value)
 }

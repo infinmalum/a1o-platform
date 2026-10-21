@@ -126,7 +126,9 @@ const ChatSettingsModal: React.FC<{
                   min='0'
                   max='16384'
                   value={value.max_tokens || ''}
-                  onChange={(event, data) => update({ max_tokens: Number(data.value) || 0 })}
+                  onChange={(event, data) =>
+                    update({ max_tokens: Math.round(Number(data.value) || 0) })
+                  }
                 />
               </Form.Field>
             </Form.Group>
@@ -137,7 +139,9 @@ const ChatSettingsModal: React.FC<{
                 min='0'
                 placeholder={String(bootstrap?.budget ?? 32000)}
                 value={value.context_budget || ''}
-                onChange={(event, data) => update({ context_budget: Number(data.value) || 0 })}
+                onChange={(event, data) =>
+                  update({ context_budget: Math.round(Number(data.value) || 0) })
+                }
               />
             </Form.Field>
             <Form.Field>

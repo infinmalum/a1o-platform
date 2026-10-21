@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
-import { renderQuota, renderQuotaWithPrompt } from '../../helpers/render';
+import QuotaInput from '../../components/QuotaInput';
 
 const EditRedemption = () => {
   const { t } = useTranslation();
@@ -101,17 +101,15 @@ const EditRedemption = () => {
                 required={!isEdit}
               />
             </Form.Field>
-            <Form.Field>
-              <Form.Input
-                label={`${t('redemption.edit.quota')}${renderQuotaWithPrompt(quota, t)}`}
-                name='quota'
-                placeholder={t('redemption.edit.quota_placeholder')}
-                onChange={handleInputChange}
-                value={quota}
-                autoComplete='new-password'
-                type='number'
-              />
-            </Form.Field>
+            <QuotaInput
+              label={t('redemption.edit.quota')}
+              name='quota'
+              quota={quota}
+              onQuotaChange={(name, value) =>
+                handleInputChange(null, { name, value })
+              }
+              placeholder={t('redemption.edit.quota_placeholder')}
+            />
             {!isEdit && (
               <>
                 <Form.Field>

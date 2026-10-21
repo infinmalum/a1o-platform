@@ -126,7 +126,7 @@ func AddToken(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": friendlyBindError(err),
 		})
 		return
 	}
@@ -193,7 +193,7 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": friendlyBindError(err),
 		})
 		return
 	}

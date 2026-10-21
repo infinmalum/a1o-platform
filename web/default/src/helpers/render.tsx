@@ -79,6 +79,30 @@ export function renderQuotaWithPrompt(quota, t) {
   return '';
 }
 
+// Quota/amount converters for money inputs. The backend stores integer quota
+// with config.QuotaPerUnit quota per $1 (500000 by default), so decimal
+// amounts like $2.56 must be converted to a whole number before submit.
+const DEFAULT_QUOTA_PER_UNIT = 500000;
+
+export function getQuotaPerUnit() {
+  const perUnit = parseFloat(localStorage.getItem('quota_per_unit') || '');
+  return Number.isFinite(perUnit) && perUnit > 0
+    ? perUnit
+    : DEFAULT_QUOTA_PER_UNIT;
+}
+
+export function quotaToAmount(quota) {
+  return (Number(quota) || 0) / getQuotaPerUnit();
+}
+
+export function amountToQuota(amount) {
+  return Math.round((Number(amount) || 0) * getQuotaPerUnit());
+}
+
+export function formatAmount(amount) {
+  return String(Math.round((Number(amount) || 0) * 100) / 100);
+}
+
 const colors = [
   'red',
   'orange',

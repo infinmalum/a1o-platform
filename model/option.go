@@ -112,7 +112,12 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
+	// Apply to the in-memory state first: a value the bindings reject is
+	// reported back without ever reaching the database, so no half-valid
+	// "2.56" can linger in the table for the next sync to trip over.
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
 	option := Option{
 		Key: key,
 	}
@@ -122,9 +127,7 @@ func UpdateOption(key string, value string) error {
 	// Save is a combination function.
 	// If save value does not contain primary key, it will execute Create,
 	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
-	return updateOptionMap(key, value)
+	return DB.Save(&option).Error
 }
 
 // Option binding tables map option keys onto their config variables so
@@ -225,32 +228,57 @@ var customOptionSetters = map[string]func(value string) error{
 	},
 }
 
+// updateOptionMap validates before it mutates: a value that fails its
+// binding's parse leaves both the config variables and the option map
+// untouched, so bad input can neither silently zero a setting nor linger in
+// the display state for the next sync to trip over.
 func updateOptionMap(key string, value string) (err error) {
 	config.OptionMapRWMutex.Lock()
 	defer config.OptionMapRWMutex.Unlock()
-	config.OptionMap[key] = value
 	if setter, ok := customOptionSetters[key]; ok {
-		return setter(value)
+		if err := setter(value); err != nil {
+			return err
+		}
+		config.OptionMap[key] = value
+		return nil
 	}
 	if binding, ok := boolOptionBindings[key]; ok {
 		*binding = value == "true"
+		config.OptionMap[key] = value
 		return nil
 	}
 	if binding, ok := stringOptionBindings[key]; ok {
 		*binding = value
+		config.OptionMap[key] = value
 		return nil
 	}
 	if binding, ok := intOptionBindings[key]; ok {
-		*binding, _ = strconv.Atoi(value)
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("option %s expects an integer, got %q", key, value)
+		}
+		*binding = parsed
+		config.OptionMap[key] = value
 		return nil
 	}
 	if binding, ok := int64OptionBindings[key]; ok {
-		*binding, _ = strconv.ParseInt(value, 10, 64)
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("option %s expects an integer, got %q", key, value)
+		}
+		*binding = parsed
+		config.OptionMap[key] = value
 		return nil
 	}
 	if binding, ok := floatOptionBindings[key]; ok {
-		*binding, _ = strconv.ParseFloat(value, 64)
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("option %s expects a number, got %q", key, value)
+		}
+		*binding = parsed
+		config.OptionMap[key] = value
 		return nil
 	}
+	config.OptionMap[key] = value
 	return nil
 }

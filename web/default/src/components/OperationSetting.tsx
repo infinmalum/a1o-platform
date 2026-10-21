@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Divider, Form, Grid, Header } from 'semantic-ui-react';
 import PriceEditor from './PriceEditor';
+import QuotaInput from './QuotaInput';
 import {
   API,
   showError,
@@ -94,6 +95,12 @@ const OperationSetting = () => {
     } else {
       setInputs((inputs) => ({ ...inputs, [name]: value }));
     }
+  };
+
+  // Quota options travel to the API as the raw string in inputs, so keep the
+  // integer QuotaInput commits as a string.
+  const handleQuotaOptionChange = (name, value) => {
+    setInputs((inputs) => ({ ...inputs, [name]: String(value) }));
   };
 
   const submitConfig = async (group) => {
@@ -190,46 +197,34 @@ const OperationSetting = () => {
         <Form loading={loading}>
           <Header as='h3'>{t('setting.operation.quota.title')}</Header>
           <Form.Group widths='equal'>
-            <Form.Input
+            <QuotaInput
               label={t('setting.operation.quota.new_user')}
               name='QuotaForNewUser'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.QuotaForNewUser}
-              type='number'
-              min='0'
+              quota={Number(inputs.QuotaForNewUser) || 0}
+              onQuotaChange={handleQuotaOptionChange}
               placeholder={t('setting.operation.quota.new_user_placeholder')}
             />
-            <Form.Input
+            <QuotaInput
               label={t('setting.operation.quota.pre_consume')}
               name='PreConsumedQuota'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.PreConsumedQuota}
-              type='number'
-              min='0'
+              quota={Number(inputs.PreConsumedQuota) || 0}
+              onQuotaChange={handleQuotaOptionChange}
               placeholder={t('setting.operation.quota.pre_consume_placeholder')}
             />
-            <Form.Input
+            <QuotaInput
               label={t('setting.operation.quota.inviter_reward')}
               name='QuotaForInviter'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.QuotaForInviter}
-              type='number'
-              min='0'
+              quota={Number(inputs.QuotaForInviter) || 0}
+              onQuotaChange={handleQuotaOptionChange}
               placeholder={t(
                 'setting.operation.quota.inviter_reward_placeholder'
               )}
             />
-            <Form.Input
+            <QuotaInput
               label={t('setting.operation.quota.invitee_reward')}
               name='QuotaForInvitee'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.QuotaForInvitee}
-              type='number'
-              min='0'
+              quota={Number(inputs.QuotaForInvitee) || 0}
+              onQuotaChange={handleQuotaOptionChange}
               placeholder={t(
                 'setting.operation.quota.invitee_reward_placeholder'
               )}
@@ -346,14 +341,11 @@ const OperationSetting = () => {
                 'setting.operation.monitor.max_response_time_placeholder'
               )}
             />
-            <Form.Input
+            <QuotaInput
               label={t('setting.operation.monitor.quota_reminder')}
               name='QuotaRemindThreshold'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.QuotaRemindThreshold}
-              type='number'
-              min='0'
+              quota={Number(inputs.QuotaRemindThreshold) || 0}
+              onQuotaChange={handleQuotaOptionChange}
               placeholder={t(
                 'setting.operation.monitor.quota_reminder_placeholder'
               )}

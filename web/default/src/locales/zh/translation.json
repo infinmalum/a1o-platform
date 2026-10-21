@@ -250,6 +250,12 @@
       "display": "等价金额：${{amount}}",
       "display_short": "${{amount}}",
       "unit": "$"
+    },
+    "quotaInput": {
+      "usd_hint": "{{label}}（美元，≈ {{quota}} 额度）",
+      "quota_hint": "{{label}}（额度，≈ ${{amount}}）",
+      "switch_usd": "按美元",
+      "switch_quota": "按额度"
     }
   },
   "redemption": {
