@@ -120,7 +120,8 @@ func TestPhase3OfficialGoClients(t *testing.T) {
 	}))
 	defer anthropicProvider.Close()
 	ollamaProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/chat" || r.Header.Get("Authorization") != "Bearer provider-ollama" {
+		// Ollama channels ride the OpenAI-compatible wire at /v1/chat/completions.
+		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer provider-ollama" {
 			t.Errorf("Ollama provider request: %s %v", r.URL, r.Header)
 		}
 		body, _ := io.ReadAll(r.Body)
@@ -128,17 +129,18 @@ func TestPhase3OfficialGoClients(t *testing.T) {
 			t.Errorf("Ollama model mapping: %s", body)
 		}
 		if strings.Contains(string(body), `"stream":true`) {
-			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.Header().Set("Content-Type", "text/event-stream")
 			if strings.Contains(string(body), "truncate") {
-				_, _ = io.WriteString(w, "{\"model\":\"upstream-ollama\",\"message\":{\"role\":\"assistant\",\"content\":\"partial\"},\"done\":false}\n")
+				_, _ = io.WriteString(w, "data: {\"id\":\"ollama_sdk\",\"object\":\"chat.completion.chunk\",\"model\":\"upstream-ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n")
 				return
 			}
-			_, _ = io.WriteString(w, "{\"model\":\"upstream-ollama\",\"message\":{\"role\":\"assistant\",\"content\":\"ollama ok\"},\"done\":false}\n"+
-				"{\"model\":\"upstream-ollama\",\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"prompt_eval_count\":3,\"eval_count\":2}\n")
+			_, _ = io.WriteString(w, "data: {\"id\":\"ollama_sdk\",\"object\":\"chat.completion.chunk\",\"model\":\"upstream-ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ollama ok\"}}]}\n\n"+
+				"data: {\"id\":\"ollama_sdk\",\"object\":\"chat.completion.chunk\",\"model\":\"upstream-ollama\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n"+
+				"data: [DONE]\n\n")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"model":"upstream-ollama","message":{"role":"assistant","content":"ollama ok"},"done":true,"prompt_eval_count":3,"eval_count":2}`)
+		_, _ = io.WriteString(w, `{"id":"ollama_sdk","object":"chat.completion","model":"upstream-ollama","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ollama ok"}}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
 	}))
 	defer ollamaProvider.Close()
 	failingOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

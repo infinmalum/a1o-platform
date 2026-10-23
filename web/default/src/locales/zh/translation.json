@@ -124,6 +124,7 @@
         "submit": "提交",
         "fill_models": "填入相关模型",
         "fill_all": "填入所有模型",
+        "fetch_models": "从上游获取",
         "clear": "清除所有模型",
         "add_custom": "填入",
         "custom_placeholder": "输入自定义模型名称"
@@ -131,6 +132,7 @@
       "messages": {
         "name_required": "请填写渠道名称和渠道密钥！",
         "models_required": "请至少选择一个模型！",
+        "upstream_models_fetched": "已获取 {{count}} 个模型，请检查后保存",
         "model_mapping_invalid": "模型映射必须是合法的 JSON 格式！",
         "update_success": "渠道更新成功！",
         "create_success": "渠道创建成功！"
@@ -250,6 +252,12 @@
       "display": "等价金额：${{amount}}",
       "display_short": "${{amount}}",
       "unit": "$"
+    },
+    "quotaInput": {
+      "usd_hint": "{{label}}（美元，≈ {{quota}} 额度）",
+      "quota_hint": "{{label}}（额度，≈ ${{amount}}）",
+      "switch_usd": "按美元",
+      "switch_quota": "按额度"
     }
   },
   "redemption": {
@@ -911,8 +919,7 @@
       "login_expired": "未登录或登录已过期，请重新登录！",
       "password_length": "密码长度不得小于 8 位！",
       "password_mismatch": "两次输入的密码不一致",
-      "turnstile_wait": "请稍后几秒重试，Turnstile 正在检查用户环境！",
-      "root_password": "请立刻修改默认密码！"
+      "turnstile_wait": "请稍后几秒重试，Turnstile 正在检查用户环境！"
     },
     "notice": {
       "password_copied": "新密码已复制到剪贴板：{{password}}"
@@ -973,7 +980,23 @@
     "sandboxNetworkToggle": "允许沙箱代码访问网络（默认在无网络的隔离命名空间中执行；不支持 unshare 的环境将执行失败）",
     "maxToolIterations": "工具调用轮数上限",
     "maxFileBytes": "附件大小上限（字节）",
-    "balance": "余额"
+    "balance": "余额",
+    "globalSkills": "全局技能"
+  },
+  "errorBoundary": {
+    "title": "页面渲染出错了",
+    "reload": "刷新页面"
+  },
+  "setup": {
+    "title": "初始化管理员账户",
+    "subtitle": "这是一个全新安装，请先创建第一个管理员账户。",
+    "username": "管理员用户名",
+    "password": "密码（8-20 位）",
+    "confirmPassword": "确认密码",
+    "email": "邮箱（可选）",
+    "submit": "创建账户",
+    "passwordMismatch": "两次输入的密码不一致",
+    "success": "管理员账户创建成功"
   },
   "uiMode": {
     "title": "你打算怎么用？",

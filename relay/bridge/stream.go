@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/relay/native"
 )
 
@@ -253,6 +256,21 @@ func rawObject(data []byte, permitted ...string) (map[string]json.RawMessage, ma
 
 func streamTimestamp() int64 {
 	return time.Now().Unix()
+}
+
+// ignoreExtras drops unparsed upstream event fields with one warning. A
+// mid-stream rejection would truncate the client's stream, so provider
+// envelope drift is logged instead of failing the conversion.
+func ignoreExtras(extras map[string]json.RawMessage) {
+	if len(extras) == 0 {
+		return
+	}
+	names := make([]string, 0, len(extras))
+	for key := range extras {
+		names = append(names, key)
+	}
+	sort.Strings(names)
+	logger.SysWarnf("bridge dropped upstream stream fields it cannot represent: %s", strings.Join(names, ", "))
 }
 
 func rawString(raw json.RawMessage) string {

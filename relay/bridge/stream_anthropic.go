@@ -432,9 +432,7 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat choice: %w", err)
 	}
-	if len(choiceExtra) > 0 {
-		return fmt.Errorf("Chat choice field %q cannot be converted", firstKey(choiceExtra))
-	}
+	ignoreExtras(choiceExtra)
 	if index, err := parseIntField(choice["index"], "choice index"); err != nil || index != 0 {
 		return errors.New("Chat response choice index must be zero")
 	}
@@ -455,13 +453,14 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 }
 
 func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
-	usage, extra, err := rawObject(raw, "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details")
+	// DeepSeek-compatible providers add dedicated cache-hit fields; the
+	// Messages stream carries only input and output totals, so they are
+	// tolerated and dropped here.
+	usage, extra, err := rawObject(raw, "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
 	if err != nil {
 		return fmt.Errorf("invalid Chat usage: %w", err)
 	}
-	if len(extra) > 0 {
-		return errors.New("Chat usage carries fields Messages cannot represent")
-	}
+	ignoreExtras(extra)
 	if nonNull(usage["prompt_tokens"]) {
 		prompt, ok := decodeStreamNumber(usage["prompt_tokens"])
 		if !ok {
@@ -484,13 +483,14 @@ func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
 }
 
 func (s *chatToAnthropicStream) delta(raw json.RawMessage) error {
-	delta, extra, err := rawObject(raw, "role", "content", "tool_calls", "refusal")
+	// reasoning_content deltas (DeepSeek reasoner) have no Anthropic slot
+	// without a thought signature; they are tolerated and dropped so a
+	// reasoning model still streams its display content.
+	delta, extra, err := rawObject(raw, "role", "content", "tool_calls", "refusal", "reasoning_content")
 	if err != nil {
 		return fmt.Errorf("invalid Chat delta: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Chat delta field %q cannot be converted", firstKey(extra))
-	}
+	ignoreExtras(extra)
 	if role := rawString(delta["role"]); role != "" && role != "assistant" {
 		return errors.New("Chat response role must be assistant")
 	}
@@ -530,9 +530,7 @@ func (s *chatToAnthropicStream) toolCall(callRaw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat tool call: %w", err)
 	}
-	if len(extra) > 0 {
-		return errors.New("Chat tool call carries fields Messages cannot represent")
-	}
+	ignoreExtras(extra)
 	index, err := parseIntField(call["index"], "tool call index")
 	if err != nil {
 		return err

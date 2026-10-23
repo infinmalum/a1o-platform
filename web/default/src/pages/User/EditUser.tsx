@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Form, Card } from 'semantic-ui-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API, showError, showSuccess } from '../../helpers';
-import { renderQuota, renderQuotaWithPrompt } from '../../helpers/render';
+import QuotaInput from '../../components/QuotaInput';
 
 const EditUser = () => {
   const { t } = useTranslation();
@@ -78,11 +78,9 @@ const EditUser = () => {
   const submit = async () => {
     let res = undefined;
     if (userId) {
-      let data = { ...inputs, id: parseInt(userId) };
-      if (typeof data.quota === 'string') {
-        data.quota = parseInt(data.quota);
-      }
-      res = await API.put(`/api/user/`, data);
+      // quota stays an integer: QuotaInput commits whole quota numbers, so no
+      // truncating parse here.
+      res = await API.put(`/api/user/`, { ...inputs, id: parseInt(userId) });
     } else {
       res = await API.put(`/api/user/self`, inputs);
     }
@@ -149,20 +147,15 @@ const EditUser = () => {
                     options={groupOptions}
                   />
                 </Form.Field>
-                <Form.Field>
-                  <Form.Input
-                    label={`${t('user.edit.quota')}${renderQuotaWithPrompt(
-                      quota,
-                      t
-                    )}`}
-                    name='quota'
-                    placeholder={t('user.edit.quota_placeholder')}
-                    onChange={handleInputChange}
-                    value={quota}
-                    type={'number'}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
+                <QuotaInput
+                  label={t('user.edit.quota')}
+                  name='quota'
+                  quota={quota}
+                  onQuotaChange={(name, value) =>
+                    handleInputChange(null, { name, value })
+                  }
+                  placeholder={t('user.edit.quota_placeholder')}
+                />
               </>
             )}
             <Form.Field>

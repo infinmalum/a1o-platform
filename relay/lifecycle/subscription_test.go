@@ -876,3 +876,87 @@ func TestChatFallbackPrefersNativeChatOnAPIChannels(t *testing.T) {
 	require.NotEmpty(t, fields["messages"])
 	require.Nil(t, fields["input"])
 }
+
+// geminiBridgeMutation routes an inbound Gemini request the way the
+// controller does: the Gemini protocol first, the Chat wire as the fallback
+// upstream, and channel selection instead of a pinned channel.
+func geminiBridgeMutation(input *Request) {
+	input.Protocol = native.Gemini
+	input.UpstreamProtocol = ""
+	input.FallbackUpstreamProtocols = []native.Protocol{native.OpenAIChat}
+	input.Channel = Channel{}
+}
+
+func TestGeminiBridgesToFallbackChatChannel(t *testing.T) {
+	fixture := newSubscriptionFixture(t)
+	fixture.upstreamRespond = func(w http.ResponseWriter, r *http.Request, authz string, hit int) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"id":"chat_1","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"hello"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`)
+	}
+	body, err := json.Marshal(map[string]any{
+		"contents":         []map[string]any{{"role": "user", "parts": []map[string]any{{"text": "hi"}}}},
+		"generationConfig": map[string]any{"maxOutputTokens": 100},
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, geminiBridgeMutation, func(input *Request) { input.Stream = false })
+
+	// No Gemini channel serves this model, so selection fell back to the
+	// OpenAI-compatible channel and the Chat bridge converted both ways.
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []int{fixture.apiChannel.Id}, fixture.consumeLogChannels())
+	fields := fixture.lastBody()
+	require.NotEmpty(t, fields["messages"])
+	require.Nil(t, fields["contents"])
+	var response struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+			FinishReason string `json:"finishReason"`
+		} `json:"candidates"`
+		UsageMetadata struct {
+			PromptTokenCount     int64 `json:"promptTokenCount"`
+			CandidatesTokenCount int64 `json:"candidatesTokenCount"`
+		} `json:"usageMetadata"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "STOP", response.Candidates[0].FinishReason)
+	require.Equal(t, "hello", response.Candidates[0].Content.Parts[0].Text)
+	require.Equal(t, int64(10), response.UsageMetadata.PromptTokenCount)
+	require.Equal(t, int64(5), response.UsageMetadata.CandidatesTokenCount)
+}
+
+func TestGeminiFallbackStreamingUsesChatStream(t *testing.T) {
+	fixture := newSubscriptionFixture(t)
+	fixture.upstreamRespond = func(w http.ResponseWriter, r *http.Request, authz string, hit int) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"he\"}}]}\n\n"+
+			"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"y\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":2}}\n\n"+
+			"data: [DONE]\n\n")
+	}
+	body, err := json.Marshal(map[string]any{
+		"contents":         []map[string]any{{"role": "user", "parts": []map[string]any{{"text": "hi"}}}},
+		"generationConfig": map[string]any{"maxOutputTokens": 100},
+	})
+	require.NoError(t, err)
+
+	recorder := fixture.forward(body, geminiBridgeMutation)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"text":"he"`)
+	require.Contains(t, recorder.Body.String(), `"text":"y"`)
+	require.Contains(t, recorder.Body.String(), `"finishReason":"STOP"`)
+	require.Contains(t, recorder.Body.String(), `"usageMetadata"`)
+	fields := fixture.lastBody()
+	require.Equal(t, "true", string(fields["stream"]))
+	var streamOptions struct {
+		IncludeUsage bool `json:"include_usage"`
+	}
+	require.NoError(t, json.Unmarshal(fields["stream_options"], &streamOptions))
+	require.True(t, streamOptions.IncludeUsage)
+}

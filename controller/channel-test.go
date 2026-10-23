@@ -69,7 +69,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	testRequest := &http.Request{
 		Method: "POST",
 		URL:    &url.URL{Path: "/v1/chat/completions"},
-		Body:   nil,
+		Body:   http.NoBody,
 		Header: make(http.Header),
 	}
 	// The upstream call inherits this context (DoRequestHelper builds its

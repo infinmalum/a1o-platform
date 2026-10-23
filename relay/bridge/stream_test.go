@@ -297,11 +297,25 @@ func TestGeminiStreamPreservesUnknownTopLevelFields(t *testing.T) {
 	}
 }
 
-func TestChatStreamRejectsUnknownDeltaFields(t *testing.T) {
-	fixture := "data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\",\"reasoning_content\":\"secret\"}}]}\n\ndata: [DONE]\n\n"
+func TestChatStreamToleratesReasoningDeltas(t *testing.T) {
+	// DeepSeek reasoner streams reasoning_content deltas next to the display
+	// content. The Anthropic side has no slot for unsigned reasoning, so the
+	// deltas are dropped while the display text still converts.
+	fixture := "data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"thinking\"}}]}\n\n" +
+		"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n" +
+		"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}\n\n" +
+		"data: [DONE]\n\n"
 	writer := &recordingWriter{}
-	if _, err := (anthropicChat{}).Stream(writer, strings.NewReader(fixture), "alias"); err == nil || !strings.Contains(err.Error(), "reasoning_content") {
-		t.Fatalf("unknown delta field was not rejected: %v", err)
+	usage, err := (anthropicChat{}).Stream(writer, strings.NewReader(fixture), "alias")
+	if err != nil {
+		t.Fatalf("reasoning delta was rejected: %v", err)
+	}
+	body := writer.buffer.String()
+	if !strings.Contains(body, `"text":"hi"`) || strings.Contains(body, "thinking") {
+		t.Fatalf("reasoning delta handling lost content or leaked reasoning: %s", body)
+	}
+	if !usage.Seen || !usage.Complete {
+		t.Fatalf("tolerated stream lost usage completion: %+v", usage)
 	}
 }
 
@@ -733,8 +747,14 @@ func TestBridgeForWiresGeminiMessages(t *testing.T) {
 	if _, _, err := converter.Response([]byte(`{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`), "alias"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := For(native.Gemini, native.OpenAIChat); err == nil {
-		t.Fatal("Gemini inbound conversion should not be supported yet")
+	// The Gemini inbound direction bridges onto Chat upstreams so
+	// OpenAI-compatible channels can serve the native Gemini endpoint.
+	geminiConverter, err := For(native.Gemini, native.OpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := geminiConverter.(StreamConverter); !ok {
+		t.Fatal("Gemini to Chat converter does not support streaming")
 	}
 	if _, ok := converter.(StreamConverter); !ok {
 		t.Fatal("Messages to Gemini converter does not support streaming")

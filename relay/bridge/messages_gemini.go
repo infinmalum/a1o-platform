@@ -216,7 +216,7 @@ func messagesBlocksToGemini(raw json.RawMessage, assistant bool, toolNames map[s
 // extension while response content and finish states Messages cannot
 // represent are rejected.
 func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, geminiResponseFields...)
+	fields, err := responseObject(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -232,7 +232,7 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := object(rawCandidates[0], geminiCandidateFields...)
+	candidate, err := responseObject(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -240,7 +240,7 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 		return nil, native.Usage{}, err
 	}
 	finish := rawString(candidate["finishReason"])
-	content, err := object(candidate["content"], "role", "parts")
+	content, err := responseObject(candidate["content"], "role", "parts")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -326,7 +326,7 @@ func geminiUsage(raw json.RawMessage, requireOutput bool) (int64, int64, int64, 
 	if len(raw) == 0 {
 		return 0, 0, 0, errors.New("Gemini response usage is required")
 	}
-	usageRaw, err := object(raw, "promptTokenCount", "cachedContentTokenCount", "candidatesTokenCount", "toolUsePromptTokenCount", "thoughtsTokenCount", "totalTokenCount", "promptTokensDetails", "cacheTokensDetails", "candidatesTokensDetails", "toolUsePromptTokensDetails", "thoughtsTokensDetails", "trafficType")
+	usageRaw, err := responseObject(raw, "promptTokenCount", "cachedContentTokenCount", "candidatesTokenCount", "toolUsePromptTokenCount", "thoughtsTokenCount", "totalTokenCount", "promptTokensDetails", "cacheTokensDetails", "candidatesTokensDetails", "toolUsePromptTokensDetails", "thoughtsTokensDetails", "trafficType")
 	if err != nil || len(usageRaw["promptTokenCount"]) == 0 || (requireOutput && len(usageRaw["candidatesTokenCount"]) == 0 && len(usageRaw["totalTokenCount"]) == 0) {
 		return 0, 0, 0, errors.New("Gemini response token counts are required")
 	}

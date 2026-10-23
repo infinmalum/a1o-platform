@@ -16,10 +16,15 @@ import (
 )
 
 func GetStatus(c *gin.Context) {
+	// A fresh database funnels the first console visit into the /setup
+	// wizard; a failed lookup reports uninitialized, and the setup endpoint
+	// re-checks before it would do anything.
+	initialized, _ := model.HasAnyUser()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
+			"initialized":                 initialized,
 			"version":                     common.Version,
 			"start_time":                  common.StartTime,
 			"email_verification":          config.EmailVerificationEnabled,

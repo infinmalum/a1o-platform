@@ -124,6 +124,7 @@
         "submit": "Submit",
         "fill_models": "Fill Related Models",
         "fill_all": "Fill All Models",
+        "fetch_models": "Fetch from Upstream",
         "clear": "Clear All Models",
         "add_custom": "Add",
         "custom_placeholder": "Enter custom model name"
@@ -131,6 +132,7 @@
       "messages": {
         "name_required": "Please enter channel name and key!",
         "models_required": "Please select at least one model!",
+        "upstream_models_fetched": "Fetched {{count}} models; review and save",
         "model_mapping_invalid": "Model mapping must be valid JSON format!",
         "update_success": "Channel updated successfully!",
         "create_success": "Channel created successfully!"
@@ -250,6 +252,12 @@
       "display": "Equivalent: ${{amount}}",
       "display_short": "${{amount}}",
       "unit": "$"
+    },
+    "quotaInput": {
+      "usd_hint": "{{label}} (USD, ≈ {{quota}} quota)",
+      "quota_hint": "{{label}} (quota, ≈ ${{amount}})",
+      "switch_usd": "USD",
+      "switch_quota": "Raw quota"
     }
   },
   "redemption": {
@@ -915,8 +923,7 @@
       "login_expired": "Not logged in or session expired, please login again!",
       "password_length": "Password must be at least 8 characters!",
       "password_mismatch": "Passwords do not match",
-      "turnstile_wait": "Please wait a few seconds, Turnstile is checking the environment!",
-      "root_password": "Please change the default password immediately!"
+      "turnstile_wait": "Please wait a few seconds, Turnstile is checking the environment!"
     },
     "notice": {
       "password_copied": "New password copied to clipboard: {{password}}"
@@ -977,7 +984,23 @@
     "sandboxNetworkToggle": "Allow sandboxed code network access (runs in an isolated network namespace by default; hosts without unshare support will fail the run)",
     "maxToolIterations": "Max tool iterations",
     "maxFileBytes": "Attachment size limit (bytes)",
-    "balance": "Balance"
+    "balance": "Balance",
+    "globalSkills": "Global Skills"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong while rendering this page",
+    "reload": "Reload"
+  },
+  "setup": {
+    "title": "Initialize the administrator account",
+    "subtitle": "This is a fresh installation. Create the first administrator account to start using the console.",
+    "username": "Admin username",
+    "password": "Password (8-20 characters)",
+    "confirmPassword": "Confirm password",
+    "email": "Email (optional)",
+    "submit": "Create account",
+    "passwordMismatch": "Passwords do not match",
+    "success": "Administrator account created"
   },
   "uiMode": {
     "title": "How will you use this?",

@@ -217,6 +217,16 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				if err != nil {
 					return attemptOutcome{err: &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}}
 				}
+				if input.Stream && upstreamProtocol == native.OpenAIChat {
+					// Inbound protocols such as Gemini carry the stream intent
+					// in the URL action; the Chat wire needs it in the body
+					// with the usage report option. Idempotent for converters
+					// that already set the fields.
+					body, err = bridge.EnsureChatStreamOptions(body)
+					if err != nil {
+						return attemptOutcome{err: &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}}
+					}
+				}
 			}
 			apiKey := attempt.APIKey
 			if subscription != nil {
@@ -517,8 +527,8 @@ func selectInitialForProtocols(input Request, candidates []native.Protocol, sour
 }
 
 func selectInitial(input Request, upstreamProtocol native.Protocol, source model.ChannelSource) (Channel, *HTTPError) {
-	requiredType := requiredChannelType(upstreamProtocol)
-	if requiredType < 0 {
+	requiredTypes := candidateChannelTypes(upstreamProtocol)
+	if len(requiredTypes) == 0 {
 		return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "unsupported native protocol"}
 	}
 	specificID := 0
@@ -528,7 +538,7 @@ func selectInitial(input Request, upstreamProtocol native.Protocol, source model
 			return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "invalid channel ID"}
 		}
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: requiredType, SpecificID: specificID, Source: source})
+	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Types: requiredTypes, SpecificID: specificID, Source: source})
 	if selectErr != nil {
 		if selectErr.Status == http.StatusServiceUnavailable {
 			label := "OpenAI"
@@ -551,28 +561,68 @@ func selectInitial(input Request, upstreamProtocol native.Protocol, source model
 }
 
 func requiredChannelType(protocol native.Protocol) int {
-	switch protocol {
-	case native.Anthropic:
-		return channeltype.Anthropic
-	case native.Gemini:
-		return channeltype.Gemini
-	case native.OpenAIChat, native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations, native.OpenAIResponses,
-		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
-		return channeltype.OpenAI
-	case native.SystemOne:
-		return channeltype.TypeSafe
-	default:
+	types := candidateChannelTypes(protocol)
+	if len(types) == 0 {
 		return -1
 	}
+	return types[0]
 }
+
+// candidateChannelTypes lists every channel kind that can serve a native
+// protocol, most specific first. Chat-family protocols accept the whole
+// OpenAI-compatible whitelist plus the Responses channel kind (the chat
+// request is bridged onto /v1/responses); Responses requests land on either
+// a dedicated Responses channel or a plain OpenAI channel, whose /v1/responses
+// path passes through on the same wire.
+func candidateChannelTypes(protocol native.Protocol) []int {
+	switch protocol {
+	case native.Anthropic:
+		return []int{channeltype.Anthropic}
+	case native.Gemini:
+		return []int{channeltype.Gemini}
+	case native.OpenAIChat:
+		return append(chatCompatibleChannelTypes, channeltype.OpenAIResponses)
+	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
+		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
+		return chatCompatibleChannelTypes
+	case native.OpenAIResponses:
+		return []int{channeltype.OpenAI, channeltype.OpenAIResponses}
+	case native.SystemOne:
+		return []int{channeltype.TypeSafe}
+	default:
+		return nil
+	}
+}
+
+// chatCompatibleChannelTypes enumerates the NativeChatCompatible whitelist as
+// channel kinds so protocol selection can query `type IN (...)` in one pass.
+var chatCompatibleChannelTypes = func() []int {
+	// Built from the whitelist so the two can never drift; the OpenAI kind
+	// leads the list and doubles as the historical single-type match.
+	types := make([]int, 0, 40)
+	for kind := channeltype.OpenAI; kind < channeltype.Dummy; kind++ {
+		if kind == channeltype.OpenAIResponses {
+			continue
+		}
+		if channeltype.NativeChatCompatible(kind) {
+			types = append(types, kind)
+		}
+	}
+	return types
+}()
 
 func channelSupportsProtocol(kind int, protocol native.Protocol) bool {
 	switch protocol {
 	// The OpenAI wire protocols run on every channel type that speaks the
-	// OpenAI JSON format, including Azure deployment URLs.
-	case native.OpenAIChat, native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
+	// OpenAI JSON format, including Azure deployment URLs; a Chat request may
+	// additionally land on a Responses channel through the chat bridge.
+	case native.OpenAIChat:
+		return channeltype.NativeChatCompatible(kind) || kind == channeltype.OpenAIResponses
+	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
 		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return channeltype.NativeChatCompatible(kind)
+	case native.OpenAIResponses:
+		return kind == channeltype.OpenAI || kind == channeltype.OpenAIResponses
 	}
 	return kind == requiredChannelType(protocol)
 }

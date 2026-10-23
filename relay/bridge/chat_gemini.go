@@ -260,7 +260,7 @@ func geminiTextParts(raw json.RawMessage) ([]map[string]any, error) {
 // Function calls become tool calls with the upstream call ID when present;
 // thought parts have no Chat representation and fail.
 func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := object(body, geminiResponseFields...)
+	fields, err := responseObject(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -277,7 +277,7 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := object(rawCandidates[0], geminiCandidateFields...)
+	candidate, err := responseObject(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
@@ -286,7 +286,7 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	}
 	var finish string
 	_ = json.Unmarshal(candidate["finishReason"], &finish)
-	content, err := object(candidate["content"], "role", "parts")
+	content, err := responseObject(candidate["content"], "role", "parts")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}

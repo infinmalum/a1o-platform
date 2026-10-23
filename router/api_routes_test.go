@@ -22,4 +22,5 @@ func TestAPIRoutesIncludeDashboardAndPricing(t *testing.T) {
 
 	require.True(t, registered["GET /api/dashboard/business"], "admin business dashboard route")
 	require.True(t, registered["GET /api/user/pricing"], "user price list route")
+	require.True(t, registered["POST /api/setup"], "first-boot setup wizard route")
 }

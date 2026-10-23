@@ -196,6 +196,12 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			path = "/v2/chat/completions"
 		case channeltype.AliBailian:
 			path = "/compatible-mode/v1/chat/completions"
+		case channeltype.Zhipu:
+			// https://open.bigmodel.cn/api/paas/v4/chat/completions
+			path = strings.Replace(path, "/v1/", "/api/paas/v4/", 1)
+		case channeltype.Cohere:
+			// https://api.cohere.ai/compatibility/v1/chat/completions
+			path = strings.Replace(path, "/v1/", "/compatibility/v1/", 1)
 		}
 	case OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
 		OpenAICompletions, OpenAIEmbeddings, OpenAIModerations:
@@ -220,6 +226,16 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			case OpenAIModerations:
 				path = "/openai/deployments/" + deployment + "/moderations"
 			}
+			break
+		}
+		// The retired providers ride the OpenAI wire on their official
+		// compatible endpoints; Zhipu and Cohere mount them under a version
+		// prefix instead of /v1.
+		switch input.ChannelType {
+		case channeltype.Zhipu:
+			path = strings.Replace(path, "/v1/", "/api/paas/v4/", 1)
+		case channeltype.Cohere:
+			path = strings.Replace(path, "/v1/", "/compatibility/v1/", 1)
 		}
 	}
 	endpoint := strings.TrimRight(base.String(), "/") + path

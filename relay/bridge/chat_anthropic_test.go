@@ -90,11 +90,24 @@ func TestAnthropicToChatConvertsToolsUsageAndRejectsThinking(t *testing.T) {
 	}
 }
 
-func TestAnthropicToChatRejectsResponseFieldsItCannotRepresent(t *testing.T) {
+func TestAnthropicToChatResponseFieldTolerance(t *testing.T) {
+	// Additive provider envelope fields (citations, tool accounting, sandbox
+	// containers) are dropped with a warning instead of failing the response.
 	for _, body := range []string{
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok","citations":[{"type":"web_search_result_location"}]}]}`,
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":2,"output_tokens":1,"server_tool_use":{"web_search_requests":1}}}`,
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"container":{"id":"x"}}`,
+	} {
+		converted, _, err := AnthropicToChat([]byte(body), "alias")
+		if err != nil {
+			t.Fatalf("additive Anthropic response field was rejected: %s err %v", body, err)
+		}
+		if !strings.Contains(string(converted), `"content":"ok"`) {
+			t.Fatalf("tolerated response lost content: %s", converted)
+		}
+	}
+	// Content-shape problems still fail: the data would be lost or reordered.
+	for _, body := range []string{
 		`{"id":"msg_1","type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"call_1","name":"lookup","input":{}},{"type":"text","text":"after tool"}]}`,
 		`{"id":"msg_1","type":"message","stop_reason":"tool_use","content":[{"type":"tool_use","id":"call_1","name":"lookup","input":true}]}`,
 	} {

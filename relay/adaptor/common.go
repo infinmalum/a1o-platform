@@ -59,6 +59,8 @@ func DoRequest(c *Context, req *http.Request) (*http.Response, error) {
 		return nil, errors.New("resp is nil")
 	}
 	_ = req.Body.Close()
-	_ = c.Request.Body.Close()
+	if c.Request != nil && c.Request.Body != nil {
+		_ = c.Request.Body.Close()
+	}
 	return resp, nil
 }

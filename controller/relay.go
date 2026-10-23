@@ -16,10 +16,18 @@ import (
 )
 
 // openAIWireChannel reports whether the channel selected by the dispatcher
-// accepts the OpenAI JSON wire format, so the route can use the native
-// lifecycle instead of a provider adapter.
-func openAIWireChannel(c *gin.Context) bool {
-	return channeltype.NativeChatCompatible(c.GetInt(ctxkey.Channel))
+// serves the relay mode on the OpenAI JSON wire, so the route can use the
+// native lifecycle instead of a provider adapter.
+func openAIWireChannel(c *gin.Context, mode int) bool {
+	return channeltype.OpenAIWireSupportsOperation(c.GetInt(ctxkey.Channel), mode)
+}
+
+// wireChannelWithoutOperation reports an OpenAI wire channel whose compatible
+// endpoints do not serve the requested relay mode, so the route rejects it
+// instead of forwarding to an upstream path that does not exist.
+func wireChannelWithoutOperation(c *gin.Context, mode int) bool {
+	kind := c.GetInt(ctxkey.Channel)
+	return channeltype.NativeChatCompatible(kind) && !channeltype.OpenAIWireSupportsOperation(kind, mode)
 }
 
 func unsupportedOperation(c *gin.Context, message string) {
@@ -54,17 +62,20 @@ func RelayChat(c *gin.Context) {
 // RelayCompletions serves OpenAI wire channels through the native lifecycle;
 // provider channels keep their adapter conversions.
 func RelayCompletions(c *gin.Context) {
-	if openAIWireChannel(c) {
+	switch {
+	case openAIWireChannel(c, relaymode.Completions):
 		NativeOpenAICompletions(c)
-		return
+	case wireChannelWithoutOperation(c, relaymode.Completions):
+		unsupportedOperation(c, "this channel type does not serve the completions operation")
+	default:
+		writeProviderError(c, relaycontroller.RelayProviderText(c, relaymode.Completions))
 	}
-	writeProviderError(c, relaycontroller.RelayProviderText(c, relaymode.Completions))
 }
 
 // RelayEmbeddings serves OpenAI wire channels natively; provider channels with
 // their own embeddings formats keep their adapter conversions.
 func RelayEmbeddings(c *gin.Context) {
-	if openAIWireChannel(c) {
+	if openAIWireChannel(c, relaymode.Embeddings) {
 		NativeOpenAIEmbeddings(c)
 		return
 	}
@@ -74,32 +85,41 @@ func RelayEmbeddings(c *gin.Context) {
 // RelayModerations serves OpenAI wire channels natively and rejects provider
 // channels, whose adapters have no moderation format to convert into.
 func RelayModerations(c *gin.Context) {
-	if openAIWireChannel(c) {
+	switch {
+	case openAIWireChannel(c, relaymode.Moderations):
 		NativeOpenAIModerations(c)
-		return
+	case wireChannelWithoutOperation(c, relaymode.Moderations):
+		unsupportedOperation(c, "this channel type does not serve the moderations operation")
+	default:
+		unsupportedOperation(c, "moderations require an OpenAI-compatible channel")
 	}
-	unsupportedOperation(c, "moderations require an OpenAI-compatible channel")
 }
 
 // RelayEdits serves OpenAI wire channels natively and rejects provider
 // channels; no provider adapter ever converted the deprecated edits format.
 func RelayEdits(c *gin.Context) {
-	if openAIWireChannel(c) {
+	switch {
+	case openAIWireChannel(c, relaymode.Edits):
 		NativeOpenAIEdits(c)
-		return
+	case wireChannelWithoutOperation(c, relaymode.Edits):
+		unsupportedOperation(c, "this channel type does not serve the edits operation")
+	default:
+		unsupportedOperation(c, "edits require an OpenAI-compatible channel")
 	}
-	unsupportedOperation(c, "edits require an OpenAI-compatible channel")
 }
 
 // RelayImages serves OpenAI wire channels through the native lifecycle with
-// image-specific billing; provider image formats (Zhipu, Ali, Replicate,
-// Baidu) keep their adapter conversions.
+// image-specific billing; provider image formats (Ali, Replicate, Baidu) keep
+// their adapter conversions.
 func RelayImages(c *gin.Context) {
-	if openAIWireChannel(c) {
+	switch {
+	case openAIWireChannel(c, relaymode.ImagesGenerations):
 		NativeOpenAIImages(c)
-		return
+	case wireChannelWithoutOperation(c, relaymode.ImagesGenerations):
+		unsupportedOperation(c, "this channel type does not serve the images operation")
+	default:
+		writeProviderError(c, relaycontroller.RelayProviderImages(c))
 	}
-	writeProviderError(c, relaycontroller.RelayProviderImages(c))
 }
 
 // writeProviderError presents a provider-route failure in the OpenAI error
@@ -120,10 +140,14 @@ func writeProviderError(c *gin.Context, result *lifecycle.HTTPError) {
 }
 
 // RelayAudio serves the three audio operations on OpenAI wire channels,
-// including their Azure deployment variants, and rejects provider channels:
-// the audio routes only ever spoke the OpenAI wire format.
+// including their Azure deployment variants, and rejects provider channels
+// and the retired vendor endpoints, none of which speak the audio wire.
 func RelayAudio(c *gin.Context) {
-	if !openAIWireChannel(c) {
+	if !openAIWireChannel(c, relaymode.AudioSpeech) {
+		if wireChannelWithoutOperation(c, relaymode.AudioSpeech) {
+			unsupportedOperation(c, "this channel type does not serve the audio operations")
+			return
+		}
 		unsupportedOperation(c, "audio operations require an OpenAI-compatible channel")
 		return
 	}

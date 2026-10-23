@@ -14,10 +14,6 @@ const MODEL_MAPPING_EXAMPLE = {
 
 function type2secretPrompt(type, t) {
   switch (type) {
-    case 15:
-      return t('channel.edit.key_prompts.zhipu');
-    case 18:
-      return t('channel.edit.key_prompts.spark');
     case 22:
       return t('channel.edit.key_prompts.fastgpt');
     case 23:
@@ -59,6 +55,7 @@ const EditChannel = () => {
   const [basicModels, setBasicModels] = useState([]);
   const [fullModels, setFullModels] = useState([]);
   const [customModel, setCustomModel] = useState('');
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [config, setConfig] = useState({
     region: '',
     sk: '',
@@ -283,6 +280,40 @@ const EditChannel = () => {
     handleInputChange(null, { name: 'models', value: localModels });
   };
 
+  // Pulls the vendor's live model list so the picker never goes stale. For
+  // an unsaved channel the form's type/base_url/key travel with the request.
+  const fetchUpstreamModels = async () => {
+    setFetchingModels(true);
+    try {
+      const payload = isEdit
+        ? { id: parseInt(channelId) }
+        : {
+            type: inputs.type,
+            base_url: inputs.base_url,
+            key: inputs.key,
+          };
+      const res = await API.post('/api/channel/upstream_models', payload);
+      const { success, message, data } = res.data;
+      if (success && Array.isArray(data)) {
+        const merged = Array.from(new Set([...inputs.models, ...data]));
+        handleInputChange(null, { name: 'models', value: merged });
+        setModelOptions((options) => {
+          const known = new Set(options.map((option) => option.value));
+          const fresh = data
+            .filter((model) => !known.has(model))
+            .map((model) => ({ key: model, text: model, value: model }));
+          return [...options, ...fresh];
+        });
+        showSuccess(t('channel.edit.messages.upstream_models_fetched', { count: data.length }));
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(error.message);
+    }
+    setFetchingModels(false);
+  };
+
   return (
     <div className='dashboard-container'>
       <Card fluid className='chart-card'>
@@ -415,42 +446,6 @@ const EditChannel = () => {
               </Form.Field>
             )}
 
-            {inputs.type === 18 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.spark_version')}
-                  name='other'
-                  placeholder={t('channel.edit.spark_version_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 21 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.knowledge_id')}
-                  name='other'
-                  placeholder={t('channel.edit.knowledge_id_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 17 && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.plugin_param')}
-                  name='other'
-                  placeholder={t('channel.edit.plugin_param_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.other}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
             {inputs.type === 34 && (
               <Message>{t('channel.edit.coze_notice')}</Message>
             )}
@@ -510,6 +505,13 @@ const EditChannel = () => {
                   }}
                 >
                   {t('channel.edit.buttons.fill_all')}
+                </Button>
+                <Button
+                  type={'button'}
+                  loading={fetchingModels}
+                  onClick={fetchUpstreamModels}
+                >
+                  {t('channel.edit.buttons.fetch_models')}
                 </Button>
                 <Button
                   type={'button'}
@@ -704,6 +706,7 @@ const EditChannel = () => {
               inputs.type !== 33 &&
               inputs.type !== 8 &&
                 inputs.type !== 50 &&
+              inputs.type !== 53 &&
               inputs.type !== 22 && (
                 <Form.Field>
                   <Form.Input
