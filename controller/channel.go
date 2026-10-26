@@ -10,6 +10,7 @@ import (
 	"github.com/infinmalum/one-gateway/common/config"
 	"github.com/infinmalum/one-gateway/common/helper"
 	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/one-gateway/relay/channeltype"
 )
 
 // validateChannelAccountBinding rejects references to accounts that do not
@@ -91,6 +92,19 @@ func GetChannel(c *gin.Context) {
 	return
 }
 
+// validateChannelType rejects channel kinds the console no longer offers:
+// out-of-range values, and retired kinds that the boot-time migration would
+// silently rewrite to a different kind.
+func validateChannelType(channel *model.Channel) error {
+	if channel.Type < 0 || channel.Type >= channeltype.Dummy {
+		return fmt.Errorf("非法的渠道类型: %d", channel.Type)
+	}
+	if from, to, retired := model.RetiredChannelType(channel.Type); retired {
+		return fmt.Errorf("渠道类型 %d 已下线，启动时会自动迁移为类型 %d，请直接选择迁移后的类型", from, to)
+	}
+	return nil
+}
+
 func AddChannel(c *gin.Context) {
 	channel := model.Channel{}
 	err := c.ShouldBindJSON(&channel)
@@ -99,6 +113,10 @@ func AddChannel(c *gin.Context) {
 			"success": false,
 			"message": err.Error(),
 		})
+		return
+	}
+	if err := validateChannelType(&channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	if err := validateChannelAccountBinding(&channel); err != nil {
@@ -174,6 +192,10 @@ func UpdateChannel(c *gin.Context) {
 			"success": false,
 			"message": err.Error(),
 		})
+		return
+	}
+	if err := validateChannelType(&channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	if err := validateChannelAccountBinding(&channel); err != nil {

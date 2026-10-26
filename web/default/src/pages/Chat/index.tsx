@@ -63,7 +63,7 @@ const Chat = () => {
     try {
       setSessions(await chatApi.listSessions());
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   }, []);
 
@@ -89,7 +89,7 @@ const Chat = () => {
       try {
         setMessages(await loadMessages(session.id));
       } catch {
-        // interceptor toasts the error
+        // chatApi toasts the error
       }
     },
     [loadMessages]
@@ -125,7 +125,7 @@ const Chat = () => {
       setSelectedSkillIds([]);
       setSelectedFileIds([]);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -147,7 +147,7 @@ const Chat = () => {
       setFiles((current) => [stored, ...current]);
       setSelectedFileIds((current) => [...current, stored.id]);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -304,7 +304,7 @@ const Chat = () => {
       setActiveSession(updated);
       await reloadSessions();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -325,7 +325,7 @@ const Chat = () => {
         setActiveSession({ ...activeSession, title: renameValue });
       }
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
     setRenameTarget(null);
   };
@@ -340,7 +340,7 @@ const Chat = () => {
       }
       await reloadSessions();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
     setDeleteTarget(null);
   };

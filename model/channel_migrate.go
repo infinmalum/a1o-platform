@@ -52,6 +52,20 @@ var channelTypeMigrations = []channelTypeMigration{
 	{from: channeltype.AIProxyLibrary, to: channeltype.OpenAICompatible, oldDefault: "https://api.aiproxy.io", newBaseURL: "https://api.aiproxy.io/v1"},
 }
 
+// RetiredChannelType reports whether kind no longer has its own relay
+// implementation: a channel created on it is silently rewritten to a
+// different kind at the next boot, so channel creation must refuse it up
+// front. Tencent is exempt — its migration row only rewrites legacy base
+// URLs, the kind itself still accepts new channels.
+func RetiredChannelType(kind int) (from int, to int, ok bool) {
+	for _, m := range channelTypeMigrations {
+		if m.from == kind && m.to != kind {
+			return m.from, m.to, true
+		}
+	}
+	return 0, 0, false
+}
+
 // MigrateChannelTypes moves channels off retired channel kinds. It runs once
 // per boot on the master node after AutoMigrate and logs what it touched.
 func MigrateChannelTypes() {

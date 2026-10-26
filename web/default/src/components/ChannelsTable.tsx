@@ -94,7 +94,6 @@ const ChannelsTable = () => {
           value: model,
         };
       });
-      console.log('channel', channel);
     }
     return channel;
   };
