@@ -8,12 +8,7 @@ import (
 	"strings"
 
 	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/alibailian"
-	"github.com/infinmalum/one-gateway/relay/adaptor/baiduv2"
-	"github.com/infinmalum/one-gateway/relay/adaptor/doubao"
-	"github.com/infinmalum/one-gateway/relay/adaptor/geminiv2"
 	"github.com/infinmalum/one-gateway/relay/adaptor/minimax"
-	"github.com/infinmalum/one-gateway/relay/adaptor/novita"
 	"github.com/infinmalum/one-gateway/relay/channeltype"
 	"github.com/infinmalum/one-gateway/relay/meta"
 	"github.com/infinmalum/one-gateway/relay/model"
@@ -48,31 +43,9 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 		requestURL = fmt.Sprintf("/openai/deployments/%s/%s", model_, task)
 		return GetFullRequestURL(meta.BaseURL, requestURL, meta.ChannelType), nil
 	case channeltype.Minimax:
+		// Minimax mounts chat under /v1/text/chatcompletion_v2, which no
+		// generic base URL convention can express.
 		return minimax.GetRequestURL(meta)
-	case channeltype.Doubao:
-		return doubao.GetRequestURL(meta)
-	case channeltype.Novita:
-		return novita.GetRequestURL(meta)
-	case channeltype.BaiduV2:
-		return baiduv2.GetRequestURL(meta)
-	case channeltype.AliBailian:
-		return alibailian.GetRequestURL(meta)
-	case channeltype.GeminiOpenAICompatible:
-		return geminiv2.GetRequestURL(meta)
-	case channeltype.Zhipu:
-		// https://open.bigmodel.cn/api/paas/v4/chat/completions
-		return GetFullRequestURL(
-			meta.BaseURL,
-			strings.Replace(meta.RequestURLPath, "/v1/", "/api/paas/v4/", 1),
-			meta.ChannelType,
-		), nil
-	case channeltype.Cohere:
-		// https://api.cohere.ai/compatibility/v1/chat/completions
-		return GetFullRequestURL(
-			meta.BaseURL,
-			strings.Replace(meta.RequestURLPath, "/v1/", "/compatibility/v1/", 1),
-			meta.ChannelType,
-		), nil
 	default:
 		return GetFullRequestURL(meta.BaseURL, meta.RequestURLPath, meta.ChannelType), nil
 	}
@@ -85,10 +58,6 @@ func (a *Adaptor) SetupRequestHeader(c *adaptor.Context, req *http.Request, meta
 		return nil
 	}
 	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
-	if meta.ChannelType == channeltype.OpenRouter {
-		req.Header.Set("HTTP-Referer", "https://github.com/infinmalum/one-gateway")
-		req.Header.Set("X-Title", "One Gateway")
-	}
 	return nil
 }
 

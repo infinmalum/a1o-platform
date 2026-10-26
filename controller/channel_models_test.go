@@ -41,19 +41,6 @@ func TestFetchUpstreamModelsCustomBaseKeepsPrefix(t *testing.T) {
 	require.Equal(t, "/v1/models", gotPath)
 }
 
-func TestFetchUpstreamModelsZhipuUsesPaasV4(t *testing.T) {
-	var gotPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		_, _ = w.Write([]byte(`{"data":[{"id":"glm-4.5"}]}`))
-	}))
-	defer server.Close()
-
-	_, err := fetchUpstreamModels(server.Client(), channeltype.Zhipu, server.URL, "key")
-	require.NoError(t, err)
-	require.Equal(t, "/api/paas/v4/models", gotPath)
-}
-
 func TestFetchUpstreamModelsAnthropicHeaders(t *testing.T) {
 	var gotAPIKey, gotVersion string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

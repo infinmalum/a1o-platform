@@ -113,7 +113,7 @@
       "proxy_url": "Proxy",
       "proxy_url_placeholder": "This is optional and used for API calls via a proxy. Please enter the proxy URL, formatted as: https://domain.com",
       "base_url": "Base URL",
-      "base_url_placeholder": "The Base URL required by the OpenAPI SDK",
+      "base_url_placeholder": "The full version-prefixed endpoint base, e.g. https://api.deepseek.com/v1",
       "key": "Key",
       "batch": "Batch Create",
       "batch_placeholder": "Please enter keys, one per line",
@@ -136,9 +136,6 @@
         "create_success": "Channel created successfully!"
       },
       "coze_notice": "For Coze, model name is the Bot ID. You can add prefix `bot-`, e.g.: `bot-123456`.",
-      "douban_notice": "For Douban, you need to go to",
-      "douban_notice_link": "Model Inference Page",
-      "douban_notice_2": "to create an inference endpoint, and use the endpoint name as model name, e.g.: `ep-20240608051426-tkxvl`.",
       "aws_region_placeholder": "region, e.g.: us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -150,9 +147,7 @@
       "user_id": "User ID",
       "user_id_placeholder": "User ID who generated this key",
       "key_prompts": {
-        "default": "Please enter the authentication key for this channel",
-        "fastgpt": "Enter in format: APIKey-AppId, e.g.: fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "Enter in format: AppId|SecretId|SecretKey"
+        "default": "Please enter the authentication key for this channel"
       }
     }
   },

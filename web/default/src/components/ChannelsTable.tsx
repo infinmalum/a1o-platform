@@ -48,14 +48,8 @@ function renderBalance(type, balance, t) {
             return <span>{t('channel.table.balance_not_supported')}</span>;
         }
       return <span>${balance.toFixed(2)}</span>;
-    case 8: // 自定义
+    case 50: // OpenAI 兼容
       return <span>${balance.toFixed(2)}</span>;
-    case 20: // OpenRouter
-      return <span>${balance.toFixed(2)}</span>;
-    case 36: // DeepSeek
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 44: // SiliconFlow
-      return <span>¥{balance.toFixed(2)}</span>;
     default:
       return <span>{t('channel.table.balance_not_supported')}</span>;
   }

@@ -42,43 +42,6 @@ type OpenAIUsageResponse struct {
 	TotalUsage float64 `json:"total_usage"` // unit: 0.01 dollar
 }
 
-type SiliconFlowUsageResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Status  bool   `json:"status"`
-	Data    struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		Image         string `json:"image"`
-		Email         string `json:"email"`
-		IsAdmin       bool   `json:"isAdmin"`
-		Balance       string `json:"balance"`
-		Status        string `json:"status"`
-		Introduction  string `json:"introduction"`
-		Role          string `json:"role"`
-		ChargeBalance string `json:"chargeBalance"`
-		TotalBalance  string `json:"totalBalance"`
-		Category      string `json:"category"`
-	} `json:"data"`
-}
-
-type DeepSeekUsageResponse struct {
-	IsAvailable  bool `json:"is_available"`
-	BalanceInfos []struct {
-		Currency        string `json:"currency"`
-		TotalBalance    string `json:"total_balance"`
-		GrantedBalance  string `json:"granted_balance"`
-		ToppedUpBalance string `json:"topped_up_balance"`
-	} `json:"balance_infos"`
-}
-
-type OpenRouterResponse struct {
-	Data struct {
-		TotalCredits float64 `json:"total_credits"`
-		TotalUsage   float64 `json:"total_usage"`
-	} `json:"data"`
-}
-
 // GetAuthHeader get auth header
 func GetAuthHeader(token string) http.Header {
 	h := http.Header{}
@@ -124,73 +87,6 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 	return body, nil
 }
 
-func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
-	url := "https://api.siliconflow.cn/v1/user/info"
-	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
-	if err != nil {
-		return 0, err
-	}
-	response := SiliconFlowUsageResponse{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return 0, err
-	}
-	if response.Code != 20000 {
-		return 0, fmt.Errorf("code: %d, message: %s", response.Code, response.Message)
-	}
-	balance, err := strconv.ParseFloat(response.Data.TotalBalance, 64)
-	if err != nil {
-		return 0, err
-	}
-	channel.UpdateBalance(balance)
-	return balance, nil
-}
-
-func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
-	url := "https://api.deepseek.com/user/balance"
-	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
-	if err != nil {
-		return 0, err
-	}
-	response := DeepSeekUsageResponse{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return 0, err
-	}
-	index := -1
-	for i, balanceInfo := range response.BalanceInfos {
-		if balanceInfo.Currency == "CNY" {
-			index = i
-			break
-		}
-	}
-	if index == -1 {
-		return 0, errors.New("currency CNY not found")
-	}
-	balance, err := strconv.ParseFloat(response.BalanceInfos[index].TotalBalance, 64)
-	if err != nil {
-		return 0, err
-	}
-	channel.UpdateBalance(balance)
-	return balance, nil
-}
-
-func updateChannelOpenRouterBalance(channel *model.Channel) (float64, error) {
-	url := "https://openrouter.ai/api/v1/credits"
-	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
-	if err != nil {
-		return 0, err
-	}
-	response := OpenRouterResponse{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return 0, err
-	}
-	balance := response.Data.TotalCredits - response.Data.TotalUsage
-	channel.UpdateBalance(balance)
-	return balance, nil
-}
-
 func updateChannelBalance(channel *model.Channel) (float64, error) {
 	baseURL := channeltype.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
@@ -203,18 +99,18 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		}
 	case channeltype.Azure:
 		return 0, errors.New("尚未实现")
-	case channeltype.Custom:
+	case channeltype.OpenAICompatible:
+		// The compatible kind carries its version prefix in the base URL,
+		// so the billing paths hang directly off it.
 		baseURL = channel.GetBaseURL()
-	case channeltype.SiliconFlow:
-		return updateChannelSiliconFlowBalance(channel)
-	case channeltype.DeepSeek:
-		return updateChannelDeepSeekBalance(channel)
-	case channeltype.OpenRouter:
-		return updateChannelOpenRouterBalance(channel)
 	default:
 		return 0, errors.New("尚未实现")
 	}
-	url := fmt.Sprintf("%s/v1/dashboard/billing/subscription", baseURL)
+	billingRoot := "/v1/dashboard/billing"
+	if channel.Type == channeltype.OpenAICompatible {
+		billingRoot = "/dashboard/billing"
+	}
+	url := fmt.Sprintf("%s%s/subscription", baseURL, billingRoot)
 
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
@@ -231,7 +127,7 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 	if !subscription.HasPaymentMethod {
 		startDate = now.AddDate(0, 0, -100).Format("2006-01-02")
 	}
-	url = fmt.Sprintf("%s/v1/dashboard/billing/usage?start_date=%s&end_date=%s", baseURL, startDate, endDate)
+	url = fmt.Sprintf("%s%s/usage?start_date=%s&end_date=%s", baseURL, billingRoot, startDate, endDate)
 	body, err = GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 	if err != nil {
 		return 0, err
@@ -289,7 +185,7 @@ func updateAllChannelsBalance() error {
 			continue
 		}
 		// TODO: support Azure
-		if channel.Type != channeltype.OpenAI && channel.Type != channeltype.Custom {
+		if channel.Type != channeltype.OpenAI && channel.Type != channeltype.OpenAICompatible {
 			continue
 		}
 		balance, err := updateChannelBalance(channel)

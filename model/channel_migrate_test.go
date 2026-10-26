@@ -19,47 +19,80 @@ func setupChannelMigrateTest(t *testing.T) {
 	t.Cleanup(func() { DB = previousDB })
 }
 
-func insertMigrateChannel(t *testing.T, channelType int, baseURL, key string) {
+func insertMigrateChannel(t *testing.T, channelType int, baseURL, key string) int {
 	t.Helper()
-	require.NoError(t, DB.Create(&Channel{Type: channelType, BaseURL: &baseURL, Key: key, Models: "test-model", Group: "default"}).Error)
+	channel := Channel{Type: channelType, BaseURL: &baseURL, Key: key, Models: "test-model", Group: "default"}
+	require.NoError(t, DB.Create(&channel).Error)
+	return channel.Id
+}
+
+func migratedChannel(t *testing.T, id int) Channel {
+	t.Helper()
+	var channel Channel
+	require.NoError(t, DB.First(&channel, "id = ?", id).Error)
+	return channel
 }
 
 func TestMigrateChannelTypesRewritesRetiredKinds(t *testing.T) {
 	setupChannelMigrateTest(t)
-	insertMigrateChannel(t, channeltype.PaLM, "", "google-key")
-	insertMigrateChannel(t, channeltype.Baidu, "https://aip.baidubce.com", "old-signature")
-	insertMigrateChannel(t, channeltype.API2D, "", "api2d-key")
-	// A custom base URL must survive the rewrite.
-	insertMigrateChannel(t, channeltype.API2D, "https://mirror.example.com", "api2d-key")
+	palm := insertMigrateChannel(t, channeltype.PaLM, "", "google-key")
+	baidu := insertMigrateChannel(t, channeltype.Baidu, "https://aip.baidubce.com", "old-signature")
+	api2d := insertMigrateChannel(t, channeltype.API2D, "", "api2d-key")
+	// Custom base URLs survive the rewrite and gain the version prefix.
+	api2dMirror := insertMigrateChannel(t, channeltype.API2D, "https://mirror.example.com", "api2d-mirror-key")
+	custom := insertMigrateChannel(t, channeltype.Custom, "https://relay.example.com/", "custom-key")
+	// A base that already carries the prefix is left alone.
+	prefixed := insertMigrateChannel(t, channeltype.Custom, "https://prefixed.example.com/v1", "custom-prefixed-key")
+	ollama := insertMigrateChannel(t, channeltype.Ollama, "http://192.168.1.5:11434", "ollama-key")
+	zhipu := insertMigrateChannel(t, channeltype.Zhipu, "", "zhipu-key")
+	tencentDefault := insertMigrateChannel(t, channeltype.Tencent, "https://api.hunyuan.cloud.tencent.com", "signature-pair")
+	tencentCustom := insertMigrateChannel(t, channeltype.Tencent, "https://hunyuan.internal.example.com", "signature-pair")
+	geminiCompat := insertMigrateChannel(t, channeltype.GeminiOpenAICompatible, "https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-key")
 	// Modern kinds are left untouched.
-	insertMigrateChannel(t, channeltype.OpenAI, "", "openai-key")
+	openai := insertMigrateChannel(t, channeltype.OpenAI, "", "openai-key")
 
 	MigrateChannelTypes()
 
-	var count int64
-	DB.Model(&Channel{}).Where("type = ?", channeltype.GeminiOpenAICompatible).Count(&count)
-	require.EqualValues(t, 1, count)
+	palmRow := migratedChannel(t, palm)
+	require.Equal(t, channeltype.OpenAICompatible, palmRow.Type)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai", *palmRow.BaseURL)
+	require.Equal(t, "google-key", palmRow.Key)
 
-	var baidu Channel
-	require.NoError(t, DB.First(&baidu, "type = ?", channeltype.BaiduV2).Error)
-	require.Empty(t, baidu.Key, "incompatible credentials are dropped")
-	require.NotNil(t, baidu.BaseURL)
-	require.Equal(t, "https://qianfan.baidubce.com", *baidu.BaseURL)
+	baiduRow := migratedChannel(t, baidu)
+	require.Equal(t, channeltype.OpenAICompatible, baiduRow.Type)
+	require.Equal(t, "https://qianfan.baidubce.com/v2", *baiduRow.BaseURL)
+	require.Empty(t, baiduRow.Key, "incompatible credentials are dropped")
 
-	var api2d Channel
-	require.NoError(t, DB.First(&api2d, "type = ? AND base_url = ?", channeltype.OpenAICompatible, "https://oa.api2d.net/v1").Error)
-	require.Equal(t, "api2d-key", api2d.Key)
+	api2dRow := migratedChannel(t, api2d)
+	require.Equal(t, channeltype.OpenAICompatible, api2dRow.Type)
+	require.Equal(t, "https://oa.api2d.net/v1", *api2dRow.BaseURL)
 
-	// A fresh dest: First folds a non-zero primary key back into the WHERE.
-	var api2dMirror Channel
-	require.NoError(t, DB.First(&api2dMirror, "type = ? AND base_url = ?", channeltype.OpenAICompatible, "https://mirror.example.com").Error)
-	require.Equal(t, "api2d-key", api2dMirror.Key)
+	require.Equal(t, "https://mirror.example.com/v1", *migratedChannel(t, api2dMirror).BaseURL)
+	require.Equal(t, "https://relay.example.com/v1", *migratedChannel(t, custom).BaseURL)
+	require.Equal(t, "https://prefixed.example.com/v1", *migratedChannel(t, prefixed).BaseURL)
+	require.Equal(t, "http://192.168.1.5:11434/v1", *migratedChannel(t, ollama).BaseURL)
 
-	DB.Model(&Channel{}).Where("type = ?", channeltype.OpenAI).Count(&count)
-	require.EqualValues(t, 1, count)
+	zhipuRow := migratedChannel(t, zhipu)
+	require.Equal(t, channeltype.OpenAICompatible, zhipuRow.Type)
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4", *zhipuRow.BaseURL)
+
+	tencentRow := migratedChannel(t, tencentDefault)
+	require.Equal(t, "https://api.hunyuan.cloud.tencent.com/v1", *tencentRow.BaseURL)
+	require.Empty(t, tencentRow.Key, "the TencentCloud signature pair is dropped")
+	require.Equal(t, "https://hunyuan.internal.example.com/v1", *migratedChannel(t, tencentCustom).BaseURL)
+
+	geminiRow := migratedChannel(t, geminiCompat)
+	require.Equal(t, channeltype.OpenAICompatible, geminiRow.Type)
+	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/openai", *geminiRow.BaseURL)
+
+	require.Equal(t, channeltype.OpenAI, migratedChannel(t, openai).Type)
 
 	// Re-running is a no-op.
 	MigrateChannelTypes()
-	DB.Model(&Channel{}).Where("type = ?", channeltype.OpenAICompatible).Count(&count)
-	require.EqualValues(t, 2, count)
+	var compatibleCount int64
+	DB.Model(&Channel{}).Where("type = ?", channeltype.OpenAICompatible).Count(&compatibleCount)
+	require.EqualValues(t, 11, compatibleCount)
+	var openaiCount int64
+	DB.Model(&Channel{}).Where("type = ?", channeltype.OpenAI).Count(&openaiCount)
+	require.EqualValues(t, 1, openaiCount)
 }

@@ -90,12 +90,12 @@ func TestChannelMutationRejectsOutOfRangeTypes(t *testing.T) {
 	}
 }
 
-// TestAddChannelAcceptsLiveKinds keeps the guard from over-refusing: kinds
-// that still ride the relay (the OpenAI wire kinds and Tencent, whose
-// migration row only fixes legacy URLs) must keep creating fine.
+// TestAddChannelAcceptsLiveKinds keeps the guard from over-refusing: the
+// surviving kinds (the OpenAI wire family plus the provider adapters that
+// cannot be expressed as a custom endpoint) must keep creating fine.
 func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 	setupChannelTypeTest(t)
-	for _, kind := range []int{channeltype.OpenAI, channeltype.Zhipu, channeltype.Tencent, channeltype.Ollama, channeltype.Cohere} {
+	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Minimax, channeltype.OpenAICompatible, channeltype.Anthropic} {
 		response := callChannelMutation(t, http.MethodPost, kind)
 		require.Equal(t, true, response["success"], "kind %d should be accepted: %v", kind, response["message"])
 	}
@@ -109,15 +109,17 @@ func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 // they would advertise the whole OpenAI preset despite being uncreatable.
 func TestDashboardModelListSkipsRetiredTypes(t *testing.T) {
 	require.NotNil(t, channelId2Models, "controller init must have built the listing")
-	for _, kind := range []int{channeltype.PaLM, channeltype.Baidu, channeltype.Ali, channeltype.Xunfei, channeltype.AIProxyLibrary} {
+	retired := []int{channeltype.PaLM, channeltype.Baidu, channeltype.Ali, channeltype.Xunfei,
+		channeltype.AIProxyLibrary, channeltype.Tencent, channeltype.Custom, channeltype.Zhipu,
+		channeltype.Cohere, channeltype.Ollama, channeltype.OpenRouter, channeltype.BaiduV2,
+		channeltype.AliBailian, channeltype.GeminiOpenAICompatible}
+	for _, kind := range retired {
 		require.Empty(t, channelId2Models[kind], "retired kind %d must advertise no models", kind)
 	}
-	for _, kind := range []int{channeltype.OpenAI, channeltype.BaiduV2, channeltype.AliBailian} {
+	// Only the kinds that still ship a static preset keep one.
+	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Minimax} {
 		require.NotEmpty(t, channelId2Models[kind], "live kind %d must keep its preset", kind)
 	}
-	// Zhipu/Tencent/Ollama legitimately ship empty presets (upstreams are
-	// fetched live); the retired kinds above must match that emptiness.
-	for _, kind := range []int{channeltype.Zhipu, channeltype.Tencent, channeltype.Ollama} {
-		require.Empty(t, channelId2Models[kind], "live kind %d keeps shipping no preset", kind)
-	}
+	// The compatible kind fetches its list from the upstream instead.
+	require.Empty(t, channelId2Models[channeltype.OpenAICompatible], "compatible kind fetches models live")
 }

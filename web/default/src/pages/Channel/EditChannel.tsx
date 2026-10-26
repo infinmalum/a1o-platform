@@ -12,20 +12,6 @@ const MODEL_MAPPING_EXAMPLE = {
   'gpt-4-32k-0314': 'gpt-4-32k',
 };
 
-// Secret hints exist only for the two kinds whose keys are not plain API
-// tokens: FastGPT (22) wants a per-app key and Hunyuan (23) moved from the
-// TencentCloud signature pair to a console-issued key.
-function type2secretPrompt(type, t) {
-  switch (type) {
-    case 22:
-      return t('channel.edit.key_prompts.fastgpt');
-    case 23:
-      return t('channel.edit.key_prompts.tencent');
-    default:
-      return t('channel.edit.key_prompts.default');
-  }
-}
-
 const EditChannel = () => {
   const { t } = useTranslation();
   const params = useParams();
@@ -423,20 +409,6 @@ const EditChannel = () => {
               </>
             )}
 
-            {/* Custom base URL field */}
-            {inputs.type === 8 && (
-              <Form.Field>
-                <Form.Input
-                    required
-                    label={t('channel.edit.proxy_url')}
-                    name='base_url'
-                    placeholder={t('channel.edit.proxy_url_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
             {inputs.type === 50 && (
                 <Form.Field>
                   <Form.Input
@@ -453,18 +425,6 @@ const EditChannel = () => {
 
             {inputs.type === 34 && (
               <Message>{t('channel.edit.coze_notice')}</Message>
-            )}
-            {inputs.type === 40 && (
-              <Message>
-                {t('channel.edit.douban_notice')}
-                <a
-                  target='_blank'
-                  href='https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint'
-                >
-                  {t('channel.edit.douban_notice_link')}
-                </a>
-                {t('channel.edit.douban_notice_2')}
-              </Message>
             )}
             {/* Type 43 (legacy Proxy library) owns its model list, so the
                 models picker stays hidden; the kind is no longer offered but
@@ -492,17 +452,19 @@ const EditChannel = () => {
             )}
             {inputs.type !== 43 && (
               <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, {
-                      name: 'models',
-                      value: basicModels,
-                    });
-                  }}
-                >
-                  {t('channel.edit.buttons.fill_models')}
-                </Button>
+                {basicModels.length > 0 && (
+                  <Button
+                    type={'button'}
+                    onClick={() => {
+                      handleInputChange(null, {
+                        name: 'models',
+                        value: basicModels,
+                      });
+                    }}
+                  >
+                    {t('channel.edit.buttons.fill_models')}
+                  </Button>
+                )}
                 <Button
                   type={'button'}
                   onClick={() => {
@@ -681,7 +643,7 @@ const EditChannel = () => {
                     label={t('channel.edit.key')}
                     name='key'
                     required
-                    placeholder={type2secretPrompt(inputs.type, t)}
+                    placeholder={t('channel.edit.key_prompts.default')}
                     onChange={handleInputChange}
                     value={inputs.key}
                     autoComplete='new-password'
@@ -713,10 +675,8 @@ const EditChannel = () => {
             )}
             {inputs.type !== 3 &&
               inputs.type !== 33 &&
-              inputs.type !== 8 &&
-                inputs.type !== 50 &&
-              inputs.type !== 53 &&
-              inputs.type !== 22 && (
+              inputs.type !== 50 &&
+              inputs.type !== 53 && (
                 <Form.Field>
                   <Form.Input
                       label={t('channel.edit.proxy_url')}
@@ -728,20 +688,6 @@ const EditChannel = () => {
                   />
                 </Form.Field>
               )}
-            {inputs.type === 22 && (
-              <Form.Field>
-                <Form.Input
-                  label='私有部署地址'
-                  name='base_url'
-                  placeholder={
-                    '请输入私有部署地址，格式为：https://fastgpt.run/api/openapi'
-                  }
-                  onChange={handleInputChange}
-                  value={inputs.base_url}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
             <Button onClick={handleCancel}>
               {t('channel.edit.buttons.cancel')}
             </Button>

@@ -7,33 +7,30 @@ import (
 	"github.com/infinmalum/one-gateway/relay/relaymode"
 )
 
-// retiredChannelTypes are the kinds whose native adapters were removed and
-// whose official OpenAI-compatible endpoints need a different request path
-// than the default /v1 one. Channels of these kinds are migrated to the
-// matching OpenAI-compatible kind at startup (migrateChannelTypes); the
-// constants stay in the iota table for numbering stability only.
-var retiredChannelTypes = map[int]bool{
-	PaLM:           true,
-	Baidu:          true,
-	Ali:            true,
-	Xunfei:         true,
-	AIProxyLibrary: true,
+// nativeChatWhitelist is pinned literally so NativeChatCompatible can never
+// drift from it. Widening the whitelist to a retired vendor kind would route
+// live traffic onto a kind whose channels are rewritten at boot.
+var nativeChatWhitelist = map[int]bool{
+	OpenAI:           true,
+	Azure:            true,
+	Minimax:          true,
+	OpenAICompatible: true,
 }
 
 func TestAllOpenAIAdapterChannelsUseNativeChat(t *testing.T) {
 	for kind := OpenAI; kind < Dummy; kind++ {
-		if retiredChannelTypes[kind] {
-			continue
+		if got := NativeChatCompatible(kind); got != nativeChatWhitelist[kind] {
+			t.Errorf("channel type %d: native Chat eligibility %t, whitelist %t", kind, got, nativeChatWhitelist[kind])
 		}
-		if got, want := NativeChatCompatible(kind), ToAPIType(kind) == apitype.OpenAI; got != want {
-			t.Errorf("channel type %d: native Chat eligibility %t, OpenAI adapter %t", kind, got, want)
+		if nativeChatWhitelist[kind] && ToAPIType(kind) != apitype.OpenAI {
+			t.Errorf("channel type %d: whitelist member must ride the OpenAI adaptor", kind)
 		}
 	}
 }
 
 func TestOpenAIWireSupportsOperation(t *testing.T) {
 	for kind := OpenAI; kind < Dummy; kind++ {
-		if !NativeChatCompatible(kind) || kind == Zhipu || kind == Tencent || kind == Ollama || kind == Cohere {
+		if !NativeChatCompatible(kind) {
 			continue
 		}
 		for _, mode := range []int{
@@ -46,22 +43,20 @@ func TestOpenAIWireSupportsOperation(t *testing.T) {
 			}
 		}
 	}
-	// The retired vendor compatible endpoints mirror chat completions and
-	// embeddings; Zhipu additionally serves image generations.
-	for _, kind := range []int{Zhipu, Tencent, Ollama, Cohere} {
-		if !OpenAIWireSupportsOperation(kind, relaymode.ChatCompletions) || !OpenAIWireSupportsOperation(kind, relaymode.Embeddings) {
-			t.Errorf("channel type %d: chat and embeddings must ride the compatible wire", kind)
-		}
+	// Retired vendor kinds must never serve the wire: their channels are
+	// rewritten to the compatible kind at boot, so accepting an operation on
+	// them would keep stale channels routable.
+	retired := []int{PaLM, Baidu, Ali, Xunfei, Tencent, AIProxyLibrary, Custom,
+		Zhipu, Cohere, Ollama, BaiduV2, AliBailian, GeminiOpenAICompatible}
+	for _, kind := range retired {
 		for _, mode := range []int{
-			relaymode.Completions, relaymode.Moderations, relaymode.Edits,
+			relaymode.ChatCompletions, relaymode.Completions, relaymode.Embeddings,
+			relaymode.Moderations, relaymode.ImagesGenerations, relaymode.Edits,
 			relaymode.AudioSpeech, relaymode.AudioTranscription, relaymode.AudioTranslation,
 		} {
 			if OpenAIWireSupportsOperation(kind, mode) {
-				t.Errorf("channel type %d: wire operation %d must be refused before the upstream", kind, mode)
+				t.Errorf("channel type %d: retired wire operation %d must be refused", kind, mode)
 			}
-		}
-		if OpenAIWireSupportsOperation(kind, relaymode.ImagesGenerations) != (kind == Zhipu) {
-			t.Errorf("channel type %d: image support mismatch", kind)
 		}
 	}
 	if OpenAIWireSupportsOperation(Anthropic, relaymode.ChatCompletions) {

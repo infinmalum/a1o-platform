@@ -490,7 +490,8 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 	var upstreamCalls atomic.Int64
 	ollamaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalls.Add(1)
-		// Ollama channels ride the OpenAI-compatible wire at /v1/embeddings.
+		// OpenAI-compatible channels carry the version prefix in their base
+		// URL, so the request lands at /v1/embeddings.
 		if r.URL.Path != "/v1/embeddings" {
 			t.Errorf("unexpected provider path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -505,9 +506,9 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 	}))
 	defer ollamaServer.Close()
 
-	ollamaURL := ollamaServer.URL
+	ollamaURL := ollamaServer.URL + "/v1"
 	ollamaMapping := `{"ollama-embed":"upstream-ollama-embed"}`
-	ollamaChannel := model.Channel{Type: channeltype.Ollama, Key: "phase5-ollama-key", Name: "phase5-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-embed", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL}
+	ollamaChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "phase5-ollama-key", Name: "phase5-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-embed", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL}
 	if err := ollamaChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
@@ -532,25 +533,28 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 		t.Fatalf("provider embeddings were not settled: %v", err)
 	}
 
+	// The compatible kind forwards the whole OpenAI wire, so only a model no
+	// channel carries is refused before the provider is contacted.
 	for _, fixture := range []struct{ path, body string }{
-		{"/v1/edits", `{"model":"ollama-embed","instruction":"fix"}`},
-		{"/v1/moderations", `{"model":"ollama-embed","input":"text"}`},
-		{"/v1/audio/speech", `{"model":"ollama-embed","input":"text","voice":"alloy"}`},
+		{"/v1/edits", `{"model":"orphan-model","instruction":"fix"}`},
+		{"/v1/moderations", `{"model":"orphan-model","input":"text"}`},
+		{"/v1/audio/speech", `{"model":"orphan-model","input":"text","voice":"alloy"}`},
 	} {
 		rejected := httptest.NewRequest(http.MethodPost, fixture.path, strings.NewReader(fixture.body))
 		rejected.Header.Set("Content-Type", "application/json")
 		rejected.Header.Set("Authorization", "Bearer sk-phase5-provider-key")
 		rejectedResponse := httptest.NewRecorder()
 		routes.ServeHTTP(rejectedResponse, rejected)
-		if rejectedResponse.Code != http.StatusUnprocessableEntity || upstreamCalls.Load() != 1 {
-			t.Fatalf("unsupported operation reached the provider: %s status %d calls %d body %s", fixture.path, rejectedResponse.Code, upstreamCalls.Load(), rejectedResponse.Body.String())
+		if rejectedResponse.Code != http.StatusServiceUnavailable || upstreamCalls.Load() != 1 {
+			t.Fatalf("unroutable model reached the provider: %s status %d calls %d body %s", fixture.path, rejectedResponse.Code, upstreamCalls.Load(), rejectedResponse.Body.String())
 		}
 	}
 }
 
-// The provider image formats run through the shared lifecycle with image-size
-// billing: the zhipu adapter converts the mapped request, the upstream image
-// response is forwarded untouched, and the fixed quota is settled exactly.
+// Image generation runs through the shared lifecycle with image-size billing:
+// the compatible channel forwards the mapped request on the OpenAI wire, the
+// upstream image response is forwarded untouched, and the fixed quota is
+// settled exactly.
 func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := commonclient.HTTPClient
@@ -588,25 +592,25 @@ func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	zhipuServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	compatibleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/paas/v4/images/generations" {
-			t.Errorf("zhipu image provider request: %s", r.URL.Path)
+			t.Errorf("compatible image provider request: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), `"model":"upstream-cogview"`) || !strings.Contains(string(body), `"prompt":"a lake"`) {
-			t.Errorf("zhipu image request lost fields: %s", body)
+			t.Errorf("compatible image request lost fields: %s", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"created":7,"data":[{"url":"https://example.test/lake.png"}]}`)
 	}))
-	defer zhipuServer.Close()
+	defer compatibleServer.Close()
 
-	zhipuURL := zhipuServer.URL
-	zhipuMapping := `{"cogview-3":"upstream-cogview"}`
-	zhipuChannel := model.Channel{Type: channeltype.Zhipu, Key: "phase5-zhipu-key", Name: "phase5-zhipu", Status: model.ChannelStatusEnabled, Group: "default", Models: "cogview-3", ModelMapping: &zhipuMapping, BaseURL: &zhipuURL}
-	if err := zhipuChannel.Insert(); err != nil {
+	compatibleURL := compatibleServer.URL + "/api/paas/v4"
+	compatibleMapping := `{"cogview-3":"upstream-cogview"}`
+	compatibleChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "phase5-zhipu-key", Name: "phase5-zhipu", Status: model.ChannelStatusEnabled, Group: "default", Models: "cogview-3", ModelMapping: &compatibleMapping, BaseURL: &compatibleURL}
+	if err := compatibleChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -626,10 +630,10 @@ func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	var imageLog model.Log
-	if err := db.Where("channel_id = ? AND type = ?", zhipuChannel.Id, model.LogTypeConsume).First(&imageLog).Error; err != nil {
+	if err := db.Where("channel_id = ? AND type = ?", compatibleChannel.Id, model.LogTypeConsume).First(&imageLog).Error; err != nil {
 		t.Fatalf("provider image quota was not settled: %v", err)
 	}
-	expectedQuota := int64(billingratio.GetModelRatio("upstream-cogview", channeltype.Zhipu) * billingratio.GetGroupRatio("default") * 1000)
+	expectedQuota := int64(billingratio.GetModelRatio("upstream-cogview", channeltype.OpenAICompatible) * billingratio.GetGroupRatio("default") * 1000)
 	if int64(imageLog.Quota) != expectedQuota {
 		t.Fatalf("provider image quota %d does not match the size-billing estimate %d", imageLog.Quota, expectedQuota)
 	}

@@ -113,7 +113,7 @@
       "proxy_url": "代理",
       "proxy_url_placeholder": "此项可选，用于通过代理站来进行 API 调用，请输入代理站地址，格式为：https://domain.com。注意，这里所需要填入的代理地址仅会在实际请求时替换域名部分，如果你想填入 OpenAI SDK 中所要求的 Base URL，请使用 OpenAI 兼容渠道类型",
       "base_url": "Base URL",
-      "base_url_placeholder": "OpenAPI SDK 中所要求的 Base URL",
+      "base_url_placeholder": "完整接口前缀（含版本号，如 https://api.deepseek.com/v1）",
       "key": "密钥",
       "batch": "批量创建",
       "batch_placeholder": "请输入密钥，一行一个",
@@ -136,9 +136,6 @@
         "create_success": "渠道创建成功！"
       },
       "coze_notice": "对于 Coze 而言，模型名称即 Bot ID，你可以添加一个前缀 `bot-`，例如：`bot-123456`。",
-      "douban_notice": "对于豆包而言，需要手动去",
-      "douban_notice_link": "模型推理页面",
-      "douban_notice_2": "创建推理接入点，以接入点名称作为模型名称，例如：`ep-20240608051426-tkxvl`。你可以结合模型重定向功能将其转换为常规的模型名称，例如：doubao-lite-4k -> ep-20240608051426-tkxvl（前者作为 JSON 的 key，后者作为 value）。注意，doubao-lite-4k 和 ep-20240608051426-tkxvl 都需要通过自定义模型的方式填入到本渠道的模型列表中。",
       "aws_region_placeholder": "region，例如：us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -150,9 +147,7 @@
       "user_id": "User ID",
       "user_id_placeholder": "生成该密钥的用户 ID",
       "key_prompts": {
-        "default": "请输入渠道对应的鉴权密钥",
-        "fastgpt": "按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "按照如下格式输入：AppId|SecretId|SecretKey"
+        "default": "请输入渠道对应的鉴权密钥"
       }
     }
   },

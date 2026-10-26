@@ -448,7 +448,6 @@ func providerRequestBody(transport *adaptor.Context, body []byte, requestMeta *m
 	if !config.EnforceIncludeUsage &&
 		requestMeta.APIType == apitype.OpenAI &&
 		requestMeta.OriginModelName == requestMeta.ActualModelName &&
-		requestMeta.ChannelType != channeltype.Baichuan &&
 		requestMeta.ForcedSystemPrompt == "" {
 		// no need to convert request for openai
 		return bytes.NewReader(body), nil

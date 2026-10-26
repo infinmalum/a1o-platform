@@ -213,8 +213,8 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"chatcmpl-1","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`)
 	}))
 	defer chatUpstream.Close()
-	chatURL := chatUpstream.URL
-	chatChannel := model.Channel{Type: channeltype.OpenRouter, Key: "upstream-key", Name: "legacy-chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "legacy-chat,legacy-completion,legacy-embed,legacy-edit,legacy-moderation", BaseURL: &chatURL}
+	chatURL := chatUpstream.URL + "/v1"
+	chatChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "upstream-key", Name: "legacy-chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "legacy-chat,legacy-completion,legacy-embed,legacy-edit,legacy-moderation", BaseURL: &chatURL}
 	if err := chatChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}

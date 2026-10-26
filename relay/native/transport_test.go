@@ -26,14 +26,12 @@ func TestNativeChatChannelProfiles(t *testing.T) {
 		header  string
 	}{
 		{channeltype.OpenAI, "https://example.com", "", "/v1/chat/completions", "", "Authorization"},
+		// The compatible kind carries the version prefix in its base URL, so
+		// the /v1 path prefix is stripped on every OpenAI wire operation.
 		{channeltype.OpenAICompatible, "https://example.com/openai", "", "/openai/chat/completions", "", "Authorization"},
-		{channeltype.GeminiOpenAICompatible, "https://example.com/v1beta/openai", "", "/v1beta/openai/chat/completions", "", "Authorization"},
+		{channeltype.OpenAICompatible, "https://example.com/v1", "", "/v1/chat/completions", "", "Authorization"},
 		{channeltype.Azure, "https://example.com", "2026-01-01", "/openai/deployments/upstream/chat/completions", "2026-01-01", "api-key"},
 		{channeltype.Minimax, "https://example.com", "", "/v1/text/chatcompletion_v2", "", "Authorization"},
-		{channeltype.Doubao, "https://example.com", "", "/api/v3/chat/completions", "", "Authorization"},
-		{channeltype.Novita, "https://example.com/v3/openai", "", "/v3/openai/chat/completions", "", "Authorization"},
-		{channeltype.BaiduV2, "https://example.com", "", "/v2/chat/completions", "", "Authorization"},
-		{channeltype.AliBailian, "https://example.com", "", "/compatible-mode/v1/chat/completions", "", "Authorization"},
 	} {
 		request, err := BuildRequest(context.Background(), Request{Protocol: OpenAIChat, ChannelType: fixture.kind,
 			BaseURL: fixture.baseURL, Version: fixture.version, Model: "upstream", APIKey: "provider-key",
@@ -289,6 +287,13 @@ func TestOpenAIEmbeddingsPreserveFieldsAndLargeUsage(t *testing.T) {
 	unmappedBody, _ := io.ReadAll(unmapped.Body)
 	if !bytes.Equal(unmappedBody, body) {
 		t.Fatalf("unmapped embedding request changed: %s", unmappedBody)
+	}
+	compatible, err := BuildRequest(context.Background(), Request{Protocol: OpenAIEmbeddings, ChannelType: channeltype.OpenAICompatible, BaseURL: "https://example.com/v1", Model: "alias", APIKey: "provider-key", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compatible.URL.Path != "/v1/embeddings" {
+		t.Fatalf("compatible embedding request lost the version prefix: %s", compatible.URL)
 	}
 	request, err := BuildRequest(context.Background(), Request{Protocol: OpenAIEmbeddings, BaseURL: "https://example.com", Model: "upstream", APIKey: "provider-key", Body: body})
 	if err != nil {
