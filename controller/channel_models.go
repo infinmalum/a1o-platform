@@ -114,10 +114,6 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		listURL = baseURL + "/v1/models"
 	case channeltype.Gemini:
 		listURL = baseURL + "/v1beta/models"
-	case channeltype.Zhipu:
-		listURL = baseURL + "/api/paas/v4/models"
-	case channeltype.Cohere:
-		listURL = baseURL + "/compatibility/v1/models"
 	case channeltype.OpenAICompatible:
 		// The base URL already carries the version prefix, e.g. /v1.
 		listURL = baseURL + "/models"

@@ -24,7 +24,7 @@ let type2label = undefined;
 
 function renderType(type, t) {
   if (!type2label) {
-    type2label = new Map();
+    type2label = {};
     for (let i = 0; i < CHANNEL_OPTIONS.length; i++) {
       type2label[CHANNEL_OPTIONS[i].value] = CHANNEL_OPTIONS[i];
     }
@@ -48,14 +48,8 @@ function renderBalance(type, balance, t) {
             return <span>{t('channel.table.balance_not_supported')}</span>;
         }
       return <span>${balance.toFixed(2)}</span>;
-    case 8: // 自定义
+    case 50: // OpenAI 兼容
       return <span>${balance.toFixed(2)}</span>;
-    case 20: // OpenRouter
-      return <span>${balance.toFixed(2)}</span>;
-    case 36: // DeepSeek
-      return <span>¥{balance.toFixed(2)}</span>;
-    case 44: // SiliconFlow
-      return <span>¥{balance.toFixed(2)}</span>;
     default:
       return <span>{t('channel.table.balance_not_supported')}</span>;
   }
@@ -94,7 +88,6 @@ const ChannelsTable = () => {
           value: model,
         };
       });
-      console.log('channel', channel);
     }
     return channel;
   };
@@ -306,7 +299,13 @@ const ChannelsTable = () => {
   };
 
   const testChannel = async (id, name, idx, m) => {
-    const res = await API.get(`/api/channel/test/${id}?model=${m}`);
+    let res;
+    try {
+      res = await API.get(`/api/channel/test/${id}?model=${m}`);
+    } catch (error) {
+      // interceptor toasts the error
+      return;
+    }
     const { success, message, time, model } = res.data;
     if (success) {
       let newChannels = [...channels];
@@ -320,11 +319,6 @@ const ChannelsTable = () => {
     } else {
       showError(message);
     }
-    let newChannels = [...channels];
-    let realIdx = (activePage - 1) * ITEMS_PER_PAGE + idx;
-    newChannels[realIdx].response_time = time * 1000;
-    newChannels[realIdx].test_time = Date.now() / 1000;
-    setChannels(newChannels);
   };
 
   const testChannels = async (scope) => {

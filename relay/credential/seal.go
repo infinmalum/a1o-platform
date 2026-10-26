@@ -49,10 +49,6 @@ func NewStore(keys map[int][keyBytes]byte, activeVersion int) (*Store, error) {
 	return &Store{keys: keys, active: activeVersion}, nil
 }
 
-func (s *Store) ActiveVersion() int {
-	return s.active
-}
-
 type sealedEnvelope struct {
 	Format     int    `json:"format"`
 	KeyVersion int    `json:"key_version"`

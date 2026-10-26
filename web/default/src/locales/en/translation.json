@@ -1,6 +1,5 @@
 {
   "header": {
-    "home": "Home",
     "channel": "Channel",
     "upstreamAccount": "Upstream Accounts",
     "token": "Token",
@@ -114,9 +113,8 @@
       "proxy_url": "Proxy",
       "proxy_url_placeholder": "This is optional and used for API calls via a proxy. Please enter the proxy URL, formatted as: https://domain.com",
       "base_url": "Base URL",
-      "base_url_placeholder": "The Base URL required by the OpenAPI SDK",
+      "base_url_placeholder": "The full version-prefixed endpoint base, e.g. https://api.deepseek.com/v1",
       "key": "Key",
-      "key_placeholder": "Please enter key",
       "batch": "Batch Create",
       "batch_placeholder": "Please enter keys, one per line",
       "buttons": {
@@ -137,16 +135,7 @@
         "update_success": "Channel updated successfully!",
         "create_success": "Channel created successfully!"
       },
-      "spark_version": "Model Version",
-      "spark_version_placeholder": "Please enter Spark model version from API URL, e.g.: v2.1",
-      "knowledge_id": "Knowledge Base ID",
-      "knowledge_id_placeholder": "Please enter knowledge base ID, e.g.: 123456",
-      "plugin_param": "Plugin Parameter",
-      "plugin_param_placeholder": "Please enter plugin parameter (X-DashScope-Plugin header value)",
       "coze_notice": "For Coze, model name is the Bot ID. You can add prefix `bot-`, e.g.: `bot-123456`.",
-      "douban_notice": "For Douban, you need to go to",
-      "douban_notice_link": "Model Inference Page",
-      "douban_notice_2": "to create an inference endpoint, and use the endpoint name as model name, e.g.: `ep-20240608051426-tkxvl`.",
       "aws_region_placeholder": "region, e.g.: us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -158,11 +147,7 @@
       "user_id": "User ID",
       "user_id_placeholder": "User ID who generated this key",
       "key_prompts": {
-        "default": "Please enter the authentication key for this channel",
-        "zhipu": "Enter in format: APIKey|SecretKey",
-        "spark": "Enter in format: APPID|APISecret|APIKey",
-        "fastgpt": "Enter in format: APIKey-AppId, e.g.: fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "Enter in format: AppId|SecretId|SecretKey"
+        "default": "Please enter the authentication key for this channel"
       }
     }
   },
@@ -250,8 +235,7 @@
   "common": {
     "quota": {
       "display": "Equivalent: ${{amount}}",
-      "display_short": "${{amount}}",
-      "unit": "$"
+      "display_short": "${{amount}}"
     },
     "quotaInput": {
       "usd_hint": "{{label}} (USD, ≈ {{quota}} quota)",
@@ -659,9 +643,7 @@
         "qrcode_placeholder": "Enter an image URL",
         "buttons": {
           "save": "Save WeChat Server Settings"
-        },
-        "scan_tip": "Scan QR code to follow WeChat Official Account, enter 'code' to get verification code (valid for 3 minutes)",
-        "code_placeholder": "Verification code"
+        }
       },
       "turnstile": {
         "title": "Turnstile Configuration",
@@ -794,8 +776,7 @@
         },
         "buttons": {
           "save_name": "Set System Name",
-          "save_logo": "Set Logo",
-          "save_theme": "Set Theme (Restart Required)"
+          "save_logo": "Set Logo"
         }
       },
       "content": {
@@ -806,9 +787,7 @@
         },
         "about": {
           "title": "About System",
-          "description": "You can set about content in settings page, supports HTML & Markdown",
-          "repository": "Project Repository:",
-          "loading_failed": "Failed to load about content..."
+          "placeholder": "Enter about content here, supports Markdown & HTML code. If a link is entered, it will be used as the src attribute of an iframe, allowing you to set any webpage as the about page."
         },
         "footer": {
           "title": "Footer",
@@ -874,8 +853,7 @@
         "scan_tip": "Scan QR code to follow WeChat Official Account, enter 'code' to get verification code (valid for 3 minutes)",
         "code_placeholder": "Verification code"
       }
-    },
-    "register": {
+    },    "register": {
       "title": "New User Registration",
       "username": "Username (max 12 characters)",
       "password": "Password (8-20 characters)",
@@ -916,17 +894,13 @@
     "success": {
       "login": "Login successful!",
       "register": "Registration successful!",
-      "verification_code": "Verification code sent, please check your email!",
-      "password_reset": "Reset email sent, please check your inbox!"
+      "verification_code": "Verification code sent, please check your email!"
     },
     "error": {
       "login_expired": "Not logged in or session expired, please login again!",
       "password_length": "Password must be at least 8 characters!",
       "password_mismatch": "Passwords do not match",
       "turnstile_wait": "Please wait a few seconds, Turnstile is checking the environment!"
-    },
-    "notice": {
-      "password_copied": "New password copied to clipboard: {{password}}"
     }
   },
   "chat": {

@@ -3,20 +3,13 @@ package channeltype
 import "github.com/infinmalum/one-gateway/relay/relaymode"
 
 // NativeChatCompatible identifies channels whose Chat Completions endpoint
-// accepts the OpenAI JSON and SSE wire format. Channels with provider-specific
-// request conversion stay on their existing adapter until that conversion is
-// moved into the shared lifecycle.
+// accepts the OpenAI JSON and SSE wire format. Every other vendor kind was
+// collapsed onto OpenAICompatible, where the admin enters the full
+// version-prefixed base URL; Minimax keeps its own adapter because its chat
+// path (/v1/text/chatcompletion_v2) cannot be expressed as a custom endpoint.
 func NativeChatCompatible(kind int) bool {
 	switch kind {
-	case OpenAI, API2D, Azure, CloseAI, OpenAISB, OpenAIMax, OhMyGPT,
-		Custom, Ails, AIProxy, API2GPT, AIGC2D, AI360, OpenRouter, FastGPT,
-		Moonshot, Baichuan, Minimax, Mistral, Groq, LingYiWanWu,
-		StepFun, DeepSeek, TogetherAI, Doubao, Novita, SiliconFlow,
-		XAI, BaiduV2, XunfeiV2, AliBailian, OpenAICompatible,
-		GeminiOpenAICompatible,
-		// Retired native adapters now ride the OpenAI wire through official
-		// vendor-compatible endpoints.
-		Zhipu, Tencent, Ollama, Cohere:
+	case OpenAI, Azure, Minimax, OpenAICompatible:
 		return true
 	default:
 		return false
@@ -25,24 +18,17 @@ func NativeChatCompatible(kind int) bool {
 
 // OpenAIWireSupportsOperation reports whether the channel kind serves a relay
 // mode on the OpenAI JSON wire, so unsupported operations are refused before
-// a request is forwarded to an endpoint that does not exist. The retired
-// vendor compatible endpoints mirror chat completions and embeddings, plus
-// Zhipu image generations, but none of the legacy text or audio operations.
+// a request is forwarded to an endpoint that does not exist.
 func OpenAIWireSupportsOperation(kind int, mode int) bool {
 	if !NativeChatCompatible(kind) {
 		return false
 	}
-	switch kind {
-	case Zhipu, Tencent, Ollama, Cohere:
-		switch mode {
-		case relaymode.ChatCompletions, relaymode.Embeddings:
-			return true
-		case relaymode.ImagesGenerations:
-			return kind == Zhipu
-		default:
-			return false
-		}
-	default:
+	switch mode {
+	case relaymode.ChatCompletions, relaymode.Embeddings, relaymode.ImagesGenerations,
+		relaymode.Completions, relaymode.Moderations, relaymode.AudioSpeech,
+		relaymode.AudioTranscription, relaymode.AudioTranslation, relaymode.Edits:
 		return true
+	default:
+		return false
 	}
 }

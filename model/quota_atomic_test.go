@@ -27,23 +27,6 @@ func setupQuotaTest(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestQuotaDeductionRejectsOverdraftWithBatchEnabled(t *testing.T) {
-	db := setupQuotaTest(t)
-	config.BatchUpdateEnabled = true
-
-	require.NoError(t, DecreaseTokenQuota(1, 3))
-	require.NoError(t, DecreaseUserQuota(1, 3))
-	require.Error(t, DecreaseUserQuota(1, 3))
-	require.Error(t, DecreaseTokenQuota(1, 8))
-
-	var user User
-	var token Token
-	require.NoError(t, db.First(&user, 1).Error)
-	require.NoError(t, db.First(&token, 1).Error)
-	require.Equal(t, int64(2), user.Quota)
-	require.Equal(t, int64(7), token.RemainQuota)
-}
-
 func TestPostConsumeRollsBackWhenTokenQuotaIsInsufficient(t *testing.T) {
 	db := setupQuotaTest(t)
 	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("quota", 20).Error)

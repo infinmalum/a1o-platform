@@ -147,16 +147,6 @@ func (t *Token) Delete() error {
 	return err
 }
 
-func (t *Token) GetModels() string {
-	if t == nil {
-		return ""
-	}
-	if t.Models == nil {
-		return ""
-	}
-	return *t.Models
-}
-
 func DeleteTokenById(id int, userId int) (err error) {
 	// Why we need userId here? In case user want to delete other's token.
 	if id == 0 || userId == 0 {
@@ -170,17 +160,6 @@ func DeleteTokenById(id int, userId int) (err error) {
 	return token.Delete()
 }
 
-func IncreaseTokenQuota(id int, quota int64) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	if config.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, quota)
-		return nil
-	}
-	return increaseTokenQuota(id, quota)
-}
-
 func increaseTokenQuota(id int, quota int64) (err error) {
 	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
@@ -190,13 +169,6 @@ func increaseTokenQuota(id int, quota int64) (err error) {
 		},
 	).Error
 	return err
-}
-
-func DecreaseTokenQuota(id int, quota int64) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	return decreaseTokenQuota(DB, id, quota)
 }
 
 func decreaseTokenQuota(db *gorm.DB, id int, quota int64) error {

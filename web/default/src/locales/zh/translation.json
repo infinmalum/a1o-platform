@@ -1,6 +1,5 @@
 {
   "header": {
-    "home": "首页",
     "channel": "渠道",
     "upstreamAccount": "订阅账号",
     "token": "令牌",
@@ -114,9 +113,8 @@
       "proxy_url": "代理",
       "proxy_url_placeholder": "此项可选，用于通过代理站来进行 API 调用，请输入代理站地址，格式为：https://domain.com。注意，这里所需要填入的代理地址仅会在实际请求时替换域名部分，如果你想填入 OpenAI SDK 中所要求的 Base URL，请使用 OpenAI 兼容渠道类型",
       "base_url": "Base URL",
-      "base_url_placeholder": "OpenAPI SDK 中所要求的 Base URL",
+      "base_url_placeholder": "完整接口前缀（含版本号，如 https://api.deepseek.com/v1）",
       "key": "密钥",
-      "key_placeholder": "请输入密钥",
       "batch": "批量创建",
       "batch_placeholder": "请输入密钥，一行一个",
       "buttons": {
@@ -137,16 +135,7 @@
         "update_success": "渠道更新成功！",
         "create_success": "渠道创建成功！"
       },
-      "spark_version": "模型版本",
-      "spark_version_placeholder": "请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1",
-      "knowledge_id": "知识库 ID",
-      "knowledge_id_placeholder": "请输入知识库 ID，例如：123456",
-      "plugin_param": "插件参数",
-      "plugin_param_placeholder": "请输入插件参数，即 X-DashScope-Plugin 请求头的取值",
       "coze_notice": "对于 Coze 而言，模型名称即 Bot ID，你可以添加一个前缀 `bot-`，例如：`bot-123456`。",
-      "douban_notice": "对于豆包而言，需要手动去",
-      "douban_notice_link": "模型推理页面",
-      "douban_notice_2": "创建推理接入点，以接入点名称作为模型名称，例如：`ep-20240608051426-tkxvl`。你可以结合模型重定向功能将其转换为常规的模型名称，例如：doubao-lite-4k -> ep-20240608051426-tkxvl（前者作为 JSON 的 key，后者作为 value）。注意，doubao-lite-4k 和 ep-20240608051426-tkxvl 都需要通过自定义模型的方式填入到本渠道的模型列表中。",
       "aws_region_placeholder": "region，例如：us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -158,11 +147,7 @@
       "user_id": "User ID",
       "user_id_placeholder": "生成该密钥的用户 ID",
       "key_prompts": {
-        "default": "请输入渠道对应的鉴权密钥",
-        "zhipu": "按照如下格式输入：APIKey|SecretKey",
-        "spark": "按照如下格式输入：APPID|APISecret|APIKey",
-        "fastgpt": "按照如下格式输入：APIKey-AppId，例如：fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
-        "tencent": "按照如下格式输入：AppId|SecretId|SecretKey"
+        "default": "请输入渠道对应的鉴权密钥"
       }
     }
   },
@@ -250,8 +235,7 @@
   "common": {
     "quota": {
       "display": "等价金额：${{amount}}",
-      "display_short": "${{amount}}",
-      "unit": "$"
+      "display_short": "${{amount}}"
     },
     "quotaInput": {
       "usd_hint": "{{label}}（美元，≈ {{quota}} 额度）",
@@ -792,8 +776,7 @@
         },
         "buttons": {
           "save_name": "设置系统名称",
-          "save_logo": "设置 Logo",
-          "save_theme": "设置主题（重启生效）"
+          "save_logo": "设置 Logo"
         }
       },
       "content": {
@@ -912,17 +895,13 @@
     "success": {
       "login": "登录成功！",
       "register": "注册成功！",
-      "verification_code": "验证码发送成功，请检查你的邮箱！",
-      "password_reset": "重置邮件发送成功，请检查邮箱！"
+      "verification_code": "验证码发送成功，请检查你的邮箱！"
     },
     "error": {
       "login_expired": "未登录或登录已过期，请重新登录！",
       "password_length": "密码长度不得小于 8 位！",
       "password_mismatch": "两次输入的密码不一致",
       "turnstile_wait": "请稍后几秒重试，Turnstile 正在检查用户环境！"
-    },
-    "notice": {
-      "password_copied": "新密码已复制到剪贴板：{{password}}"
     }
   },
   "chat": {

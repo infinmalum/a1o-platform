@@ -109,18 +109,6 @@ func CacheGetUserQuota(ctx context.Context, id int) (quota int64, err error) {
 	return quota, nil
 }
 
-func CacheUpdateUserQuota(ctx context.Context, id int) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	quota, err := CacheGetUserQuota(ctx, id)
-	if err != nil {
-		return err
-	}
-	err = common.RedisSet(fmt.Sprintf("user_quota:%d", id), fmt.Sprintf("%d", quota), time.Duration(UserId2QuotaCacheSeconds)*time.Second)
-	return err
-}
-
 // CacheRefreshUserQuota replaces a provisional cached balance with the
 // committed database balance after a native relay settles or refunds quota.
 func CacheRefreshUserQuota(ctx context.Context, id int) error {

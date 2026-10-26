@@ -139,7 +139,7 @@ const GlobalMCPPane: React.FC = () => {
       const list = await chatApi.adminListMCPServers();
       setServers(Array.isArray(list) ? list : []);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   }, []);
   React.useEffect(() => {
@@ -172,7 +172,7 @@ const GlobalMCPPane: React.FC = () => {
       setEditing(null);
       await reload();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -181,7 +181,7 @@ const GlobalMCPPane: React.FC = () => {
       await chatApi.adminDeleteMCPServer(id);
       await reload();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -315,7 +315,7 @@ const GlobalSkillPane: React.FC = () => {
       const list = await chatApi.adminListSkills();
       setSkills(Array.isArray(list) ? list : []);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   }, []);
   React.useEffect(() => {
@@ -336,7 +336,7 @@ const GlobalSkillPane: React.FC = () => {
       setEditing(null);
       await reload();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 
@@ -345,7 +345,7 @@ const GlobalSkillPane: React.FC = () => {
       await chatApi.adminDeleteSkill(id);
       await reload();
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   };
 

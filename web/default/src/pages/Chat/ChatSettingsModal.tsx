@@ -60,6 +60,8 @@ const ChatSettingsModal: React.FC<{
     try {
       await onSave(value);
       onClose();
+    } catch {
+      // chatApi toasts the error; keep the modal open with the user's values
     } finally {
       setSaving(false);
     }

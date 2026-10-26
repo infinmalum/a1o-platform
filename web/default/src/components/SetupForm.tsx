@@ -3,7 +3,7 @@ import { Button, Card, Form, Grid, Header, Image, Message } from 'semantic-ui-re
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
-import { API, getLogo, showError, showSuccess } from '../helpers';
+import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
 
 // SetupForm runs once on a fresh installation: it creates the first root
 // account and signs the operator in. The backend refuses once any user
@@ -43,6 +43,13 @@ const SetupForm = () => {
     if (!inputs.username || !inputs.password || passwordMismatch) {
       return;
     }
+    if (inputs.password.length < 8) {
+      // The same floor the register form and the backend validate entry
+      // enforce; without this guard a short password reached the server
+      // and only failed there.
+      showInfo(t('messages.error.password_length'));
+      return;
+    }
     setLoading(true);
     try {
       const res = await API.post('/api/setup', {
@@ -72,7 +79,7 @@ const SetupForm = () => {
         navigate('/login', { replace: true });
       }
     } catch (error) {
-      showError(error.message);
+      // interceptor toasts the error
     } finally {
       setLoading(false);
     }

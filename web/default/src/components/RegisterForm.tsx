@@ -70,7 +70,6 @@ const RegisterForm = () => {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    console.log(name, value);
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
@@ -92,10 +91,17 @@ const RegisterForm = () => {
       if (!affCode) {
         affCode = localStorage.getItem('aff');
       }
-      const res = await API.post(
-        `/api/user/register?turnstile=${turnstileToken}`,
-        { ...inputs, aff_code: affCode ?? '' }
-      );
+      let res;
+      try {
+        res = await API.post(
+          `/api/user/register?turnstile=${turnstileToken}`,
+          { ...inputs, aff_code: affCode ?? '' }
+        );
+      } catch (error) {
+        // interceptor toasts the error
+        setLoading(false);
+        return;
+      }
       const { success, message } = res.data;
       if (success) {
         navigate('/login');
@@ -115,9 +121,17 @@ const RegisterForm = () => {
     }
     setDisableButton(true);
     setLoading(true);
-    const res = await API.get(
-      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`
-    );
+    let res;
+    try {
+      res = await API.get(
+        `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`
+      );
+    } catch (error) {
+      // interceptor toasts the error
+      setDisableButton(false);
+      setLoading(false);
+      return;
+    }
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('messages.success.verification_code'));

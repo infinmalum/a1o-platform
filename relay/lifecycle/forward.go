@@ -28,8 +28,8 @@ type Channel struct {
 	ModelMapping map[string]string
 	SystemPrompt string
 	APIVersion   string
-	// Config carries provider-specific channel settings such as Ali plugins,
-	// AIProxyLibrary IDs, and VertexAI credentials.
+	// Config carries provider-specific channel settings such as VertexAI
+	// credentials, AWS region settings, and per-provider user IDs.
 	Config model.ChannelConfig
 	// UpstreamAccountID binds the channel to an administrator-connected
 	// subscription account; each attempt resolves its lease and credential.
@@ -394,14 +394,24 @@ func supportsSystemPrompt(protocol native.Protocol) bool {
 	}
 }
 
-// reserve creates the per-attempt reservation: an exact operation charge for
-// fixed-quota operations, or the output-limit estimate for token billing.
+// reserve creates the per-attempt reservation for native forwarding: an
+// exact operation charge for fixed-quota operations, or the output-limit
+// estimate for token billing. The system prompt only joins the reserved
+// input estimate when the negotiated protocol can actually carry one.
 func reserve(ctx context.Context, input Request, channel Channel, mappedModel string, upstreamProtocol native.Protocol) (*billing.NativeReservation, error) {
+	return reserveFor(ctx, input, channel, mappedModel,
+		channel.SystemPrompt != "" && supportsSystemPrompt(upstreamProtocol))
+}
+
+// reserveFor is the shared reservation entry for both attempt styles; callers
+// state explicitly whether the channel's system prompt participates in the
+// reserved input estimate.
+func reserveFor(ctx context.Context, input Request, channel Channel, mappedModel string, systemPromptReset bool) (*billing.NativeReservation, error) {
 	payload := billing.NativeReservation{
 		UserID: input.Principal.UserID, TokenID: input.Principal.TokenID,
 		ChannelID: channel.ID, ChannelType: channel.Type,
 		TokenName: input.Principal.TokenName, ModelName: mappedModel,
-		Group: input.Principal.Group, SystemPromptReset: channel.SystemPrompt != "" && supportsSystemPrompt(upstreamProtocol),
+		Group: input.Principal.Group, SystemPromptReset: systemPromptReset,
 	}
 	if input.FixedQuota > 0 {
 		return billing.ReserveFixedQuota(ctx, &payload, input.FixedQuota)

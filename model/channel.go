@@ -298,16 +298,6 @@ func GetChannelHealthSummary(lowBalanceThreshold float64) (summary ChannelHealth
 	return summary, nil
 }
 
-func DeleteChannelByStatus(status int64) (int64, error) {
-	var groups []string
-	DB.Model(&Channel{}).Where("status = ?", status).Pluck("group", &groups)
-	result := DB.Where("status = ?", status).Delete(&Channel{})
-	if result.Error == nil && result.RowsAffected > 0 {
-		refreshChannelCache(groups...)
-	}
-	return result.RowsAffected, result.Error
-}
-
 func DeleteDisabledChannel() (int64, error) {
 	var groups []string
 	DB.Model(&Channel{}).Where("status = ? or status = ?", ChannelStatusAutoDisabled, ChannelStatusManuallyDisabled).Pluck("group", &groups)

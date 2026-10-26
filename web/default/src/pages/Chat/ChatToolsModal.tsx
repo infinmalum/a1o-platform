@@ -9,7 +9,6 @@ import {
   Tab,
   TextArea,
 } from 'semantic-ui-react';
-import { toast } from 'react-toastify';
 import {
   chatApi,
   type ChatMCPServer,
@@ -37,7 +36,7 @@ const SkillPane: React.FC = () => {
       const list = await chatApi.listSkills();
       setSkills(Array.isArray(list) ? list : []);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   }, []);
   React.useEffect(() => {
@@ -59,8 +58,8 @@ const SkillPane: React.FC = () => {
       await chatApi.saveSkill({ ...editing, tools });
       setEditing(null);
       await reload();
-    } catch (error) {
-      toast.error(String(error));
+    } catch {
+      // chatApi toasts the error
     }
   };
 
@@ -68,8 +67,8 @@ const SkillPane: React.FC = () => {
     try {
       await chatApi.deleteSkill(id);
       await reload();
-    } catch (error) {
-      toast.error(String(error));
+    } catch {
+      // chatApi toasts the error
     }
   };
 
@@ -224,7 +223,7 @@ const UserMCPPane: React.FC = () => {
       const list = await chatApi.listUserMCPServers();
       setServers(Array.isArray(list) ? list : []);
     } catch {
-      // interceptor toasts the error
+      // chatApi toasts the error
     }
   }, []);
   React.useEffect(() => {
@@ -253,8 +252,8 @@ const UserMCPPane: React.FC = () => {
       await chatApi.saveUserMCPServer({ ...editing, headers });
       setEditing(null);
       await reload();
-    } catch (error) {
-      toast.error(String(error));
+    } catch {
+      // chatApi toasts the error
     }
   };
 
@@ -262,8 +261,8 @@ const UserMCPPane: React.FC = () => {
     try {
       await chatApi.deleteUserMCPServer(id);
       await reload();
-    } catch (error) {
-      toast.error(String(error));
+    } catch {
+      // chatApi toasts the error
     }
   };
 

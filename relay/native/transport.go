@@ -176,13 +176,11 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	default:
 		return nil, errors.New("unsupported native protocol")
 	}
-	// Azure deployments are addressed in the URL, and several wire protocols
-	// strip the version prefix on compatible gateways.
+	// Azure deployments are addressed in the URL, and Minimax mounts chat
+	// under its own text-completion route.
 	switch input.Protocol {
 	case OpenAIChat:
 		switch input.ChannelType {
-		case channeltype.OpenAICompatible, channeltype.GeminiOpenAICompatible, channeltype.Novita:
-			path = strings.TrimPrefix(path, "/v1")
 		case channeltype.Azure:
 			if input.Model == "" || strings.ContainsAny(input.Model, "/?#") || input.Version == "" {
 				return nil, errors.New("Azure Chat requires a mapped deployment and API version")
@@ -190,18 +188,6 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			path = "/openai/deployments/" + url.PathEscape(strings.ReplaceAll(input.Model, ".", "")) + "/chat/completions"
 		case channeltype.Minimax:
 			path = "/v1/text/chatcompletion_v2"
-		case channeltype.Doubao:
-			path = "/api/v3/chat/completions"
-		case channeltype.BaiduV2:
-			path = "/v2/chat/completions"
-		case channeltype.AliBailian:
-			path = "/compatible-mode/v1/chat/completions"
-		case channeltype.Zhipu:
-			// https://open.bigmodel.cn/api/paas/v4/chat/completions
-			path = strings.Replace(path, "/v1/", "/api/paas/v4/", 1)
-		case channeltype.Cohere:
-			// https://api.cohere.ai/compatibility/v1/chat/completions
-			path = strings.Replace(path, "/v1/", "/compatibility/v1/", 1)
 		}
 	case OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
 		OpenAICompletions, OpenAIEmbeddings, OpenAIModerations:
@@ -228,14 +214,14 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			}
 			break
 		}
-		// The retired providers ride the OpenAI wire on their official
-		// compatible endpoints; Zhipu and Cohere mount them under a version
-		// prefix instead of /v1.
-		switch input.ChannelType {
-		case channeltype.Zhipu:
-			path = strings.Replace(path, "/v1/", "/api/paas/v4/", 1)
-		case channeltype.Cohere:
-			path = strings.Replace(path, "/v1/", "/compatibility/v1/", 1)
+	}
+	// The compatible kind carries its version prefix in the base URL instead
+	// of the request path, uniformly across the OpenAI wire.
+	if input.ChannelType == channeltype.OpenAICompatible {
+		switch input.Protocol {
+		case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+			OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
+			path = strings.TrimPrefix(path, "/v1")
 		}
 	}
 	endpoint := strings.TrimRight(base.String(), "/") + path
@@ -306,10 +292,6 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		}
 		if beta := input.Headers.Get("OpenAI-Beta"); beta != "" {
 			req.Header.Set("OpenAI-Beta", beta)
-		}
-		if input.Protocol == OpenAIChat && input.ChannelType == channeltype.OpenRouter {
-			req.Header.Set("HTTP-Referer", "https://github.com/infinmalum/one-gateway")
-			req.Header.Set("X-Title", "One Gateway")
 		}
 	}
 	return req, nil

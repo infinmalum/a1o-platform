@@ -69,10 +69,6 @@ func init() {
 	})
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
 	for i := 0; i < apitype.Dummy; i++ {
-		if i == apitype.AIProxyLibrary || i == apitype.Proxy {
-			// AIProxyLibrary lists no models; proxy requests carry no model.
-			continue
-		}
 		adaptor := relay.GetAdaptor(i)
 		if adaptor == nil {
 			continue
@@ -114,6 +110,12 @@ func init() {
 	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
+		if _, _, retired := model.RetiredChannelType(i); retired {
+			// Retired kinds migrate away at startup and are rejected on
+			// channel mutation, so they must not advertise preset models.
+			channelId2Models[i] = nil
+			continue
+		}
 		adaptor := relay.GetAdaptor(channeltype.ToAPIType(i))
 		if adaptor == nil {
 			channelId2Models[i] = nil

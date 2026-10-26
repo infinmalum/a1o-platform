@@ -32,11 +32,11 @@ import (
 	"github.com/infinmalum/one-gateway/relay/relaymode"
 )
 
-// The provider controllers retain the provider-specific wire adapters (Ali,
-// Baidu, Zhipu, Ollama, AWS, Cohere, and the other non-OpenAI-wire formats)
-// while the shared lifecycle owns channel retries and quota settlement. The
-// adapters run against the framework-neutral adaptor.Context built here, so no
-// provider route depends on the legacy Gin relay controller.
+// The provider controllers retain the provider-specific wire adapters for the
+// non-OpenAI-wire channel types (AWS, Coze, Cloudflare, DeepL, VertexAI,
+// Replicate) while the shared lifecycle owns channel retries and quota
+// settlement. The adapters run against the framework-neutral adaptor.Context
+// built here, so no provider route depends on the legacy Gin relay controller.
 
 // parseTextRequest parses an OpenAI wire body for the provider converters.
 func parseTextRequest(body []byte, relayMode int, modelParam string) (*relaymodel.TextRequest, error) {
@@ -314,8 +314,9 @@ func providerImageAttempt(request *relaymodel.ImageRequest, principal lifecycle.
 	}
 }
 
-// RelayProviderImages serves the retained provider image formats (Zhipu, Ali,
-// Replicate, Baidu) through the shared lifecycle with image-size billing.
+// RelayProviderImages serves the retained provider image format (Replicate)
+// through the shared lifecycle with image-size billing; the retired vendor
+// image kinds either ride the OpenAI wire or were migrated away at boot.
 func RelayProviderImages(c *gin.Context) *lifecycle.HTTPError {
 	body, err := common.GetRequestBody(c)
 	if err != nil {
@@ -447,7 +448,6 @@ func providerRequestBody(transport *adaptor.Context, body []byte, requestMeta *m
 	if !config.EnforceIncludeUsage &&
 		requestMeta.APIType == apitype.OpenAI &&
 		requestMeta.OriginModelName == requestMeta.ActualModelName &&
-		requestMeta.ChannelType != channeltype.Baichuan &&
 		requestMeta.ForcedSystemPrompt == "" {
 		// no need to convert request for openai
 		return bytes.NewReader(body), nil
@@ -474,18 +474,15 @@ func providerRequestBody(transport *adaptor.Context, body []byte, requestMeta *m
 }
 
 // providerImageRequestBody builds the upstream body for provider image
-// formats: the converters for Zhipu, Ali, Replicate, and Baidu produce the
-// provider wire format; other provider types forward the (mapped) image body.
+// formats: Replicate's converter produces the provider wire format, other
+// provider types forward the (mapped) image body unchanged.
 func providerImageRequestBody(transport *adaptor.Context, imageRequest *relaymodel.ImageRequest, requestMeta *meta.Meta, provider adaptor.Adaptor) (io.Reader, error) {
 	jsonStr, err := json.Marshal(imageRequest)
 	if err != nil {
 		return nil, err
 	}
 	switch requestMeta.ChannelType {
-	case channeltype.Zhipu,
-		channeltype.Ali,
-		channeltype.Replicate,
-		channeltype.Baidu:
+	case channeltype.Replicate:
 		finalRequest, err := provider.ConvertImageRequest(imageRequest)
 		if err != nil {
 			return nil, err

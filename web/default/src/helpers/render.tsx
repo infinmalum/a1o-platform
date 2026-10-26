@@ -64,20 +64,6 @@ export function renderQuota(quota, t, precision = 2) {
   return renderNumber(quota);
 }
 
-export function renderQuotaWithPrompt(quota, t) {
-  const displayInCurrency =
-    localStorage.getItem('display_in_currency') === 'true';
-  const quotaPerUnit = parseFloat(
-    localStorage.getItem('quota_per_unit') || '1'
-  );
-
-  if (displayInCurrency) {
-    const amount = (quota / quotaPerUnit).toFixed(2);
-    return ` (${t('common.quota.display', { amount })})`;
-  }
-
-  return '';
-}
 
 // Quota/amount converters for money inputs. The backend stores integer quota
 // with config.QuotaPerUnit quota per $1 (500000 by default), so decimal

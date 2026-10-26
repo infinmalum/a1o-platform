@@ -101,11 +101,3 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 func CriticalRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(config.CriticalRateLimitNum, config.CriticalRateLimitDuration, "CT")
 }
-
-func DownloadRateLimit() func(c *gin.Context) {
-	return rateLimitFactory(config.DownloadRateLimitNum, config.DownloadRateLimitDuration, "DW")
-}
-
-func UploadRateLimit() func(c *gin.Context) {
-	return rateLimitFactory(config.UploadRateLimitNum, config.UploadRateLimitDuration, "UP")
-}

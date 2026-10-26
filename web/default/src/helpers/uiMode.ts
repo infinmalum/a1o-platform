@@ -20,10 +20,6 @@ export function setUiMode(mode: UiMode) {
   localStorage.setItem(STORAGE_KEY, mode);
 }
 
-export function clearUiMode() {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
 // landingForMode is where a sign-in should drop the user: chat users land in
 // the chat, everyone else lands on the page that explains how to call the API.
 export function landingForMode(mode: UiMode): string {

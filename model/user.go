@@ -250,13 +250,6 @@ func (user *User) FillUserById() error {
 	return DB.Where(User{Id: user.Id}).First(user).Error
 }
 
-func (user *User) FillUserByEmail() error {
-	if user.Email == "" {
-		return errors.New("email 为空！")
-	}
-	return DB.Where(User{Email: user.Email}).First(user).Error
-}
-
 func (user *User) FillUserByGitHubId() error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
@@ -285,13 +278,6 @@ func (user *User) FillUserByWeChatId() error {
 	return DB.Where(User{WeChatId: user.WeChatId}).First(user).Error
 }
 
-func (user *User) FillUserByUsername() error {
-	if user.Username == "" {
-		return errors.New("username 为空！")
-	}
-	return DB.Where(User{Username: user.Username}).First(user).Error
-}
-
 func IsEmailAlreadyTaken(email string) bool {
 	return DB.Where("email = ?", email).Find(&User{}).RowsAffected == 1
 }
@@ -310,10 +296,6 @@ func IsLarkIdAlreadyTaken(githubId string) bool {
 
 func IsOidcIdAlreadyTaken(oidcId string) bool {
 	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
-}
-
-func IsUsernameAlreadyTaken(username string) bool {
-	return DB.Where("username = ?", username).Find(&User{}).RowsAffected == 1
 }
 
 func ResetUserPasswordByEmail(email string, password string) error {
@@ -404,13 +386,6 @@ func IncreaseUserQuota(id int, quota int64) (err error) {
 func increaseUserQuota(id int, quota int64) (err error) {
 	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", quota)).Error
 	return err
-}
-
-func DecreaseUserQuota(id int, quota int64) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	return decreaseUserQuota(DB, id, quota)
 }
 
 func decreaseUserQuota(db *gorm.DB, id int, quota int64) error {

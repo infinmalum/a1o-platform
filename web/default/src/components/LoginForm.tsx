@@ -75,9 +75,15 @@ const LoginForm = () => {
   };
 
   const onSubmitWeChatVerificationCode = async () => {
-    const res = await API.get(
-      `/api/oauth/wechat?code=${inputs.wechat_verification_code}`
-    );
+    let res;
+    try {
+      res = await API.get(
+        `/api/oauth/wechat?code=${inputs.wechat_verification_code}`
+      );
+    } catch (error) {
+      // interceptor toasts the error
+      return;
+    }
     const { success, message, data } = res.data;
     if (success) {
       userDispatch({ type: 'login', payload: data });
@@ -98,18 +104,22 @@ const LoginForm = () => {
   async function handleSubmit(e) {
     setSubmitted(true);
     if (username && password) {
-      const res = await API.post(`/api/user/login`, {
-        username,
-        password,
-      });
-      const { success, message, data } = res.data;
-      if (success) {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        redirectAfterLogin(landingPage());
-        showSuccess(t('messages.success.login'));
-      } else {
-        showError(message);
+      try {
+        const res = await API.post(`/api/user/login`, {
+          username,
+          password,
+        });
+        const { success, message, data } = res.data;
+        if (success) {
+          userDispatch({ type: 'login', payload: data });
+          localStorage.setItem('user', JSON.stringify(data));
+          redirectAfterLogin(landingPage());
+          showSuccess(t('messages.success.login'));
+        } else {
+          showError(message);
+        }
+      } catch (error) {
+        // interceptor toasts the error
       }
     }
   }

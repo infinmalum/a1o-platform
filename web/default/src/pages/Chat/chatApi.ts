@@ -1,6 +1,7 @@
 // API client for the built-in chat runtime: REST calls plus the streaming
 // turn endpoint parsed from fetch's ReadableStream (POST cannot use
 // EventSource).
+import { showError } from '../../helpers';
 
 export interface ChatSession {
   id: number;
@@ -13,7 +14,6 @@ export interface ChatSession {
   sandbox_enabled: boolean;
   context_budget: number;
   skill_ids: number[] | null;
-  summary?: string;
   updated_time: number;
 }
 
@@ -88,14 +88,32 @@ interface ApiResponse<T> {
   data: T;
 }
 
+// request uses fetch because the axios instance's response interceptor is
+// the only other error toaster and streaming POSTs cannot go through it, so
+// request surfaces failures itself: every empty catch on the call sites can
+// rely on the toast having already been shown.
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    ...init,
-  });
-  const payload = (await response.json()) as ApiResponse<T>;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      credentials: 'same-origin',
+      ...init,
+    });
+  } catch (error) {
+    showError(error instanceof Error ? error : String(error));
+    throw error;
+  }
+  let payload: ApiResponse<T>;
+  try {
+    payload = (await response.json()) as ApiResponse<T>;
+  } catch {
+    // A proxy or error page answered with non-JSON content.
+    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
+  }
   if (!payload.success) {
-    throw new Error(payload.message || '请求失败');
+    const error = new Error(payload.message || `HTTP ${response.status}`);
+    showError(error);
+    throw error;
   }
   return payload.data;
 }
@@ -120,8 +138,6 @@ export const chatApi = {
   listMessages: (id: number) =>
     request<ChatMessage[]>(`/api/chat/sessions/${id}/messages`),
   listFiles: () => request<ChatFile[]>('/api/chat/files'),
-  deleteFile: (id: number) =>
-    request<void>(`/api/chat/files/${id}`, { method: 'DELETE' }),
   listSkills: () => request<ChatSkill[]>('/api/chat/skills'),
   saveSkill: (skill: Partial<ChatSkill> & { id?: number }) =>
     skill.id

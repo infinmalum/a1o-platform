@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Label, Segment } from 'semantic-ui-react';
 import DOMPurify from 'dompurify';
@@ -142,7 +142,7 @@ const ChatMessageList: React.FC<{
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-  const rendered = useMemo(() => messages, [messages]);
+  const rendered = messages;
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
       {rendered.length === 0 && (
