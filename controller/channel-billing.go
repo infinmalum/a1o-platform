@@ -12,7 +12,6 @@ import (
 
 	"github.com/infinmalum/one-gateway/common/client"
 	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
 	"github.com/infinmalum/one-gateway/monitor"
 	"github.com/infinmalum/one-gateway/relay/channeltype"
@@ -323,13 +322,4 @@ func UpdateAllChannelsBalance(c *gin.Context) {
 		"message": "",
 	})
 	return
-}
-
-func AutomaticallyUpdateChannels(frequency int) {
-	for {
-		time.Sleep(time.Duration(frequency) * time.Minute)
-		logger.SysLog("updating all channels")
-		_ = updateAllChannelsBalance()
-		logger.SysLog("channels update done")
-	}
 }

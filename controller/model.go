@@ -69,10 +69,6 @@ func init() {
 	})
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
 	for i := 0; i < apitype.Dummy; i++ {
-		if i == apitype.AIProxyLibrary || i == apitype.Proxy {
-			// AIProxyLibrary lists no models; proxy requests carry no model.
-			continue
-		}
 		adaptor := relay.GetAdaptor(i)
 		if adaptor == nil {
 			continue

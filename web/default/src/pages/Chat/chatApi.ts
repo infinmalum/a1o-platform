@@ -14,7 +14,6 @@ export interface ChatSession {
   sandbox_enabled: boolean;
   context_budget: number;
   skill_ids: number[] | null;
-  summary?: string;
   updated_time: number;
 }
 
@@ -139,8 +138,6 @@ export const chatApi = {
   listMessages: (id: number) =>
     request<ChatMessage[]>(`/api/chat/sessions/${id}/messages`),
   listFiles: () => request<ChatFile[]>('/api/chat/files'),
-  deleteFile: (id: number) =>
-    request<void>(`/api/chat/files/${id}`, { method: 'DELETE' }),
   listSkills: () => request<ChatSkill[]>('/api/chat/skills'),
   saveSkill: (skill: Partial<ChatSkill> & { id?: number }) =>
     skill.id

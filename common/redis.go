@@ -52,14 +52,6 @@ func InitRedisClient() (err error) {
 	return err
 }
 
-func ParseRedisOption() *redis.Options {
-	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
-	if err != nil {
-		logger.FatalLog("failed to parse Redis connection string: " + err.Error())
-	}
-	return opt
-}
-
 func RedisSet(key string, value string, expiration time.Duration) error {
 	ctx := context.Background()
 	return RDB.Set(ctx, key, value, expiration).Err()

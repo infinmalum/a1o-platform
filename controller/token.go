@@ -83,30 +83,6 @@ func GetToken(c *gin.Context) {
 	return
 }
 
-func GetTokenStatus(c *gin.Context) {
-	tokenId := c.GetInt(ctxkey.TokenId)
-	userId := c.GetInt(ctxkey.Id)
-	token, err := model.GetTokenByIds(tokenId, userId)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	expiredAt := token.ExpiredTime
-	if expiredAt == -1 {
-		expiredAt = 0
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"object":          "credit_summary",
-		"total_granted":   token.RemainQuota,
-		"total_used":      0, // not supported currently
-		"total_available": token.RemainQuota,
-		"expires_at":      expiredAt * 1000,
-	})
-}
-
 func validateToken(c *gin.Context, token model.Token) error {
 	if len(token.Name) > 30 {
 		return fmt.Errorf("令牌名称过长")

@@ -244,17 +244,6 @@ func (e *Entry) finalize(ctx context.Context, writer *bufferWriter) {
 	e.body = completed
 }
 
-func (e *Entry) renderLocked(errorField any) []byte {
-	body, err := json.Marshal(map[string]any{
-		"id": e.id, "object": "response", "created_at": e.createdAt,
-		"status": e.status, "model": e.model, "error": errorField,
-	})
-	if err != nil {
-		return []byte(`{"object":"response","status":"failed"}`)
-	}
-	return body
-}
-
 func (s *Store) add(entry *Entry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

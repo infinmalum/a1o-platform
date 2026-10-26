@@ -66,12 +66,6 @@ func VerifyCodeWithKey(key string, code string, purpose string) bool {
 	return true
 }
 
-func DeleteKey(key string, purpose string) {
-	verificationMutex.Lock()
-	defer verificationMutex.Unlock()
-	delete(verificationMap, purpose+key)
-}
-
 // no lock inside, so the caller must lock the verificationMap before calling!
 func removeExpiredPairs() {
 	now := time.Now()
