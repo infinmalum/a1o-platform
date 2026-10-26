@@ -47,15 +47,7 @@ func RelayChat(c *gin.Context) {
 	case channelType == channeltype.Gemini:
 		NativeOpenAIChatViaGemini(c)
 	default:
-		result := relaycontroller.RelayProviderChat(c)
-		if result != nil && !c.Writer.Written() {
-			if result.Upstream != nil {
-				c.JSON(result.Status, native.ErrorBodyWithUpstream(native.OpenAIChat, result.Status, result.Message,
-					result.Upstream.Type, result.Upstream.Code, result.Upstream.Param))
-			} else {
-				c.JSON(result.Status, native.ErrorBody(native.OpenAIChat, result.Status, result.Message))
-			}
-		}
+		writeProviderError(c, relaycontroller.RelayProviderChat(c))
 	}
 }
 
@@ -109,8 +101,8 @@ func RelayEdits(c *gin.Context) {
 }
 
 // RelayImages serves OpenAI wire channels through the native lifecycle with
-// image-specific billing; provider image formats (Ali, Replicate, Baidu) keep
-// their adapter conversions.
+// image-specific billing; the retained provider image format (Replicate)
+// keeps its adapter conversion.
 func RelayImages(c *gin.Context) {
 	switch {
 	case openAIWireChannel(c, relaymode.ImagesGenerations):

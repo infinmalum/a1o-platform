@@ -14,10 +14,11 @@ import (
 	"github.com/infinmalum/one-gateway/relay/apitype"
 )
 
-// GetAdaptor returns the legacy per-vendor adapter for an api type. Vendors
-// with official OpenAI-compatible endpoints (Zhipu, Tencent, Cohere, Ollama,
-// and the retired PaLM/Baidu/Ali/Xunfei/AIProxyLibrary natives) are served by
-// the shared OpenAI adapter instead and fall through to nil here.
+// GetAdaptor returns the legacy per-vendor adapter for an api type. Channel
+// kinds with official OpenAI-compatible endpoints (Zhipu, Tencent, Cohere,
+// Ollama, and the migrated-away vendor kinds) map onto apitype.OpenAI via
+// ToAPIType and are served by the shared OpenAI adapter, so this switch
+// never sees them.
 func GetAdaptor(apiType int) adaptor.Adaptor {
 	switch apiType {
 	case apitype.Anthropic:

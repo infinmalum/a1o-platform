@@ -110,6 +110,12 @@ func init() {
 	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
+		if _, _, retired := model.RetiredChannelType(i); retired {
+			// Retired kinds migrate away at startup and are rejected on
+			// channel mutation, so they must not advertise preset models.
+			channelId2Models[i] = nil
+			continue
+		}
 		adaptor := relay.GetAdaptor(channeltype.ToAPIType(i))
 		if adaptor == nil {
 			channelId2Models[i] = nil

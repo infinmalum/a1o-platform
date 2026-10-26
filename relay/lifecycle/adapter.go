@@ -6,7 +6,6 @@ import (
 
 	"github.com/infinmalum/one-gateway/common/logger"
 	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/billing"
 	"github.com/infinmalum/one-gateway/relay/native"
 )
 
@@ -46,19 +45,9 @@ func ForwardAdapter(ctx context.Context, input Request, attempt AdapterAttempt) 
 		if replacement := channel.ModelMapping[input.Model]; replacement != "" {
 			mappedModel = replacement
 		}
-		payload := billing.NativeReservation{
-			UserID: input.Principal.UserID, TokenID: input.Principal.TokenID,
-			ChannelID: channel.ID, ChannelType: channel.Type,
-			TokenName: input.Principal.TokenName, ModelName: mappedModel,
-			Group: input.Principal.Group, SystemPromptReset: channel.SystemPrompt != "",
-		}
-		var reservation *billing.NativeReservation
-		var err error
-		if input.FixedQuota > 0 {
-			reservation, err = billing.ReserveFixedQuota(ctx, &payload, input.FixedQuota)
-		} else {
-			reservation, err = billing.ReserveNativeQuota(ctx, &payload, input.MaxOutputTokens)
-		}
+		// Provider adapters cannot know their upstream protocol at reserve
+		// time, so the system prompt always joins the estimate here.
+		reservation, err := reserveFor(ctx, input, channel, mappedModel, channel.SystemPrompt != "")
 		if err != nil {
 			return &HTTPError{Status: http.StatusForbidden, Message: err.Error()}
 		}

@@ -1,5 +1,10 @@
 package channeltype
 
+// ChannelBaseURLs is indexed by channel kind and must stay as long as Dummy.
+// Entries for kinds that no longer exist as selectable types (the aggregator
+// kinds and the migrated-away vendors) are placeholders: MigrateChannelTypes
+// matches its oldDefault values against them, and custom base URLs are kept
+// across the migration, so do not repurpose these slots for new kinds.
 var ChannelBaseURLs = []string{
 	"",                              // 0
 	"https://api.openai.com",        // 1

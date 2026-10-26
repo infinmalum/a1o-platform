@@ -79,7 +79,7 @@ const SetupForm = () => {
         navigate('/login', { replace: true });
       }
     } catch (error) {
-      showError(error.message);
+      // interceptor toasts the error
     } finally {
       setLoading(false);
     }

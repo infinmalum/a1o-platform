@@ -12,6 +12,9 @@ const MODEL_MAPPING_EXAMPLE = {
   'gpt-4-32k-0314': 'gpt-4-32k',
 };
 
+// Secret hints exist only for the two kinds whose keys are not plain API
+// tokens: FastGPT (22) wants a per-app key and Hunyuan (23) moved from the
+// TencentCloud signature pair to a console-issued key.
 function type2secretPrompt(type, t) {
   switch (type) {
     case 22:
@@ -207,6 +210,8 @@ const EditChannel = () => {
       showInfo(t('channel.edit.messages.name_required'));
       return;
     }
+    // Type 43 (Proxy library) serves its model list from the embedded
+    // library, so admin-picked models are neither required nor editable.
     if (inputs.type !== 43 && inputs.models.length === 0) {
       showInfo(t('channel.edit.messages.models_required'));
       return;
@@ -461,6 +466,9 @@ const EditChannel = () => {
                 {t('channel.edit.douban_notice_2')}
               </Message>
             )}
+            {/* Type 43 (legacy Proxy library) owns its model list, so the
+                models picker stays hidden; the kind is no longer offered but
+                old rows still carry it. */}
             {inputs.type !== 43 && (
               <Form.Field>
                 <Form.Dropdown
@@ -541,6 +549,7 @@ const EditChannel = () => {
                 />
               </div>
             )}
+            {/* Same type-43 exemption for the model mapping. */}
             {inputs.type !== 43 && (
               <>
                 <Form.Field>

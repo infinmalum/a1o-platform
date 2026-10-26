@@ -180,14 +180,7 @@ func (s *ChatMCPServer) View() ChatMCPServerView {
 }
 
 func (s *ChatSession) SkillIdList() []int {
-	if s.SkillIds == nil || *s.SkillIds == "" {
-		return nil
-	}
-	var ids []int
-	if err := json.Unmarshal([]byte(*s.SkillIds), &ids); err != nil {
-		return nil
-	}
-	return ids
+	return decodeJSONColumn[[]int](s.SkillIds)
 }
 
 func (s *ChatSession) SetSkillIdList(ids []int) error {
@@ -207,14 +200,7 @@ func (s *ChatSession) SetSkillIdList(ids []int) error {
 // ToolList decodes the skill's bound tool names; nil means the skill binds
 // no tools and therefore narrows nothing.
 func (s *ChatSkill) ToolList() []string {
-	if s.Tools == nil || *s.Tools == "" {
-		return nil
-	}
-	var names []string
-	if err := json.Unmarshal([]byte(*s.Tools), &names); err != nil {
-		return nil
-	}
-	return names
+	return decodeJSONColumn[[]string](s.Tools)
 }
 
 // SetToolList encodes the skill's bound tool names.

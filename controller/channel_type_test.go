@@ -103,3 +103,21 @@ func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 	require.NoError(t, model.DB.Model(&model.Channel{}).Count(&count).Error)
 	require.EqualValues(t, 5, count)
 }
+
+// TestDashboardModelListSkipsRetiredTypes pins the dashboard listing: retired
+// kinds ride ToAPIType onto the OpenAI adaptor, so without the explicit skip
+// they would advertise the whole OpenAI preset despite being uncreatable.
+func TestDashboardModelListSkipsRetiredTypes(t *testing.T) {
+	require.NotNil(t, channelId2Models, "controller init must have built the listing")
+	for _, kind := range []int{channeltype.PaLM, channeltype.Baidu, channeltype.Ali, channeltype.Xunfei, channeltype.AIProxyLibrary} {
+		require.Empty(t, channelId2Models[kind], "retired kind %d must advertise no models", kind)
+	}
+	for _, kind := range []int{channeltype.OpenAI, channeltype.BaiduV2, channeltype.AliBailian} {
+		require.NotEmpty(t, channelId2Models[kind], "live kind %d must keep its preset", kind)
+	}
+	// Zhipu/Tencent/Ollama legitimately ship empty presets (upstreams are
+	// fetched live); the retired kinds above must match that emptiness.
+	for _, kind := range []int{channeltype.Zhipu, channeltype.Tencent, channeltype.Ollama} {
+		require.Empty(t, channelId2Models[kind], "live kind %d keeps shipping no preset", kind)
+	}
+}
