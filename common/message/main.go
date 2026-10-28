@@ -2,7 +2,7 @@ package message
 
 import (
 	"fmt"
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 const (

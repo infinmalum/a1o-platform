@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // collectEvents returns an Emitter appending every event to the slice.

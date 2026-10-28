@@ -9,8 +9,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/utils"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/utils"
 )
 
 // ChannelSource filters channel candidates by their credential source. The

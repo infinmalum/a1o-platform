@@ -3,7 +3,7 @@ package image
 import (
 	"bytes"
 	"encoding/base64"
-	"github.com/infinmalum/one-gateway/common/client"
+	"github.com/infinmalum/a1o-platform/common/client"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"

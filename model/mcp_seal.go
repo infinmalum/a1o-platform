@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/infinmalum/one-gateway/common/logger"
+	"github.com/infinmalum/a1o-platform/common/logger"
 )
 
 // CredentialSealer seals credential material for storage. relay/credential

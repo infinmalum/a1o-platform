@@ -7,7 +7,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // openChatTestDB opens an isolated in-memory SQLite database with the chat

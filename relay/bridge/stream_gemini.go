@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // geminiStreamEvent holds the converted view of one streaming

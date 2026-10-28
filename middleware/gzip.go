@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
+	"github.com/infinmalum/a1o-platform/common"
 )
 
 func GzipDecodeMiddleware() gin.HandlerFunc {

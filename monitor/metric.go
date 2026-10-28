@@ -1,7 +1,7 @@
 package monitor
 
 import (
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 var store = make(map[int][]bool)

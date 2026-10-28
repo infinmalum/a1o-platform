@@ -1,6 +1,6 @@
 // Package account coordinates subscription account usage: in-flight leases
 // with bounded waits and cooldown state. Coordination is process-local; the
-// first deployment supports one gateway replica.
+// first deployment supports a single gateway replica.
 package account
 
 import (
@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 var (

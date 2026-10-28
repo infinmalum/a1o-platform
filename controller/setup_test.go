@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 func callSetup(t *testing.T, body string) map[string]any {

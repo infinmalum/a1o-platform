@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -269,7 +269,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		t.Fatalf("unsupported Gemini channel: status %d body %s", unsupportedGeminiResponse.Code, unsupportedGeminiResponse.Body.String())
 	}
 	blockedBaseURL := anthropicServer.URL
-	blockedChannel := model.Channel{Type: channeltype.Baidu, Key: "blocked-key", Name: "blocked", Status: model.ChannelStatusEnabled, Group: "default", Models: "blocked-model", BaseURL: &blockedBaseURL}
+	blockedChannel := model.Channel{Type: channeltype.Coze, Key: "blocked-key", Name: "blocked", Status: model.ChannelStatusEnabled, Group: "default", Models: "blocked-model", BaseURL: &blockedBaseURL}
 	if err := blockedChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}

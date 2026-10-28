@@ -1,4 +1,4 @@
-module github.com/infinmalum/one-gateway
+module github.com/infinmalum/a1o-platform
 
 go 1.27.0
 

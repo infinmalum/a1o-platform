@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/common/render"
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/common/render"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func ConvertCompletionsRequest(textRequest model.TextRequest) *Request {

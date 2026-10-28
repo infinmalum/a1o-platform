@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // brokenMCPServer serves an HTTP endpoint that fails the MCP handshake (the

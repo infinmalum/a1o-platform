@@ -9,15 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
-	relay "github.com/infinmalum/one-gateway/relay"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/apitype"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
+	relay "github.com/infinmalum/a1o-platform/relay"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/apitype"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 )
 
 // https://platform.openai.com/docs/api-reference/models/list
@@ -110,9 +110,8 @@ func init() {
 	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
-		if _, _, retired := model.RetiredChannelType(i); retired {
-			// Retired kinds migrate away at startup and are rejected on
-			// channel mutation, so they must not advertise preset models.
+		if !channeltype.IsValid(i) {
+			// Vacant retired slots in the ID space are not kinds.
 			channelId2Models[i] = nil
 			continue
 		}

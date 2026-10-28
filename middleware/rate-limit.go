@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 var timeFormat = "2006-01-02T15:04:05.000Z"

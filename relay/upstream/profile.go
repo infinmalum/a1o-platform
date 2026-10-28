@@ -11,7 +11,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 type Profile struct {

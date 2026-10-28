@@ -16,20 +16,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/common/message"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/monitor"
-	"github.com/infinmalum/one-gateway/relay"
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	relaycontroller "github.com/infinmalum/one-gateway/relay/controller"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/common/message"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/monitor"
+	"github.com/infinmalum/a1o-platform/relay"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
 func buildTestRequest(model string) *relaymodel.TextRequest {
@@ -86,7 +86,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	cfg, _ := channel.LoadConfig()
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" {
-		baseURL = channeltype.ChannelBaseURLs[channel.Type]
+		baseURL = channeltype.BaseURL(channel.Type)
 	}
 	meta := &meta.Meta{
 		Mode: relaymode.ChatCompletions, ChannelType: channel.Type, ChannelId: channel.Id,

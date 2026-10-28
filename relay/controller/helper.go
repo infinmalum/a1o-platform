@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
 func getPromptTokens(textRequest *relaymodel.TextRequest, relayMode int) int {

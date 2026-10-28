@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/relay/meta"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/relay/meta"
 )
 
 func SetupCommonRequestHeader(c *Context, req *http.Request, meta *meta.Meta) {

@@ -806,20 +806,20 @@
   },
   "about": {
     "title": "关于",
-    "description": "One Gateway 是一个开源的接口管理和代理平台。",
+    "description": "A1O Platform 是一个开源的接口管理和代理平台。",
     "repository": "项目地址：",
     "loading_failed": "加载失败"
   },
   "footer": {
     "built_by": "基于",
     "built_by_name": "One API",
-    "license": "（JustSong）；原项目采用 MIT，One Gateway 修改采用",
+    "license": "（JustSong）；原项目采用 MIT，A1O Platform 修改采用",
     "apache": "Apache 2.0"
   },
   "home": {
     "welcome": {
-      "title": "欢迎使用 One Gateway",
-      "description": "One Gateway 是一个 LLM API 接口管理和分发系统，可以帮助您更好地管理和使用各大厂商的 LLM API。",
+      "title": "欢迎使用 A1O Platform",
+      "description": "A1O Platform 是一个 LLM API 接口管理和分发系统，可以帮助您更好地管理和使用各大厂商的 LLM API。",
       "login_notice": "如需使用，请先登录或注册。"
     },
     "system_status": {
@@ -998,7 +998,7 @@
   },
   "quickStart": {
     "title": "快速开始",
-    "subtitle": "三步把 One Gateway 接进你的程序：拿到地址、创建 Key、复制调用示例。",
+    "subtitle": "三步把 A1O Platform 接进你的程序：拿到地址、创建 Key、复制调用示例。",
     "copy": "复制",
     "copied": "已复制到剪贴板",
     "copyFailed": "复制失败，请手动选择文本复制",

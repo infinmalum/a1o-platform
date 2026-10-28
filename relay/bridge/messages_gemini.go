@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // MessagesToGemini converts the Messages subset that Gemini GenerateContent

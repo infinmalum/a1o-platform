@@ -2,7 +2,7 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"net/http"
 )
 

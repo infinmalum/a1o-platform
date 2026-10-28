@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common"
+	"github.com/infinmalum/a1o-platform/common"
 )
 
 // streamWriter is the writer surface the SSE render helpers need: response

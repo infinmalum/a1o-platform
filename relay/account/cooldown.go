@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // Observation is one cooldown record with its account/model scope. An empty

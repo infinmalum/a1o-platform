@@ -1,0 +1,18 @@
+# File path: /etc/systemd/system/a1o-platform.service
+# sudo systemctl daemon-reload
+# sudo systemctl start a1o-platform
+# sudo systemctl enable a1o-platform
+# sudo systemctl status a1o-platform
+[Unit]
+Description=A1O Platform Service
+After=network.target
+
+[Service]
+User=ubuntu  # 注意修改用户名
+WorkingDirectory=/path/to/a1o-platform  # 注意修改路径
+ExecStart=/path/to/a1o-platform/a1o-platform --port 3000 --log-dir /path/to/a1o-platform/logs  # 注意修改路径和端口号
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

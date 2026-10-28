@@ -3,8 +3,8 @@ package aws_test
 import (
 	"testing"
 
-	aws "github.com/infinmalum/one-gateway/relay/adaptor/aws/llama3"
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
+	aws "github.com/infinmalum/a1o-platform/relay/adaptor/aws/llama3"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
 	"net/http"
 	"strings"
 )
@@ -41,7 +42,7 @@ func abortWithMessage(c *gin.Context, statusCode int, message string) {
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"message": helper.MessageWithRequestId(message, c.GetString(helper.RequestIdKey)),
-			"type":    "one_api_error",
+			"type":    relaymodel.ErrorTypeA1O,
 		},
 	})
 	c.Abort()

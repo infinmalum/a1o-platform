@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func ResponseText2Usage(responseText string, modelName string, promptTokens int) *model.Usage {

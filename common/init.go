@@ -3,8 +3,8 @@ package common
 import (
 	"flag"
 	"fmt"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,10 +18,10 @@ var (
 )
 
 func printHelp() {
-	fmt.Println("One Gateway " + Version + " - All in one API service for OpenAI API.")
+	fmt.Println("A1O Platform " + Version + " - unified AI gateway for OpenAI, Anthropic, and Gemini APIs.")
 	fmt.Println("Derived from One API. Copyright (C) 2023 JustSong. All rights reserved.")
-	fmt.Println("GitHub: https://github.com/infinmalum/one-gateway")
-	fmt.Println("Usage: one-gateway [--port <port>] [--log-dir <log directory>] [--version] [--help]")
+	fmt.Println("GitHub: https://github.com/infinmalum/a1o-platform")
+	fmt.Println("Usage: a1o-platform [--port <port>] [--log-dir <log directory>] [--version] [--help]")
 }
 
 func Init() {

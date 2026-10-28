@@ -3,13 +3,13 @@ package vertexai
 import (
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/gemini"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/model"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/gemini"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 	"github.com/pkg/errors"
 )
 

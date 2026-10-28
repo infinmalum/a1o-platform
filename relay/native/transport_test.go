@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 func TestNativeChatChannelProfiles(t *testing.T) {

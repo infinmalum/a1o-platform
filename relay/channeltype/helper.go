@@ -1,13 +1,11 @@
 package channeltype
 
-import "github.com/infinmalum/one-gateway/relay/apitype"
+import "github.com/infinmalum/a1o-platform/relay/apitype"
 
-// ToAPIType maps a channel type onto its wire protocol. Retired native
-// providers (PaLM, Baidu, Zhipu, Ali, Xunfei, Tencent, Cohere, Ollama,
-// AIProxyLibrary) fall through to OpenAI: their vendors all publish official
-// OpenAI-compatible endpoints now, so the shared OpenAI wire plus the
-// per-type request-URL rules in relay/adaptor/openai replace the old
-// per-vendor adapters.
+// ToAPIType maps a channel kind onto its wire protocol. Kinds without a case
+// fall through to OpenAI: Minimax and OpenAICompatible speak the OpenAI wire
+// directly, and the shared OpenAI adapter plus the per-kind request-URL rules
+// in relay/adaptor/openai replace the old per-vendor adapters.
 func ToAPIType(channelType int) int {
 	apiType := apitype.OpenAI
 	switch channelType {

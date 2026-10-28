@@ -8,12 +8,12 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/relay/background"
-	"github.com/infinmalum/one-gateway/relay/ginmeta"
-	"github.com/infinmalum/one-gateway/relay/lifecycle"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/relay/background"
+	"github.com/infinmalum/a1o-platform/relay/ginmeta"
+	"github.com/infinmalum/a1o-platform/relay/lifecycle"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // startBackgroundResponses validates channel availability synchronously, then

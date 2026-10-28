@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // ChatToAnthropic converts the representable Chat Completions subset. It

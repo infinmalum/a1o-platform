@@ -10,12 +10,12 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/common/i18n"
-	"github.com/infinmalum/one-gateway/common/random"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/common/i18n"
+	"github.com/infinmalum/a1o-platform/common/random"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 type LoginRequest struct {

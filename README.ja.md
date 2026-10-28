@@ -1,11 +1,11 @@
 <div align="center">
-  <img src="docs/logo.png" alt="One Gateway ロゴ" width="120" />
+  <img src="docs/logo.png" alt="A1O Platform ロゴ" width="120" />
 
-  # One Gateway
+  # A1O Platform
 
-  **OpenAI・Anthropic・Gemini の各プロトコルをネイティブに話す、すべてのモデルプロバイダー向けゲートウェイ。**
+  **OpenAI・Anthropic・Gemini の各プロトコルをネイティブに話す、すべてのモデルプロバイダー向けの単一プラットフォーム。**
 
-  [![CI](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml)
+  [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
@@ -15,16 +15,16 @@
 
 ---
 
-One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生し、独自に保守されている AI ゲートウェイです。OpenAI（Chat Completions と Responses）・Anthropic Messages・Gemini generateContent の各 API 形式をネイティブにサポートし、ひとつのデプロイで複数のモデルプロバイダーを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。One API は JustSong 氏と他の貢献者によって開発されたものであり、One Gateway はその成果を基にしています。
+A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生し、独自に保守されている AI ゲートウェイです。OpenAI（Chat Completions と Responses）・Anthropic Messages・Gemini generateContent の各 API 形式をネイティブにサポートし、ひとつのデプロイで複数のモデルプロバイダーを提供し、チャネル、ユーザー、トークン、利用枠、利用ログを Web 画面で管理できます。One API は JustSong 氏と他の貢献者によって開発されたものであり、A1O Platform はその成果を基にしています。
 
 > [!NOTE]
-> このリポジトリは One API とは独立して保守されています。One API のリリース、Docker イメージ、デモサイト、Issue は One Gateway のリリースやサポート窓口ではありません。
+> このリポジトリは One API とは独立して保守されています。One API のリリース、Docker イメージ、デモサイト、Issue は A1O Platform のリリースやサポート窓口ではありません。
 
 ## 主な特徴
 
 - 🔌 **4 つのネイティブ API 形式** — OpenAI Chat Completions、OpenAI Responses（照会・キャンセル可能なバックグラウンド実行を含む）、Anthropic Messages、Gemini `generateContent`。同じトークンで embeddings・画像・音声・モデレーションも利用可能。
 - 🌉 **プロトコル間ブリッジ** — クライアントと上流の形式が異なっても、リクエストとレスポンスを相互変換します（ストリーミング対応）。OpenAI クライアントは Anthropic・Gemini・Responses の上流へ、Anthropic クライアントは OpenAI chat・Gemini の上流へ接続できます。
-- 🔀 **スマートルーティング** — 37 種類のプロバイダーアダプター、チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
+- 🔀 **スマートルーティング** — 15 種類のチャネル種別と 9 つのプロバイダーアダプター、チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
 - 🤖 **内蔵チャットランタイム** — サーバー側のエージェントツールループ。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
 - 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
 - 🖥️ **Web コンソール** — ダッシュボード、チャネル、アップストリームアカウント、ユーザー、トークン、ログ、設定を一画面で管理。内蔵チャットページと画像・デシジョンプレイグラウンド付き。
@@ -38,15 +38,15 @@ One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生�
 リポジトリのルートでイメージをビルドします。
 
 ```sh
-git clone https://github.com/infinmalum/one-gateway.git
-cd one-gateway
-docker build -t one-gateway:local .
-docker run -d --name one-gateway --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" one-gateway:local
+git clone https://github.com/infinmalum/a1o-platform.git
+cd a1o-platform
+docker build -t a1o-platform:local .
+docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
 ```
 
 <http://localhost:3000> を開いてください。新しいデータベースでは、起動ログに一度だけ出力されるランダムなパスワードで `root` アカウントが作成されます（`INITIAL_ROOT_PASSWORD` で事前指定も可能です）。**初回ログイン後、直ちにパスワードを変更してください。**マウントしたディレクトリには標準の SQLite データベースが保存されるため、コンテナを更新しても保持してください。外部公開する場合は HTTPS と固定の `SESSION_SECRET` も設定してください。
 
-同梱の `docker-compose.yml` はイメージをローカルでビルドし、`one-gateway:local` タグを付けます。データベース名とデータの保存先は `one-gateway` 系の名前に統一されています。以前の `one-api` 系の名前を使う compose ファイルで運用している場合は、切り替え前にデータベースと `data/` ディレクトリを移行してください。
+同梱の `docker-compose.yml` はイメージをローカルでビルドし、`a1o-platform:local` タグを付けます。データベース名とデータの保存先は `a1o-platform` 系の名前に統一されています。以前の `one-api` 系の名前を使う compose ファイルで運用している場合は、切り替え前にデータベースと `data/` ディレクトリを移行してください。
 
 ## ソースからビルドする
 
@@ -55,8 +55,8 @@ Dockerfile は Node.js 24 と Go 1.27.1 を使用します。対応する環境�
 ```sh
 npm ci --legacy-peer-deps --prefix web/default
 npm run build --prefix web/default
-go build -o one-gateway .
-./one-gateway --port 3000
+go build -o a1o-platform .
+/./a1o-platform --port 3000
 ```
 
 ダウンロードした npm と Go のモジュールは、それぞれ標準の永続キャッシュを使用します。フロントエンドの依存関係は `web/default/node_modules` に入り、成果物は `web/build/default` に出力されます。
@@ -104,7 +104,6 @@ curl http://localhost:3000/v1/chat/completions \
 ## ドキュメント
 
 - [フロントエンドテーマの説明](web/README.md)
-- [TypeScript 移行メモ](docs/typescript-migration.md)
 
 ## 開発
 
@@ -112,8 +111,8 @@ curl http://localhost:3000/v1/chat/completions \
 - 埋め込みアセットを変更する前に、`npm run build --prefix web/default` を実行してください。
 - バックエンドの変更には `go test ./...` を使用します。
 
-不具合や変更は[このリポジトリの Issue](https://github.com/infinmalum/one-gateway/issues) で報告してください。
+不具合や変更は[このリポジトリの Issue](https://github.com/infinmalum/a1o-platform/issues) で報告してください。
 
 ## 由来とライセンス
 
-One Gateway は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。One Gateway の独自の変更は [Apache License 2.0](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。
+A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。A1O Platform の独自の変更は [Apache License 2.0](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。

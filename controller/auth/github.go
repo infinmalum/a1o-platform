@@ -12,11 +12,11 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/common/random"
-	"github.com/infinmalum/one-gateway/controller"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/common/random"
+	"github.com/infinmalum/a1o-platform/controller"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 type GitHubOAuthResponse struct {

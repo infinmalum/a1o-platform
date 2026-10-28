@@ -7,7 +7,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/common"
+	"github.com/infinmalum/a1o-platform/common"
 )
 
 func TestBusinessStatsAggregation(t *testing.T) {

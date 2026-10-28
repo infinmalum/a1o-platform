@@ -3,12 +3,12 @@ package model
 import (
 	"database/sql"
 	"fmt"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/env"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/common/random"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/env"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/common/random"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -196,7 +196,6 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&ChatMCPServer{}); err != nil {
 		return err
 	}
-	MigrateChannelTypes()
 	return nil
 }
 

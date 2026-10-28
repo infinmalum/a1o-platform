@@ -19,14 +19,14 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/account"
-	"github.com/infinmalum/one-gateway/relay/credential"
-	"github.com/infinmalum/one-gateway/relay/native"
-	"github.com/infinmalum/one-gateway/relay/upstream"
-	"github.com/infinmalum/one-gateway/relay/upstream/openai"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/account"
+	"github.com/infinmalum/a1o-platform/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/upstream"
+	"github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 
 // testToken derives credential values at runtime so the source never carries

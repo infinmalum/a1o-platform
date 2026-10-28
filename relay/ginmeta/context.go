@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
 // Get is the Gin edge for the protocol-neutral request metadata shared by
@@ -32,7 +32,7 @@ func Get(c *gin.Context) *meta.Meta {
 		result.Config = config.(model.ChannelConfig)
 	}
 	if result.BaseURL == "" {
-		result.BaseURL = channeltype.ChannelBaseURLs[result.ChannelType]
+		result.BaseURL = channeltype.BaseURL(result.ChannelType)
 	}
 	result.APIType = channeltype.ToAPIType(result.ChannelType)
 	return result

@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

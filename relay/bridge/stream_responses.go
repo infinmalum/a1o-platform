@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // Stream converts Responses events into Chat Completions chunks. Reasoning

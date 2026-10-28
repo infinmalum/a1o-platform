@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/monitor"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/monitor"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 
 	"github.com/gin-gonic/gin"
 )
@@ -88,7 +88,7 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 }
 
 func updateChannelBalance(channel *model.Channel) (float64, error) {
-	baseURL := channeltype.ChannelBaseURLs[channel.Type]
+	baseURL := channeltype.BaseURL(channel.Type)
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
 	}

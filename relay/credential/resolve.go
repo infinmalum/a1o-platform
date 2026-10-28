@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // refreshFlightTimeout bounds one credential rotation. The account's refresh

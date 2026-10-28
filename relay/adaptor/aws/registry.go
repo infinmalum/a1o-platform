@@ -1,9 +1,9 @@
 package aws
 
 import (
-	claude "github.com/infinmalum/one-gateway/relay/adaptor/aws/claude"
-	llama3 "github.com/infinmalum/one-gateway/relay/adaptor/aws/llama3"
-	"github.com/infinmalum/one-gateway/relay/adaptor/aws/utils"
+	claude "github.com/infinmalum/a1o-platform/relay/adaptor/aws/claude"
+	llama3 "github.com/infinmalum/a1o-platform/relay/adaptor/aws/llama3"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/aws/utils"
 )
 
 type AwsModelType int

@@ -19,7 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/infinmalum/one-gateway/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/credential"
 )
 
 func sha256Sum(t *testing.T, value string) string {
@@ -131,7 +131,7 @@ func (f *fakeAuth) client() *Client {
 			Issuer:    f.issuer,
 		},
 		HTTP:        f.server.Client(),
-		AgentName:   "One Gateway Test",
+		AgentName:   "A1O Platform Test",
 		HostID:      testToken(f.t, "host"),
 		RedirectURI: DefaultRedirectURI,
 	}

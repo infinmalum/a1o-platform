@@ -12,14 +12,14 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
-	"github.com/infinmalum/one-gateway/relay/ginmeta"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/relay/ginmeta"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // NativeOpenAIEdits forwards the deprecated Edits wire format on channels that

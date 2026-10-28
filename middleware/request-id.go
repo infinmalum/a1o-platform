@@ -3,7 +3,7 @@ package middleware
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/helper"
+	"github.com/infinmalum/a1o-platform/common/helper"
 )
 
 func RequestId() func(c *gin.Context) {

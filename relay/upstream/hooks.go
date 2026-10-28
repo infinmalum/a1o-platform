@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/credential"
 )
 
 // RequestValidator enforces a profile's capability matrix on one upstream

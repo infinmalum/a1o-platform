@@ -1,11 +1,11 @@
 <div align="center">
-  <img src="docs/logo.png" alt="One Gateway 徽标" width="120" />
+  <img src="docs/logo.png" alt="A1O Platform 徽标" width="120" />
 
-  # One Gateway
+  # A1O Platform
 
-  **一个网关原生支持 OpenAI、Anthropic、Gemini 三种协议,连接所有模型服务商。**
+  **一个平台原生支持 OpenAI、Anthropic、Gemini 三种协议，连接所有模型服务商。**
 
-  [![CI](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/one-gateway/actions/workflows/ci.yml)
+  [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
@@ -15,16 +15,16 @@
 
 ---
 
-One Gateway 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它以一套部署原生支持 OpenAI（Chat Completions 与 Responses）、Anthropic Messages、Gemini generateContent 三种 API 协议，连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；One Gateway 建立在他们的工作之上。
+A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它以一套部署原生支持 OpenAI（Chat Completions 与 Responses）、Anthropic Messages、Gemini generateContent 三种 API 协议，连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；A1O Platform 建立在他们的工作之上。
 
 > [!NOTE]
-> 本仓库独立维护。原项目的版本、Docker 镜像、演示站点和 issue 列表不代表 One Gateway 的发布与支持渠道。
+> 本仓库独立维护。原项目的版本、Docker 镜像、演示站点和 issue 列表不代表 A1O Platform 的发布与支持渠道。
 
 ## 功能亮点
 
 - 🔌 **四种原生 API 协议** —— OpenAI Chat Completions、OpenAI Responses（支持可查询、可取消的后台任务）、Anthropic Messages、Gemini `generateContent`，同一个令牌还能调用 embeddings、图像、音频和内容审核接口。
 - 🌉 **跨协议桥接** —— 请求与响应会在客户端协议和上游协议之间自动转换，流式同样支持：OpenAI 客户端可以打到 Anthropic、Gemini、Responses 上游，Anthropic 客户端可以打到 OpenAI chat 和 Gemini 上游。
-- 🔀 **智能路由** —— 内置 37 个服务商适配器，渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
+- 🔀 **智能路由** —— 15 种渠道类型、9 个服务商适配器，渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
 - 🤖 **内置 chat 运行时** —— 服务端 agent 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
 - 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
 - 🖥️ **管理控制台** —— 仪表盘、渠道、上游账号、用户、令牌、日志、设置一站管理，内置 chat 页面与图像/决策 Playground。
@@ -38,15 +38,15 @@ One Gateway 是一个独立维护的 AI 网关，最初派生自 [One API](https
 在本仓库根目录构建本项目的镜像：
 
 ```sh
-git clone https://github.com/infinmalum/one-gateway.git
-cd one-gateway
-docker build -t one-gateway:local .
-docker run -d --name one-gateway --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" one-gateway:local
+git clone https://github.com/infinmalum/a1o-platform.git
+cd a1o-platform
+docker build -t a1o-platform:local .
+docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
 ```
 
 打开 <http://localhost:3000>。数据库首次初始化时会创建 `root` 账号，密码为启动日志中打印一次的随机密码（也可通过 `INITIAL_ROOT_PASSWORD` 预先指定）。**首次登录后请立即修改密码。**挂载目录保存默认的 SQLite 数据库，更换容器时应保留该目录。对外提供服务时还应配置 HTTPS 和固定的 `SESSION_SECRET`。
 
-仓库的 `docker-compose.yml` 会在本地构建本项目，镜像标记为 `one-gateway:local`，数据库与数据目录均使用 `one-gateway` 命名。如果你沿用了早期继承 `one-api` 命名的 compose 文件，切换前需要先迁移数据库和 `data/` 目录。
+仓库的 `docker-compose.yml` 会在本地构建本项目，镜像标记为 `a1o-platform:local`，数据库与数据目录均使用 `a1o-platform` 命名。如果你沿用了早期继承 `one-api` 命名的 compose 文件，切换前需要先迁移数据库和 `data/` 目录。
 
 ## 从源码构建
 
@@ -55,8 +55,8 @@ Dockerfile 使用 Node.js 24 和 Go 1.27.1。安装兼容版本后，先构建�
 ```sh
 npm ci --legacy-peer-deps --prefix web/default
 npm run build --prefix web/default
-go build -o one-gateway .
-./one-gateway --port 3000
+go build -o a1o-platform .
+/./a1o-platform --port 3000
 ```
 
 下载的 npm 和 Go 模块使用各自默认的持久缓存。前端依赖安装在 `web/default/node_modules` 中，构建产物位于 `web/build/default`。
@@ -104,7 +104,6 @@ curl http://localhost:3000/v1/chat/completions \
 ## 文档
 
 - [前端主题说明](web/README.md)
-- [TypeScript 迁移说明](docs/typescript-migration.md)
 
 ## 开发
 
@@ -112,8 +111,8 @@ curl http://localhost:3000/v1/chat/completions \
 - 修改嵌入的前端资源前，运行 `npm run build --prefix web/default`。
 - 修改后端时，运行 `go test ./...`。
 
-请在[本仓库的 issue 列表](https://github.com/infinmalum/one-gateway/issues)反馈问题与改动。
+请在[本仓库的 issue 列表](https://github.com/infinmalum/a1o-platform/issues)反馈问题与改动。
 
 ## 来源与许可证
 
-One Gateway 派生自 [One API](https://github.com/songquanpeng/one-api)，原项目版权归 © 2023 JustSong 及其他贡献者所有。原项目的 MIT 许可及声明保存在 [`LICENSE.upstream`](LICENSE.upstream)。本派生项目的原创修改按 [Apache License 2.0](LICENSE) 提供；归属与适用范围见 [`NOTICE`](NOTICE)。各源码文件及第三方依赖原有的许可声明仍然适用。
+A1O Platform 派生自 [One API](https://github.com/songquanpeng/one-api)，原项目版权归 © 2023 JustSong 及其他贡献者所有。原项目的 MIT 许可及声明保存在 [`LICENSE.upstream`](LICENSE.upstream)。本派生项目的原创修改按 [Apache License 2.0](LICENSE) 提供；归属与适用范围见 [`NOTICE`](NOTICE)。各源码文件及第三方依赖原有的许可声明仍然适用。

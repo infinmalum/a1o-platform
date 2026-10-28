@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/i18n"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/i18n"
+	"github.com/infinmalum/a1o-platform/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +23,7 @@ func GetOptions(c *gin.Context) {
 		}
 		options = append(options, &model.Option{
 			Key:   k,
-			Value: helper.Interface2String(v),
+			Value: v,
 		})
 	}
 	config.OptionMapRWMutex.RUnlock()

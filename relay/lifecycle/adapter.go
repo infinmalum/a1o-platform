@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // AdapterResult describes one provider-specific attempt. Legacy provider

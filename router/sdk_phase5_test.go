@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	commonclient "github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common"
+	commonclient "github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/openai/openai-go/v3"
 	openaioption "github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
@@ -429,7 +429,7 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/onegateway/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
+	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/a1o/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
 	proxyRequest.Header.Set("X-Trace", "keep")
 	proxyRequest.Header.Set("Authorization", "Bearer sk-phase5-gateway-key")
 	proxyResponse := httptest.NewRecorder()

@@ -40,8 +40,8 @@ const About = () => {
               <Card.Header className='header'>{t('about.title')}</Card.Header>
               <p>{t('about.description')}</p>
               {t('about.repository')}
-              <a href='https://github.com/infinmalum/one-gateway'>
-                https://github.com/infinmalum/one-gateway
+              <a href='https://github.com/infinmalum/a1o-platform'>
+                https://github.com/infinmalum/a1o-platform
               </a>
             </Card.Content>
           </Card>

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // chatResponses converts Chat Completions requests onto the OpenAI Responses

@@ -3,8 +3,8 @@ package router
 import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/controller"
-	"github.com/infinmalum/one-gateway/middleware"
+	"github.com/infinmalum/a1o-platform/controller"
+	"github.com/infinmalum/a1o-platform/middleware"
 )
 
 func SetDashboardRouter(router *gin.Engine) {

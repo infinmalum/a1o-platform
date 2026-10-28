@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func ErrorWrapper(err error, code string, statusCode int) *model.ErrorWithStatusCode {
@@ -13,7 +13,7 @@ func ErrorWrapper(err error, code string, statusCode int) *model.ErrorWithStatus
 
 	Error := model.Error{
 		Message: err.Error(),
-		Type:    "one_api_error",
+		Type:    model.ErrorTypeA1O,
 		Code:    code,
 	}
 	return &model.ErrorWithStatusCode{

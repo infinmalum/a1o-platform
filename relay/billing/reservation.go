@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // Reservation is the protocol-neutral quota transaction for one upstream

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/model"
 
 	"github.com/gin-gonic/gin"
 )

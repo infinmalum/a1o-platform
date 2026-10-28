@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 // validateChannelAccountBinding rejects references to accounts that do not
@@ -92,15 +92,11 @@ func GetChannel(c *gin.Context) {
 	return
 }
 
-// validateChannelType rejects channel kinds the console no longer offers:
-// out-of-range values, and retired kinds that the boot-time migration would
-// silently rewrite to a different kind.
+// validateChannelType rejects channel kinds that do not exist, including the
+// vacant slots retired kinds left behind in the ID space.
 func validateChannelType(channel *model.Channel) error {
-	if channel.Type < 0 || channel.Type >= channeltype.Dummy {
+	if !channeltype.IsValid(channel.Type) {
 		return fmt.Errorf("非法的渠道类型: %d", channel.Type)
-	}
-	if from, to, retired := model.RetiredChannelType(channel.Type); retired {
-		return fmt.Errorf("渠道类型 %d 已下线，启动时会自动迁移为类型 %d，请直接选择迁移后的类型", from, to)
 	}
 	return nil
 }

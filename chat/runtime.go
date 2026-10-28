@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // DefaultMaxOutputTokens is the per-leg output bound when a session sets none.

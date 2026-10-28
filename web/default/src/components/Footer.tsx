@@ -38,7 +38,7 @@ const Footer = () => {
           ></div>
         ) : (
           <div className='custom-footer'>
-            <a href='https://github.com/infinmalum/one-gateway' target='_blank'>
+            <a href='https://github.com/infinmalum/a1o-platform' target='_blank'>
               {systemName} {import.meta.env.REACT_APP_VERSION}{' '}
             </a>
             {t('footer.built_by')}{' '}
@@ -46,7 +46,7 @@ const Footer = () => {
               {t('footer.built_by_name')}
             </a>{' '}
             {t('footer.license')}{' '}
-            <a href='https://github.com/infinmalum/one-gateway/blob/main/LICENSE'>
+            <a href='https://github.com/infinmalum/a1o-platform/blob/main/LICENSE'>
               {t('footer.apache')}
             </a>
           </div>

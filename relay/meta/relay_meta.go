@@ -3,7 +3,7 @@ package meta
 import (
 	"time"
 
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 type Meta struct {

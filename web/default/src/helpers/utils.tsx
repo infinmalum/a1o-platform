@@ -22,7 +22,7 @@ export function isRoot() {
 
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'One Gateway';
+  if (!system_name) return 'A1O Platform';
   return system_name;
 }
 

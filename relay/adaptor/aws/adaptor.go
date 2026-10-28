@@ -8,10 +8,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/aws/utils"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/aws/utils"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 var _ adaptor.Adaptor = new(Adaptor)

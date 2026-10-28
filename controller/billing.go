@@ -2,10 +2,10 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func GetSubscription(c *gin.Context) {
@@ -77,7 +77,7 @@ func GetUsage(c *gin.Context) {
 	if err != nil {
 		Error := relaymodel.Error{
 			Message: err.Error(),
-			Type:    "one_api_error",
+			Type:    relaymodel.ErrorTypeA1O,
 		}
 		c.JSON(200, gin.H{
 			"error": Error,

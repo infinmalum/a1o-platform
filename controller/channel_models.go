@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 // upstreamModelClient connects only to public addresses: the fetch endpoint
@@ -98,7 +98,7 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		return nil, errors.New("该渠道类型不支持自动获取模型列表，请手动填写")
 	}
 	if baseURL == "" {
-		baseURL = channeltype.ChannelBaseURLs[channelType]
+		baseURL = channeltype.BaseURL(channelType)
 	}
 	if baseURL == "" {
 		return nil, errors.New("请先填写代理地址")

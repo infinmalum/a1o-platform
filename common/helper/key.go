@@ -1,5 +1,5 @@
 package helper
 
 const (
-	RequestIdKey = "X-One-Gateway-Request-Id"
+	RequestIdKey = "X-A1O-Request-Id"
 )

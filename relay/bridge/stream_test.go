@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 type recordingWriter struct {

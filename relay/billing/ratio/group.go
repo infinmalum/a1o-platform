@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/common/logger"
+	"github.com/infinmalum/a1o-platform/common/logger"
 )
 
 var groupRatioLock sync.RWMutex

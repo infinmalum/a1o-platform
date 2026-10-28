@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 type Protocol string

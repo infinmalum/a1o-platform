@@ -3,9 +3,9 @@ package model
 import (
 	"fmt"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
-	billingratio "github.com/infinmalum/one-gateway/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"strconv"
 	"strings"
 	"time"

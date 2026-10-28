@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/billing/ratio"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing/ratio"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 type NativeReservation struct {

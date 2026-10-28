@@ -1,6 +1,6 @@
 package channeltype
 
-import "github.com/infinmalum/one-gateway/relay/relaymode"
+import "github.com/infinmalum/a1o-platform/relay/relaymode"
 
 // NativeChatCompatible identifies channels whose Chat Completions endpoint
 // accepts the OpenAI JSON and SSE wire format. Every other vendor kind was

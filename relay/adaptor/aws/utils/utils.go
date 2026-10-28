@@ -3,7 +3,7 @@ package utils
 import (
 	"net/http"
 
-	relaymodel "github.com/infinmalum/one-gateway/relay/model"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func WrapErr(err error) *relaymodel.ErrorWithStatusCode {

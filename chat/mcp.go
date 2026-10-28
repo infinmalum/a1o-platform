@@ -16,8 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 const (
@@ -175,7 +175,7 @@ func (m *MCPManager) connect(ctx context.Context, server *model.ChatMCPServer, k
 		m.recordFailure(key, err)
 		return nil, err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "one-gateway-chat", Version: "1.0"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "a1o-platform-chat", Version: "1.0"}, nil)
 	dialCtx := context.WithoutCancel(ctx)
 	connectCtx, cancelConnect := context.WithTimeout(dialCtx, mcpConnectTimeout)
 	defer cancelConnect()

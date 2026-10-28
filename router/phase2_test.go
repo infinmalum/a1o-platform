@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -336,7 +336,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	if err := db.Create(&proxyChannel).Error; err != nil {
 		t.Fatal(err)
 	}
-	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/onegateway/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
+	proxyRequest := httptest.NewRequest(http.MethodGet, "/v1/a1o/proxy/"+strconv.Itoa(proxyChannel.Id)+"/health", nil)
 	proxyRequest.Header.Set("Authorization", "Bearer sk-phase2-key")
 	proxyResponse := httptest.NewRecorder()
 	router.ServeHTTP(proxyResponse, proxyRequest)

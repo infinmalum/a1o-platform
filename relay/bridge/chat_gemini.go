@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // ChatToGemini converts the Chat Completions subset that Gemini

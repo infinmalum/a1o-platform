@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 // ResponseWriter records whether the response has started, the one piece of
@@ -91,7 +93,10 @@ func (c *Context) JSON(status int, object any) {
 	c.Writer.WriteHeader(status)
 	encoded, err := json.Marshal(object)
 	if err != nil {
-		_, _ = c.Writer.Write([]byte(`{"error":{"message":"failed to encode response","type":"one_api_error"}}`))
+		fallback, _ := json.Marshal(map[string]any{"error": map[string]string{
+			"message": "failed to encode response", "type": model.ErrorTypeA1O,
+		}})
+		_, _ = c.Writer.Write(fallback)
 		return
 	}
 	_, _ = c.Writer.Write(encoded)

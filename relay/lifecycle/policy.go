@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/account"
-	"github.com/infinmalum/one-gateway/relay/native"
-	"github.com/infinmalum/one-gateway/relay/upstream"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/account"
+	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/upstream"
 )
 
 // Selection describes channel requirements independently of the client

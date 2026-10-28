@@ -25,17 +25,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/credential"
-	"github.com/infinmalum/one-gateway/relay/upstream"
-	"github.com/infinmalum/one-gateway/relay/upstream/openai"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/upstream"
+	"github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 
 const (
 	upstreamOAuthSessionTTL  = 10 * time.Minute
 	upstreamOAuthMaxSessions = 64
-	upstreamOAuthAgentName   = "One Gateway"
+	upstreamOAuthAgentName   = "A1O Platform"
 )
 
 // oauthClientFactory builds the Sign in with ChatGPT client; tests replace it
@@ -57,7 +57,7 @@ type upstreamOAuthSession struct {
 }
 
 // upstreamOAuthSessionStore keeps pending authorization sessions in memory.
-// The first deployment runs one gateway replica; multi-replica coordination
+// The first deployment runs a single gateway replica; multi-replica coordination
 // is a later reliability stage.
 type upstreamOAuthSessionStore struct {
 	mu       sync.Mutex

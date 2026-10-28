@@ -3,7 +3,7 @@ package bridge
 import (
 	"encoding/json"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // anthropicStreamWriter writes the Anthropic Messages event envelope shared by

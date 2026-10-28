@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/i18n"
+	"github.com/infinmalum/a1o-platform/common/i18n"
 )
 
 func Language() gin.HandlerFunc {

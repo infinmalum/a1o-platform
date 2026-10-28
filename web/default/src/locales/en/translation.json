@@ -807,13 +807,13 @@
   "footer": {
     "built_by": "based on",
     "built_by_name": "One API",
-    "license": "by JustSong; upstream MIT, One Gateway changes under",
+    "license": "by JustSong; upstream MIT, A1O Platform changes under",
     "apache": "Apache 2.0"
   },
   "home": {
     "welcome": {
-      "title": "Welcome to One Gateway",
-      "description": "One Gateway is a LLM API management and distribution system that helps you better manage and use LLM APIs from various providers.",
+      "title": "Welcome to A1O Platform",
+      "description": "A1O Platform is a LLM API management and distribution system that helps you better manage and use LLM APIs from various providers.",
       "login_notice": "To use the service, please login or register first."
     },
     "system_status": {
@@ -886,7 +886,7 @@
   },
   "about": {
     "title": "About",
-    "description": "One Gateway is an open-source API management and proxy platform.",
+    "description": "A1O Platform is an open-source API management and proxy platform.",
     "repository": "Repository: ",
     "loading_failed": "Loading failed"
   },
@@ -997,7 +997,7 @@
   },
   "quickStart": {
     "title": "Quick start",
-    "subtitle": "Three steps to wire One Gateway into your app: copy the address, create a key, paste an example.",
+    "subtitle": "Three steps to wire A1O Platform into your app: copy the address, create a key, paste an example.",
     "copy": "Copy",
     "copied": "Copied to clipboard",
     "copyFailed": "Copy failed, please select the text manually",

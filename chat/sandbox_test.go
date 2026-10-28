@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 func skipWithoutPython(t *testing.T) {

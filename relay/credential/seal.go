@@ -27,7 +27,7 @@ const (
 	// defaults to the highest configured version.
 	EnvActiveVersion = "UPSTREAM_CREDENTIAL_ACTIVE_VERSION"
 
-	sealContext = "one-gateway/upstream-credential/v1"
+	sealContext = "a1o-platform/upstream-credential/v1"
 	keyBytes    = 32
 )
 

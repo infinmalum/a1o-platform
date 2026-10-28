@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // Stream converts Anthropic Messages events into Chat Completions chunks.

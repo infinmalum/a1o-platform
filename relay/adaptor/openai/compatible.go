@@ -1,8 +1,8 @@
 package openai
 
 import (
-	"github.com/infinmalum/one-gateway/relay/adaptor/minimax"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/minimax"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 // CompatibleChannels lists the channel kinds whose OpenAI-compatible presets

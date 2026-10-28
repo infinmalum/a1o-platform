@@ -45,12 +45,12 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-X 'github.com/infinmalum/one-gateway/common.Version=$(git describe --tags)'" -o one-gateway-macos
+          go build -ldflags "-X 'github.com/infinmalum/a1o-platform/common.Version=$(git describe --tags)'" -o a1o-platform-macos
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: one-gateway-macos
+          files: a1o-platform-macos
           draft: true
           generate_release_notes: true
         env:

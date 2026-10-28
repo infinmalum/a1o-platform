@@ -3,8 +3,9 @@ package middleware
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/logger"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 	"net/http"
 	"runtime/debug"
 )
@@ -21,8 +22,8 @@ func RelayPanicRecover() gin.HandlerFunc {
 				logger.Errorf(ctx, "request body: %s", string(body))
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": gin.H{
-						"message": fmt.Sprintf("Panic detected, error: %v. Please submit an issue with the related log here: https://github.com/infinmalum/one-gateway/issues", err),
-						"type":    "one_api_panic",
+						"message": fmt.Sprintf("Panic detected, error: %v. Please submit an issue with the related log here: https://github.com/infinmalum/a1o-platform/issues", err),
+						"type":    relaymodel.ErrorTypeA1OPanic,
 					},
 				})
 				c.Abort()

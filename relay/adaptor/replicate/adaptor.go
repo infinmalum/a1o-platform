@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/model"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 	"github.com/pkg/errors"
 )
 

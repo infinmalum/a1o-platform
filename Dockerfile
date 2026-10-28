@@ -28,14 +28,14 @@ RUN go mod download
 COPY . .
 COPY --from=builder /web/build ./web/build
 
-RUN go build -trimpath -ldflags "-s -w -X 'github.com/infinmalum/one-gateway/common.Version=$(cat VERSION)' -linkmode external -extldflags '-static'" -o one-gateway
+RUN go build -trimpath -ldflags "-s -w -X 'github.com/infinmalum/a1o-platform/common.Version=$(cat VERSION)' -linkmode external -extldflags '-static'" -o a1o-platform
 
 FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates tzdata
 
-COPY --from=builder2 /build/one-gateway /
+COPY --from=builder2 /build/a1o-platform /
 
 EXPOSE 3000
 WORKDIR /data
-ENTRYPOINT ["/one-gateway"]
+ENTRYPOINT ["/a1o-platform"]

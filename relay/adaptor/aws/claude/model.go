@@ -1,6 +1,6 @@
 package aws
 
-import "github.com/infinmalum/one-gateway/relay/adaptor/anthropic"
+import "github.com/infinmalum/a1o-platform/relay/adaptor/anthropic"
 
 // Request is the request to AWS Claude
 //

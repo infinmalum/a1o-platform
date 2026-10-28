@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infinmalum/one-gateway/relay/native"
-	"github.com/infinmalum/one-gateway/relay/upstream/openai"
+	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 
 type testStreamWriter struct{ bytes.Buffer }

@@ -3,11 +3,11 @@ package vertexai
 import (
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	claude "github.com/infinmalum/one-gateway/relay/adaptor/vertexai/claude"
-	gemini "github.com/infinmalum/one-gateway/relay/adaptor/vertexai/gemini"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	claude "github.com/infinmalum/a1o-platform/relay/adaptor/vertexai/claude"
+	gemini "github.com/infinmalum/a1o-platform/relay/adaptor/vertexai/gemini"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 type VertexAIModelType int

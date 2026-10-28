@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/i18n"
-	"github.com/infinmalum/one-gateway/common/message"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/i18n"
+	"github.com/infinmalum/a1o-platform/common/message"
+	"github.com/infinmalum/a1o-platform/model"
 
 	"github.com/gin-gonic/gin"
 )

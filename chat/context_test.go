@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 func setupChatDB(t *testing.T) {

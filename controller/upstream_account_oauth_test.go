@@ -23,12 +23,12 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/credential"
-	"github.com/infinmalum/one-gateway/relay/upstream/openai"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 
 // wizardToken derives test values at runtime so the source never carries
@@ -148,7 +148,7 @@ func newOAuthWizardFixture(t *testing.T) *oauthWizardFixture {
 				Issuer:    fixture.issuer,
 			},
 			HTTP:        fixture.server.Client(),
-			AgentName:   "One Gateway Test",
+			AgentName:   "A1O Platform Test",
 			HostID:      hostID,
 			RedirectURI: openai.DefaultRedirectURI,
 		}

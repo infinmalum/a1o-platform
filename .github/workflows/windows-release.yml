@@ -48,12 +48,12 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/infinmalum/one-gateway/common.Version=$(git describe --tags)'" -o one-gateway.exe
+          go build -ldflags "-s -w -X 'github.com/infinmalum/a1o-platform/common.Version=$(git describe --tags)'" -o a1o-platform.exe
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: one-gateway.exe
+          files: a1o-platform.exe
           draft: true
           generate_release_notes: true
         env:

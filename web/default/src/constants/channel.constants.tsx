@@ -1,5 +1,12 @@
 export const CHANNEL_OPTIONS = [
-  { key: 1, text: 'OpenAI', value: 1, color: 'green' },
+  {
+    key: 1,
+    text: 'OpenAI Chat Completions',
+    value: 1,
+    color: 'green',
+    description:
+      'OpenAI 官方 Chat Completions 家族（chat、embeddings、images、audio、moderations），同一渠道可直接透传 /v1/responses',
+  },
   {
     key: 50,
     text: 'OpenAI 兼容',

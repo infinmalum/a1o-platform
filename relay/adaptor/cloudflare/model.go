@@ -1,6 +1,6 @@
 package cloudflare
 
-import "github.com/infinmalum/one-gateway/relay/model"
+import "github.com/infinmalum/a1o-platform/relay/model"
 
 type Request struct {
 	Messages    []model.Message `json:"messages,omitempty"`

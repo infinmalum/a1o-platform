@@ -3,7 +3,7 @@ package message
 import (
 	"fmt"
 
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 // EmailTemplate 生成美观的 HTML 邮件内容

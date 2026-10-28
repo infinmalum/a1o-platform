@@ -1,6 +1,6 @@
 package openai
 
-import "github.com/infinmalum/one-gateway/relay/upstream"
+import "github.com/infinmalum/a1o-platform/relay/upstream"
 
 // register wires this package's credential refresher and capability validator
 // into the profile registry. Importing the package is enough; the gateway

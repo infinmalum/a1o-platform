@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // Tool is one callable tool advertised to the model in OpenAI function

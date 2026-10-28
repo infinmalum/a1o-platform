@@ -8,14 +8,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/billing"
-	"github.com/infinmalum/one-gateway/relay/bridge"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
+	"github.com/infinmalum/a1o-platform/relay/bridge"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // Channel contains only upstream transport settings. Account and token data
@@ -661,12 +661,12 @@ func selectRetry(ctx context.Context, input Request, failed Channel, tried map[i
 }
 
 func channelFromModel(channel *model.Channel) (Channel, error) {
-	if channel == nil || channel.Type < 0 || channel.Type >= len(channeltype.ChannelBaseURLs) {
+	if channel == nil || !channeltype.IsValid(channel.Type) {
 		return Channel{}, errors.New("invalid channel type")
 	}
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" {
-		baseURL = channeltype.ChannelBaseURLs[channel.Type]
+		baseURL = channeltype.BaseURL(channel.Type)
 	}
 	config, err := channel.LoadConfig()
 	if err != nil {

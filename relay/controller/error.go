@@ -3,8 +3,8 @@ package controller
 import (
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/relay/lifecycle"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/lifecycle"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func RelayErrorHandler(response *http.Response) *model.ErrorWithStatusCode {

@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/infinmalum/one-gateway/controller"
-	"github.com/infinmalum/one-gateway/middleware"
+	"github.com/infinmalum/a1o-platform/controller"
+	"github.com/infinmalum/a1o-platform/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,7 +36,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RelayPanicRecover(), middleware.TokenAuth(), middleware.Distribute())
 	{
-		relayV1Router.Any("/onegateway/proxy/:channelid/*target", controller.RelayProxy)
+		relayV1Router.Any("/a1o/proxy/:channelid/*target", controller.RelayProxy)
 		relayV1Router.POST("/completions", controller.RelayCompletions)
 		relayV1Router.POST("/chat/completions", controller.RelayChat)
 		relayV1Router.POST("/edits", controller.RelayEdits)

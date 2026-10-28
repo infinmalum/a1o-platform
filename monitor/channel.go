@@ -3,10 +3,10 @@ package monitor
 import (
 	"fmt"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/common/message"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/common/message"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 func notifyRootUser(subject string, content string) {

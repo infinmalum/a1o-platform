@@ -14,8 +14,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/helper"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/helper"
 )
 
 type loggerLevel string
@@ -35,9 +35,9 @@ func SetupLogger() {
 		if LogDir != "" {
 			var logPath string
 			if config.OnlyOneLogFile {
-				logPath = filepath.Join(LogDir, "one-gateway.log")
+				logPath = filepath.Join(LogDir, "a1o-platform.log")
 			} else {
-				logPath = filepath.Join(LogDir, fmt.Sprintf("one-gateway-%s.log", time.Now().Format("20060102")))
+				logPath = filepath.Join(LogDir, fmt.Sprintf("a1o-platform-%s.log", time.Now().Format("20060102")))
 			}
 			fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -132,7 +132,7 @@ func getLineInfo() (string, string) {
 		file = "unknown"
 		line = 0
 	}
-	parts := strings.Split(file, "one-gateway/")
+	parts := strings.Split(file, "a1o-platform/")
 	if len(parts) > 1 {
 		file = parts[1]
 	}

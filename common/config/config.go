@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/infinmalum/one-gateway/common/env"
+	"github.com/infinmalum/a1o-platform/common/env"
 
 	"github.com/google/uuid"
 )
 
-var SystemName = "One Gateway"
+var SystemName = "A1O Platform"
 var ServerAddress = "http://localhost:3000"
 var Footer = ""
 var Logo = ""

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // AnthropicToChatRequest converts the Messages subset that Chat Completions

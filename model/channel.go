@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/helper"
-	"github.com/infinmalum/one-gateway/common/logger"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/logger"
 	"gorm.io/gorm"
 )
 
@@ -73,7 +74,13 @@ func GetAllChannels(startIdx int, num int, scope string) ([]*Channel, error) {
 }
 
 func SearchChannels(keyword string) (channels []*Channel, err error) {
-	err = DB.Omit("key").Where("id = ? or name LIKE ?", helper.String2Int(keyword), keyword+"%").Find(&channels).Error
+	// A non-numeric keyword cannot match an id; 0 is no id, so only the name
+	// prefix filter applies.
+	id := 0
+	if parsed, parseErr := strconv.Atoi(keyword); parseErr == nil {
+		id = parsed
+	}
+	err = DB.Omit("key").Where("id = ? or name LIKE ?", id, keyword+"%").Find(&channels).Error
 	return channels, err
 }
 

@@ -3,7 +3,7 @@ package relay
 import (
 	"testing"
 
-	"github.com/infinmalum/one-gateway/relay/apitype"
+	"github.com/infinmalum/a1o-platform/relay/apitype"
 )
 
 func TestGetAdaptor(t *testing.T) {

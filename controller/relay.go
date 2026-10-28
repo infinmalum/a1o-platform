@@ -6,13 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
-	relaycontroller "github.com/infinmalum/one-gateway/relay/controller"
-	"github.com/infinmalum/one-gateway/relay/lifecycle"
-	"github.com/infinmalum/one-gateway/relay/model"
-	"github.com/infinmalum/one-gateway/relay/native"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
+	"github.com/infinmalum/a1o-platform/relay/lifecycle"
+	"github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
 // openAIWireChannel reports whether the channel selected by the dispatcher
@@ -156,7 +156,7 @@ func RelayAudio(c *gin.Context) {
 func RelayNotImplemented(c *gin.Context) {
 	err := model.Error{
 		Message: "API not implemented",
-		Type:    "one_api_error",
+		Type:    model.ErrorTypeA1O,
 		Param:   "",
 		Code:    "api_not_implemented",
 	}

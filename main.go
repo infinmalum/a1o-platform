@@ -11,20 +11,20 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/common/i18n"
-	"github.com/infinmalum/one-gateway/common/logger"
-	"github.com/infinmalum/one-gateway/controller"
-	"github.com/infinmalum/one-gateway/middleware"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/credential"
-	"github.com/infinmalum/one-gateway/router"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/i18n"
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/controller"
+	"github.com/infinmalum/a1o-platform/middleware"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/credential"
+	"github.com/infinmalum/a1o-platform/router"
 	// Registers the ChatGPT subscription profile's refresher and capability
 	// validator in the upstream registry.
-	_ "github.com/infinmalum/one-gateway/relay/upstream/openai"
+	_ "github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 
 //go:embed web/build/*
@@ -33,7 +33,7 @@ var buildFS embed.FS
 func main() {
 	common.Init()
 	logger.SetupLogger()
-	logger.SysLogf("One Gateway %s started", common.Version)
+	logger.SysLogf("A1O Platform %s started", common.Version)
 
 	if os.Getenv("GIN_MODE") != gin.DebugMode {
 		gin.SetMode(gin.ReleaseMode)
@@ -80,7 +80,6 @@ func main() {
 	model.InitOptionMap()
 	logger.SysLog(fmt.Sprintf("using theme %s", config.Theme))
 	if common.RedisEnabled {
-		// for compatibility with old versions
 		config.MemoryCacheEnabled = true
 	}
 	if config.MemoryCacheEnabled {

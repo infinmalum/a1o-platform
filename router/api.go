@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/infinmalum/one-gateway/controller"
-	"github.com/infinmalum/one-gateway/controller/auth"
-	"github.com/infinmalum/one-gateway/middleware"
+	"github.com/infinmalum/a1o-platform/controller"
+	"github.com/infinmalum/a1o-platform/controller/auth"
+	"github.com/infinmalum/a1o-platform/middleware"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"

@@ -4,8 +4,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 // RequestConverter has no HTTP-framework dependency. Provider-specific

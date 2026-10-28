@@ -3,7 +3,7 @@ package bridge
 import (
 	"errors"
 
-	"github.com/infinmalum/one-gateway/relay/native"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // Converter defines the boundary between a client's JSON protocol and the

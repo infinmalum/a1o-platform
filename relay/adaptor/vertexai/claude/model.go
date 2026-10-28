@@ -1,6 +1,6 @@
 package vertexai
 
-import "github.com/infinmalum/one-gateway/relay/adaptor/anthropic"
+import "github.com/infinmalum/a1o-platform/relay/adaptor/anthropic"
 
 type Request struct {
 	// AnthropicVersion must be "vertex-2023-10-16"

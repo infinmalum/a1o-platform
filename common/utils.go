@@ -2,7 +2,7 @@ package common
 
 import (
 	"fmt"
-	"github.com/infinmalum/one-gateway/common/config"
+	"github.com/infinmalum/a1o-platform/common/config"
 )
 
 func LogQuota(quota int64) string {

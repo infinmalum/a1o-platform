@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 func ImageHandler(c *adaptor.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {

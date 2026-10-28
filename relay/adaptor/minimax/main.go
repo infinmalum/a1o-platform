@@ -2,8 +2,8 @@ package minimax
 
 import (
 	"fmt"
-	"github.com/infinmalum/one-gateway/relay/meta"
-	"github.com/infinmalum/one-gateway/relay/relaymode"
+	"github.com/infinmalum/a1o-platform/relay/meta"
+	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
 func GetRequestURL(meta *meta.Meta) (string, error) {

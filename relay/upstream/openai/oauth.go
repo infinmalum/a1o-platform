@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinmalum/one-gateway/relay/credential"
+	"github.com/infinmalum/a1o-platform/relay/credential"
 )
 
 // ProfileID is the upstream profile served by this package.

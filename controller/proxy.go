@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/client"
-	"github.com/infinmalum/one-gateway/relay/ginmeta"
+	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/relay/ginmeta"
+	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 )
 
 // RelayProxy forwards an admin-only request to the target path on the
@@ -19,7 +20,7 @@ import (
 // of followed, so channel credentials cannot be redirected elsewhere.
 func RelayProxy(c *gin.Context) {
 	metadata := ginmeta.Get(c)
-	prefix := fmt.Sprintf("/v1/onegateway/proxy/%d", metadata.ChannelId)
+	prefix := fmt.Sprintf("/v1/a1o/proxy/%d", metadata.ChannelId)
 	target := strings.TrimPrefix(c.Request.URL.Path, prefix)
 
 	base, err := url.Parse(metadata.BaseURL)
@@ -85,6 +86,6 @@ func RelayProxy(c *gin.Context) {
 
 func writeProxyError(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"error": gin.H{
-		"message": message, "type": "one_api_error", "code": "proxy_error",
+		"message": message, "type": relaymodel.ErrorTypeA1O, "code": "proxy_error",
 	}})
 }

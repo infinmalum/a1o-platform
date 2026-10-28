@@ -13,10 +13,10 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/config"
-	"github.com/infinmalum/one-gateway/model"
-	"github.com/infinmalum/one-gateway/relay/channeltype"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
 func setupChannelTypeTest(t *testing.T) *gorm.DB {
@@ -37,7 +37,7 @@ func setupChannelTypeTest(t *testing.T) *gorm.DB {
 
 func callChannelMutation(t *testing.T, method string, kind int) map[string]any {
 	t.Helper()
-	body := fmt.Sprintf(`{"type": %d, "name": "legacy", "key": "sk-test", "models": "gpt-4o-mini", "group": "default"}`, kind)
+	body := fmt.Sprintf(`{"type": %d, "name": "test", "key": "sk-test", "models": "gpt-4o-mini", "group": "default"}`, kind)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(method, "/api/channel/", strings.NewReader(body))
@@ -52,42 +52,23 @@ func callChannelMutation(t *testing.T, method string, kind int) map[string]any {
 	return response
 }
 
-// TestChannelMutationRejectsRetiredTypes pins the entry guard: a channel
-// created on a retired kind would be silently rewritten by the boot-time
-// migration, so both handlers must refuse it up front and persist nothing.
-func TestChannelMutationRejectsRetiredTypes(t *testing.T) {
+// TestChannelMutationRejectsNonexistentTypes pins the entry guard: kinds that
+// do not exist — out-of-range values and the vacant retired slots in the ID
+// space — must be refused and persist nothing.
+func TestChannelMutationRejectsNonexistentTypes(t *testing.T) {
 	setupChannelTypeTest(t)
-	checked := 0
-	for kind := 0; kind < channeltype.Dummy; kind++ {
-		from, to, retired := model.RetiredChannelType(kind)
-		if !retired {
-			continue
-		}
-		require.Equal(t, kind, from)
-		require.NotEqual(t, from, to, "Tencent-style URL fixes must not count as retired")
-
+	for _, kind := range []int{-1, 0, 2, 36, 51, channeltype.Dummy, channeltype.Dummy + 7} {
 		response := callChannelMutation(t, http.MethodPost, kind)
 		require.Equal(t, false, response["success"], "kind %d must be refused", kind)
-		require.Contains(t, response["message"], "已下线")
+		require.Contains(t, response["message"], "非法的渠道类型")
 
 		response = callChannelMutation(t, http.MethodPut, kind)
 		require.Equal(t, false, response["success"], "kind %d must be refused on update", kind)
-		checked++
 	}
-	require.Greater(t, checked, 0, "the migration table must still list retired kinds")
 
 	var count int64
 	require.NoError(t, model.DB.Model(&model.Channel{}).Count(&count).Error)
 	require.Zero(t, count, "no channel may persist behind a refused type")
-}
-
-func TestChannelMutationRejectsOutOfRangeTypes(t *testing.T) {
-	setupChannelTypeTest(t)
-	for _, kind := range []int{-1, channeltype.Dummy, channeltype.Dummy + 7} {
-		response := callChannelMutation(t, http.MethodPost, kind)
-		require.Equal(t, false, response["success"], "kind %d must be refused", kind)
-		require.Contains(t, response["message"], "非法的渠道类型")
-	}
 }
 
 // TestAddChannelAcceptsLiveKinds keeps the guard from over-refusing: the
@@ -104,22 +85,16 @@ func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 	require.EqualValues(t, 5, count)
 }
 
-// TestDashboardModelListSkipsRetiredTypes pins the dashboard listing: retired
-// kinds ride ToAPIType onto the OpenAI adaptor, so without the explicit skip
-// they would advertise the whole OpenAI preset despite being uncreatable.
-func TestDashboardModelListSkipsRetiredTypes(t *testing.T) {
+// TestDashboardModelList pins the dashboard listing: every live kind that
+// ships a static preset keeps it, the compatible kind fetches its models
+// from the upstream instead, and the vacant retired slots advertise nothing.
+func TestDashboardModelList(t *testing.T) {
 	require.NotNil(t, channelId2Models, "controller init must have built the listing")
-	retired := []int{channeltype.PaLM, channeltype.Baidu, channeltype.Ali, channeltype.Xunfei,
-		channeltype.AIProxyLibrary, channeltype.Tencent, channeltype.Custom, channeltype.Zhipu,
-		channeltype.Cohere, channeltype.Ollama, channeltype.OpenRouter, channeltype.BaiduV2,
-		channeltype.AliBailian, channeltype.GeminiOpenAICompatible}
-	for _, kind := range retired {
-		require.Empty(t, channelId2Models[kind], "retired kind %d must advertise no models", kind)
-	}
-	// Only the kinds that still ship a static preset keep one.
 	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Minimax} {
 		require.NotEmpty(t, channelId2Models[kind], "live kind %d must keep its preset", kind)
 	}
-	// The compatible kind fetches its list from the upstream instead.
 	require.Empty(t, channelId2Models[channeltype.OpenAICompatible], "compatible kind fetches models live")
+	for _, kind := range []int{2, 36, 51} {
+		require.Empty(t, channelId2Models[kind], "vacant kind %d must advertise no models", kind)
+	}
 }

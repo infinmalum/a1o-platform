@@ -1,24 +1,23 @@
 package relay
 
 import (
-	"github.com/infinmalum/one-gateway/relay/adaptor"
-	"github.com/infinmalum/one-gateway/relay/adaptor/anthropic"
-	"github.com/infinmalum/one-gateway/relay/adaptor/aws"
-	"github.com/infinmalum/one-gateway/relay/adaptor/cloudflare"
-	"github.com/infinmalum/one-gateway/relay/adaptor/coze"
-	"github.com/infinmalum/one-gateway/relay/adaptor/deepl"
-	"github.com/infinmalum/one-gateway/relay/adaptor/gemini"
-	"github.com/infinmalum/one-gateway/relay/adaptor/openai"
-	"github.com/infinmalum/one-gateway/relay/adaptor/replicate"
-	"github.com/infinmalum/one-gateway/relay/adaptor/vertexai"
-	"github.com/infinmalum/one-gateway/relay/apitype"
+	"github.com/infinmalum/a1o-platform/relay/adaptor"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/anthropic"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/aws"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/cloudflare"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/coze"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/deepl"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/gemini"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/replicate"
+	"github.com/infinmalum/a1o-platform/relay/adaptor/vertexai"
+	"github.com/infinmalum/a1o-platform/relay/apitype"
 )
 
-// GetAdaptor returns the legacy per-vendor adapter for an api type. Channel
-// kinds with official OpenAI-compatible endpoints (Zhipu, Tencent, Cohere,
-// Ollama, and the migrated-away vendor kinds) map onto apitype.OpenAI via
-// ToAPIType and are served by the shared OpenAI adapter, so this switch
-// never sees them.
+// GetAdaptor returns the per-protocol adapter for an api type. Channel kinds
+// that speak the OpenAI wire directly (Minimax, OpenAICompatible) map onto
+// apitype.OpenAI via ToAPIType and are served by the shared OpenAI adapter,
+// so this switch never sees them.
 func GetAdaptor(apiType int) adaptor.Adaptor {
 	switch apiType {
 	case apitype.Anthropic:

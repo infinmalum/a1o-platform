@@ -1,19 +1,19 @@
 version: '3.4'
 
 services:
-  one-gateway:
+  a1o-platform:
     build: .
-    image: one-gateway:local
-    container_name: one-gateway
+    image: a1o-platform:local
+    container_name: a1o-platform
     restart: always
     command: --log-dir /app/logs
     ports:
       - "3000:3000"
     volumes:
-      - ./data/one-gateway:/data
+      - ./data/a1o-platform:/data
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=onegateway:${MYSQL_PASSWORD:-onegateway}@tcp(db:3306)/one-gateway  # 修改此行，或注释掉以使用 SQLite 作为数据库
+      - SQL_DSN=a1o:${MYSQL_PASSWORD:-a1o}@tcp(db:3306)/a1o-platform  # 修改此行，或注释掉以使用 SQLite 作为数据库
       - REDIS_CONN_STRING=redis://redis
       - SESSION_SECRET=random_string  # 修改为随机字符串
       - TZ=Asia/Shanghai
@@ -45,7 +45,7 @@ services:
       - '3306:3306'
     environment:
       TZ: Asia/Shanghai   # 设置时区
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-onegateway_root} # 设置 root 用户的密码，生产环境务必通过环境变量覆盖
-      MYSQL_USER: onegateway   # 创建专用用户
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-onegateway}    # 专用用户密码，需与上方 SQL_DSN 一致
-      MYSQL_DATABASE: one-gateway   # 自动创建数据库
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-a1o_root} # 设置 root 用户的密码，生产环境务必通过环境变量覆盖
+      MYSQL_USER: a1o   # 创建专用用户
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-a1o}    # 专用用户密码，需与上方 SQL_DSN 一致
+      MYSQL_DATABASE: a1o-platform   # 自动创建数据库

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/common"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/model"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -29,7 +29,7 @@ func TestChannelPinRequiresAdministratorAndHyphenatedTokenWorks(t *testing.T) {
 	require.NoError(t, db.Create(&model.Token{UserId: 2, Key: "admin-key", Status: model.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true}).Error)
 
 	router := gin.New()
-	router.GET("/v1/onegateway/proxy/:channelid/*target", TokenAuth(), func(c *gin.Context) {
+	router.GET("/v1/a1o/proxy/:channelid/*target", TokenAuth(), func(c *gin.Context) {
 		c.String(http.StatusOK, c.GetString(ctxkey.SpecificChannelId))
 	})
 	router.GET("/v1/test", TokenAuth(), func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -42,8 +42,8 @@ func TestChannelPinRequiresAdministratorAndHyphenatedTokenWorks(t *testing.T) {
 		return recorder
 	}
 	require.Equal(t, http.StatusOK, request("/v1/test", "root-2025").Code)
-	require.Equal(t, http.StatusForbidden, request("/v1/onegateway/proxy/12/chat", "root-2025").Code)
-	admin := request("/v1/onegateway/proxy/12/chat", "admin-key")
+	require.Equal(t, http.StatusForbidden, request("/v1/a1o/proxy/12/chat", "root-2025").Code)
+	admin := request("/v1/a1o/proxy/12/chat", "admin-key")
 	require.Equal(t, http.StatusOK, admin.Code)
 	require.Equal(t, "12", admin.Body.String())
 }

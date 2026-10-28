@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/infinmalum/one-gateway/common/helper"
+	"github.com/infinmalum/a1o-platform/common/helper"
 	"gorm.io/gorm"
 )
 

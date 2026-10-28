@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/infinmalum/one-gateway/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/common/ctxkey"
 )
 
 // MaxRequestBodySize bounds how much of a request body the gateway buffers,

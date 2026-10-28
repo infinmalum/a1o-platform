@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/infinmalum/one-gateway/model"
+	"github.com/infinmalum/a1o-platform/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

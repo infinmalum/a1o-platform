@@ -28,7 +28,7 @@ const (
 // memory. The oldest entry is evicted when the cap is reached.
 const maxEntries = 512
 
-// Runner executes one gateway request. It must write the upstream response or
+// Runner executes a single relay request. It must write the upstream response or
 // error body to dst, including the status code, before returning.
 type Runner func(ctx context.Context, dst http.ResponseWriter)
 
