@@ -197,7 +197,7 @@ export async function loadChannelModels() {
 
 export function getChannelModels(type) {
   if (channelModels !== undefined && type in channelModels) {
-    return channelModels[type];
+    return channelModels[type] || [];
   }
   let models = localStorage.getItem('channel_models');
   if (!models) {
@@ -205,7 +205,7 @@ export function getChannelModels(type) {
   }
   channelModels = JSON.parse(models);
   if (type in channelModels) {
-    return channelModels[type];
+    return channelModels[type] || [];
   }
   return [];
 }

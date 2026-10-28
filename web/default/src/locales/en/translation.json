@@ -113,7 +113,7 @@
       "proxy_url": "Proxy",
       "proxy_url_placeholder": "This is optional and used for API calls via a proxy. Please enter the proxy URL, formatted as: https://domain.com",
       "base_url": "Base URL",
-      "base_url_placeholder": "The full version-prefixed endpoint base, e.g. https://api.deepseek.com/v1",
+      "base_url_placeholder": "For third-party upstreams enter the full versioned prefix, e.g. https://open.bigmodel.cn/api/paas/v4; leave empty on official OpenAI / Anthropic channels to use the official endpoint",
       "key": "Key",
       "batch": "Batch Create",
       "batch_placeholder": "Please enter keys, one per line",

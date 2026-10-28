@@ -49,8 +49,7 @@ func (a *Adaptor) DoResponse(c *adaptor.Context, resp *http.Response, meta *meta
 }
 
 func (a *Adaptor) GetModelList() (models []string) {
-	models = modelList
-	return
+	return nil
 }
 
 func (a *Adaptor) GetChannelName() string {

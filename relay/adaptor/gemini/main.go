@@ -27,6 +27,14 @@ const (
 	VisionMaxImageNum = 16
 )
 
+// IsModelSupportSystemInstruction reports whether the model accepts the
+// systemInstruction field. Google supports it from gemini-1.5 on; only the
+// retired gemini-pro / gemini-1.0 line folds system text into a user
+// message instead, so the boundary is a prefix rule rather than a roster.
+func IsModelSupportSystemInstruction(model string) bool {
+	return !strings.HasPrefix(model, "gemini-pro") && !strings.HasPrefix(model, "gemini-1.0")
+}
+
 var mimeTypeMap = map[string]string{
 	"json_object": "application/json",
 	"text":        "text/plain",

@@ -53,11 +53,11 @@ func (a *Adaptor) DoResponse(c *adaptor.Context, resp *http.Response, meta *meta
 	return a.awsAdapter.DoResponse(c, a.AwsClient, meta)
 }
 
+// GetModelList stays empty: the internal AwsModelIDMap is load-bearing
+// protocol data (gateway name to Bedrock model ID and wire adaptor), not a
+// console preset. Models come from the admin's config or the upstream fetch.
 func (a *Adaptor) GetModelList() (models []string) {
-	for model := range adaptors {
-		models = append(models, model)
-	}
-	return
+	return nil
 }
 
 func (a *Adaptor) GetChannelName() string {

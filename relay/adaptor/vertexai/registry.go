@@ -2,6 +2,7 @@ package vertexai
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
 	claude "github.com/infinmalum/a1o-platform/relay/adaptor/vertexai/claude"
@@ -10,6 +11,9 @@ import (
 	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
+// VertexAI serves exactly two wire families. Models come from the admin's
+// channel config, so the family is resolved from the model name prefix
+// instead of a hardcoded roster that goes stale.
 type VertexAIModelType int
 
 const (
@@ -17,19 +21,11 @@ const (
 	VerterAIGemini
 )
 
-var modelMapping = map[string]VertexAIModelType{}
-var modelList = []string{}
-
-func init() {
-	modelList = append(modelList, claude.ModelList...)
-	for _, model := range claude.ModelList {
-		modelMapping[model] = VerterAIClaude
+func resolveModelType(model string) VertexAIModelType {
+	if strings.HasPrefix(model, "gemini") {
+		return VerterAIGemini
 	}
-
-	modelList = append(modelList, gemini.ModelList...)
-	for _, model := range gemini.ModelList {
-		modelMapping[model] = VerterAIGemini
-	}
+	return VerterAIClaude
 }
 
 type innerAIAdapter interface {
@@ -38,8 +34,7 @@ type innerAIAdapter interface {
 }
 
 func GetAdaptor(model string) innerAIAdapter {
-	adaptorType := modelMapping[model]
-	switch adaptorType {
+	switch resolveModelType(model) {
 	case VerterAIClaude:
 		return &claude.Adaptor{}
 	case VerterAIGemini:

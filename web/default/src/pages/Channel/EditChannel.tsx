@@ -3,7 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {Button, Card, Form, Input, Message} from 'semantic-ui-react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {API, copy, getChannelModels, showError, showInfo, showSuccess, verifyJSON,} from '../../helpers';
-import {CHANNEL_OPTIONS} from '../../constants';
+import {BASE_URL_INPUT_KINDS, CHANNEL_OPTIONS} from '../../constants';
 import {renderChannelTip} from '../../helpers/render';
 
 const MODEL_MAPPING_EXAMPLE = {
@@ -409,10 +409,10 @@ const EditChannel = () => {
               </>
             )}
 
-            {inputs.type === 50 && (
+            {BASE_URL_INPUT_KINDS.has(inputs.type) && (
                 <Form.Field>
                   <Form.Input
-                      required
+                      required={inputs.type === 50}
                   label={t('channel.edit.base_url')}
                   name='base_url'
                   placeholder={t('channel.edit.base_url_placeholder')}

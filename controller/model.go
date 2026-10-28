@@ -110,21 +110,29 @@ func init() {
 	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
+		// A nil slice marshals as JSON null, which crashes frontend consumers
+		// that index the listing and read .length; store real empty slices.
 		if !channeltype.IsValid(i) {
 			// Vacant retired slots in the ID space are not kinds.
-			channelId2Models[i] = nil
+			channelId2Models[i] = []string{}
 			continue
 		}
 		adaptor := relay.GetAdaptor(channeltype.ToAPIType(i))
 		if adaptor == nil {
-			channelId2Models[i] = nil
+			channelId2Models[i] = []string{}
 			continue
 		}
 		meta := &meta.Meta{
 			ChannelType: i,
 		}
 		adaptor.Init(meta)
-		channelId2Models[i] = adaptor.GetModelList()
+		modelList := adaptor.GetModelList()
+		if modelList == nil {
+			// The compatible kind ships no presets (models are fetched from
+			// the upstream); keep a real empty slice so the JSON is [] not null.
+			modelList = []string{}
+		}
+		channelId2Models[i] = modelList
 	}
 }
 

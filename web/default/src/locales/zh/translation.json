@@ -113,7 +113,7 @@
       "proxy_url": "代理",
       "proxy_url_placeholder": "此项可选，用于通过代理站来进行 API 调用，请输入代理站地址，格式为：https://domain.com。注意，这里所需要填入的代理地址仅会在实际请求时替换域名部分，如果你想填入 OpenAI SDK 中所要求的 Base URL，请使用 OpenAI 兼容渠道类型",
       "base_url": "Base URL",
-      "base_url_placeholder": "完整接口前缀（含版本号，如 https://api.deepseek.com/v1）",
+      "base_url_placeholder": "第三方上游填完整接口前缀（含版本号，如 https://open.bigmodel.cn/api/paas/v4）；OpenAI / Anthropic 官方渠道可留空使用官方地址",
       "key": "密钥",
       "batch": "批量创建",
       "batch_placeholder": "请输入密钥，一行一个",

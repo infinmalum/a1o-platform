@@ -581,9 +581,11 @@ func requiredChannelType(protocol native.Protocol) int {
 // candidateChannelTypes lists every channel kind that can serve a native
 // protocol, most specific first. Chat-family protocols accept the whole
 // OpenAI-compatible whitelist plus the Responses channel kind (the chat
-// request is bridged onto /v1/responses); Responses requests land on either
-// a dedicated Responses channel or a plain OpenAI channel, whose /v1/responses
-// path passes through on the same wire.
+// request is bridged onto /v1/responses); Responses requests land on a
+// dedicated Responses channel or a plain OpenAI channel, whose /v1/responses
+// path passes through on the same wire. Vendors expose Completions and
+// Responses under different base URLs, so a channel holding a Completions
+// URL stays out of the Responses candidates.
 func candidateChannelTypes(protocol native.Protocol) []int {
 	switch protocol {
 	case native.Anthropic:

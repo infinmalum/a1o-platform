@@ -85,16 +85,15 @@ func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 	require.EqualValues(t, 5, count)
 }
 
-// TestDashboardModelList pins the dashboard listing: every live kind that
-// ships a static preset keeps it, the compatible kind fetches its models
-// from the upstream instead, and the vacant retired slots advertise nothing.
+// TestDashboardModelList pins the dashboard listing: model presets are gone
+// (models come from the upstream fetch or manual entry), so every kind
+// advertises an empty-but-real list. nil would marshal as JSON null and
+// crash the console's per-type model picker; a non-empty roster would
+// auto-fill channels with years-old model names.
 func TestDashboardModelList(t *testing.T) {
 	require.NotNil(t, channelId2Models, "controller init must have built the listing")
-	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Minimax} {
-		require.NotEmpty(t, channelId2Models[kind], "live kind %d must keep its preset", kind)
-	}
-	require.Empty(t, channelId2Models[channeltype.OpenAICompatible], "compatible kind fetches models live")
-	for _, kind := range []int{2, 36, 51} {
-		require.Empty(t, channelId2Models[kind], "vacant kind %d must advertise no models", kind)
+	for kind := 1; kind < channeltype.Dummy; kind++ {
+		require.NotNil(t, channelId2Models[kind], "kind %d must not marshal as null", kind)
+		require.Empty(t, channelId2Models[kind], "kind %d must not ship stale presets", kind)
 	}
 }

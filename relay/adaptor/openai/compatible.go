@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"github.com/infinmalum/a1o-platform/relay/adaptor/minimax"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
@@ -15,18 +14,17 @@ var CompatibleChannels = []int{
 }
 
 // GetCompatibleChannelMeta returns the vendor display name used as the
-// owned_by value in /v1/models and the preset model list for a kind.
-// OpenAICompatible ships no presets: the admin fetches them from the
-// upstream instead.
+// owned_by value in /v1/models. Model presets are gone: admins fetch the
+// live list from the upstream or type model names themselves.
 func GetCompatibleChannelMeta(channelType int) (string, []string) {
 	switch channelType {
 	case channeltype.Azure:
-		return "azure", ModelList
+		return "azure", nil
 	case channeltype.Minimax:
-		return "minimax", minimax.ModelList
+		return "minimax", nil
 	case channeltype.OpenAICompatible:
 		return "openai_compatible", nil
 	default:
-		return "openai", ModelList
+		return "openai", nil
 	}
 }
