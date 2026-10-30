@@ -27,6 +27,7 @@ import (
 // gateway and local provider fixtures. No external API credentials or live
 // provider access are involved.
 func TestPhase4OfficialGeminiClient(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := client.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes

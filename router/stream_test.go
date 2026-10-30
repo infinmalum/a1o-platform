@@ -23,6 +23,7 @@ import (
 // shared lifecycle, settle quota once with the provider usage, and never reach
 // the legacy relay controller.
 func TestStreamedConversionsUseTheNativeLifecycle(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := client.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes

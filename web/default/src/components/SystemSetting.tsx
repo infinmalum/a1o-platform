@@ -30,10 +30,6 @@ const SystemSetting = () => {
     SMTPToken: '',
     ServerAddress: '',
     Footer: '',
-    WeChatAuthEnabled: '',
-    WeChatServerAddress: '',
-    WeChatServerToken: '',
-    WeChatAccountQRCodeImageURL: '',
     MessagePusherAddress: '',
     MessagePusherToken: '',
     TurnstileCheckEnabled: '',
@@ -86,7 +82,6 @@ const SystemSetting = () => {
       case 'PasswordRegisterEnabled':
       case 'EmailVerificationEnabled':
       case 'GitHubOAuthEnabled':
-      case 'WeChatAuthEnabled':
       case 'TurnstileCheckEnabled':
       case 'EmailDomainRestrictionEnabled':
       case 'RegisterEnabled':
@@ -128,9 +123,6 @@ const SystemSetting = () => {
       name === 'GitHubClientSecret' ||
       name === 'LarkClientId' ||
       name === 'LarkClientSecret' ||
-      name === 'WeChatServerAddress' ||
-      name === 'WeChatServerToken' ||
-      name === 'WeChatAccountQRCodeImageURL' ||
       name === 'TurnstileSiteKey' ||
       name === 'TurnstileSecretKey' ||
       name === 'EmailDomainWhitelist'
@@ -180,30 +172,6 @@ const SystemSetting = () => {
         'EmailDomainWhitelist',
         inputs.EmailDomainWhitelist.join(',')
       );
-    }
-  };
-
-  const submitWeChat = async () => {
-    if (originInputs['WeChatServerAddress'] !== inputs.WeChatServerAddress) {
-      await updateOption(
-        'WeChatServerAddress',
-        removeTrailingSlash(inputs.WeChatServerAddress)
-      );
-    }
-    if (
-      originInputs['WeChatAccountQRCodeImageURL'] !==
-      inputs.WeChatAccountQRCodeImageURL
-    ) {
-      await updateOption(
-        'WeChatAccountQRCodeImageURL',
-        inputs.WeChatAccountQRCodeImageURL
-      );
-    }
-    if (
-      originInputs['WeChatServerToken'] !== inputs.WeChatServerToken &&
-      inputs.WeChatServerToken !== ''
-    ) {
-      await updateOption('WeChatServerToken', inputs.WeChatServerToken);
     }
   };
 
@@ -353,12 +321,6 @@ const SystemSetting = () => {
               checked={inputs.GitHubOAuthEnabled === 'true'}
               label={t('setting.system.login.github_oauth')}
               name='GitHubOAuthEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.WeChatAuthEnabled === 'true'}
-              label={t('setting.system.login.wechat_login')}
-              name='WeChatAuthEnabled'
               onChange={handleInputChange}
             />
           </Form.Group>
@@ -575,52 +537,6 @@ const SystemSetting = () => {
           </Form.Group>
           <Form.Button onClick={submitLarkOAuth}>
             {t('setting.system.lark.buttons.save')}
-          </Form.Button>
-
-          <Divider />
-          <Header as='h3'>
-            {t('setting.system.wechat.title')}
-            <Header.Subheader>
-              {t('setting.system.wechat.subtitle')}
-              <a
-                href='https://github.com/songquanpeng/wechat-server'
-                target='_blank'
-              >
-                {t('setting.system.wechat.learn_more')}
-              </a>
-            </Header.Subheader>
-          </Header>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.wechat.server_address')}
-              name='WeChatServerAddress'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.WeChatServerAddress}
-              placeholder={t(
-                'setting.system.wechat.server_address_placeholder'
-              )}
-            />
-            <Form.Input
-              label={t('setting.system.wechat.token')}
-              name='WeChatServerToken'
-              onChange={handleInputChange}
-              type='password'
-              autoComplete='new-password'
-              value={inputs.WeChatServerToken}
-              placeholder={t('setting.system.wechat.token_placeholder')}
-            />
-            <Form.Input
-              label={t('setting.system.wechat.qrcode')}
-              name='WeChatAccountQRCodeImageURL'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.WeChatAccountQRCodeImageURL}
-              placeholder={t('setting.system.wechat.qrcode_placeholder')}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitWeChat}>
-            {t('setting.system.wechat.buttons.save')}
           </Form.Button>
 
           <Divider />

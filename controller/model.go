@@ -217,8 +217,8 @@ type modelPrice struct {
 
 // GetUserPricing lists what the caller's group can use and what that group pays
 // for it, so the console can show a price list without the admin option page.
-// Models without a configured ratio are reported unpriced rather than given the
-// billing fallback, which would advertise a price nobody set.
+// Models without both a configured input and output price are reported
+// unpriced, matching billing, which refuses them instead of inventing a rate.
 func GetUserPricing(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.GetInt(ctxkey.Id)
@@ -236,13 +236,17 @@ func GetUserPricing(c *gin.Context) {
 	prices := make([]modelPrice, 0, len(models))
 	for _, name := range models {
 		entry := modelPrice{Name: name}
+		// A model is priced only when both its input and output prices
+		// exist: billing refuses a partially priced model, so the list must
+		// not advertise one either.
 		if ratio, ok := billingratio.LookupModelRatio(name); ok {
-			completion := billingratio.GetCompletionRatio(name, 0)
-			entry.Priced = true
-			entry.ModelRatio = ratio
-			entry.CompletionRatio = completion
-			entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
-			entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
+			if completion, cok := billingratio.LookupCompletionRatio(name); cok {
+				entry.Priced = true
+				entry.ModelRatio = ratio
+				entry.CompletionRatio = completion
+				entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
+				entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
+			}
 		}
 		prices = append(prices, entry)
 	}

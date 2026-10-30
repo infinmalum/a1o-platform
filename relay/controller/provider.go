@@ -343,7 +343,10 @@ func RelayProviderImages(c *gin.Context) *lifecycle.HTTPError {
 	if err != nil {
 		return &lifecycle.HTTPError{Status: http.StatusInternalServerError, Message: err.Error()}
 	}
-	modelRatio := billingratio.GetModelRatio(imageRequest.Model, metadata.ChannelType)
+	modelRatio, err := billingratio.GetModelRatio(imageRequest.Model)
+	if err != nil {
+		return &lifecycle.HTTPError{Status: http.StatusForbidden, Message: err.Error()}
+	}
 	groupRatio := billingratio.GetGroupRatio(metadata.Group)
 	ratio := modelRatio * groupRatio
 	quota := int64(ratio*imageCostRatio*1000) * int64(imageRequest.N)

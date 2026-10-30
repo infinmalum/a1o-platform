@@ -290,7 +290,7 @@ const EditChannel = () => {
             key: inputs.key,
           };
       const res = await API.post('/api/channel/upstream_models', payload);
-      const { success, message, data } = res.data;
+      const { success, message, data, synced_prices: syncedPrices } = res.data;
       if (success && Array.isArray(data)) {
         const merged = Array.from(new Set([...inputs.models, ...data]));
         handleInputChange(null, { name: 'models', value: merged });
@@ -301,7 +301,18 @@ const EditChannel = () => {
             .map((model) => ({ key: model, text: model, value: model }));
           return [...options, ...fresh];
         });
-        showSuccess(t('channel.edit.messages.upstream_models_fetched', { count: data.length }));
+        // Vendors that publish prices (OpenRouter) sync them alongside the
+        // list; the count tells the operator the price book grew too.
+        if (typeof syncedPrices === 'number' && syncedPrices > 0) {
+          showSuccess(
+            t('channel.edit.messages.upstream_models_fetched_with_prices', {
+              count: data.length,
+              synced: syncedPrices,
+            }),
+          );
+        } else {
+          showSuccess(t('channel.edit.messages.upstream_models_fetched', { count: data.length }));
+        }
       } else {
         showError(message);
       }

@@ -426,7 +426,6 @@ func UpdateUser(c *gin.Context) {
 	originUser.DisplayName = updatedUser.DisplayName
 	originUser.Email = updatedUser.Email
 	originUser.GitHubId = updatedUser.GitHubId
-	originUser.WeChatId = updatedUser.WeChatId
 	originUser.Group = updatedUser.Group
 	originUser.Quota = updatedUser.Quota
 	if updatePassword {

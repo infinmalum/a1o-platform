@@ -155,7 +155,10 @@ func resolvePublicIPs(ctx context.Context, host string) ([]netip.Addr, error) {
 	}
 	for _, address := range addresses {
 		if !isPublicIP(address) {
-			return nil, errors.New("user content URL resolves to a non-public address")
+			// Name the resolved address: a fake-ip DNS (proxy clients answer
+			// every name from a reserved range) lands here and otherwise
+			// looks like a code fault rather than an environment property.
+			return nil, fmt.Errorf("user content URL %s resolves to the non-public address %s", host, address)
 		}
 	}
 	return addresses, nil

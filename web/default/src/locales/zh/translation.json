@@ -131,6 +131,7 @@
         "name_required": "请填写渠道名称和渠道密钥！",
         "models_required": "请至少选择一个模型！",
         "upstream_models_fetched": "已获取 {{count}} 个模型，请检查后保存",
+        "upstream_models_fetched_with_prices": "已获取 {{count}} 个模型，并同步 {{synced}} 个模型价格（只补缺，不覆盖你改过的价），请检查后保存",
         "model_mapping_invalid": "模型映射必须是合法的 JSON 格式！",
         "update_success": "渠道更新成功！",
         "create_success": "渠道创建成功！"
@@ -419,8 +420,6 @@
       "quota_placeholder": "请输入新的剩余额度",
       "github_id": "已绑定的 GitHub 账户",
       "github_id_placeholder": "此项只读，需要用户通过个人设置页面的相关绑定按钮进行绑定，不可直接修改",
-      "wechat_id": "已绑定的微信账户",
-      "wechat_id_placeholder": "此项只读，需要用户通过个人设置页面的相关绑定按钮进行绑定，不可直接修改",
       "email": "已绑定的邮箱账户",
       "email_placeholder": "此项只读，需要用户通过个人设置页面的相关绑定按钮进行绑定，不可直接修改",
       "buttons": {
@@ -524,16 +523,9 @@
       "binding": {
         "title": "账号绑定",
         "buttons": {
-          "bind_wechat": "绑定微信账号",
           "bind_github": "绑定 GitHub 账号",
           "bind_email": "绑定邮箱地址",
           "bind_lark": "绑定飞书账号"
-        },
-        "wechat": {
-          "title": "微信绑定",
-          "description": "微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）",
-          "verification_code": "验证码",
-          "bind": "绑定"
         },
         "email": {
           "title": "绑定邮箱地址",
@@ -570,7 +562,6 @@
         "password_register": "允许通过密码进行注册",
         "email_verification": "通过密码注册时需要进行邮箱验证",
         "github_oauth": "允许通过 GitHub 账户登录 & 注册",
-        "wechat_login": "允许通过微信登录 & 注册",
         "registration": "允许新用户注册（此项为否时，新用户将无法以任何方式进行注册）",
         "turnstile": "启用 Turnstile 用户校验"
       },
@@ -631,20 +622,6 @@
           "save": "保存飞书 OAuth 设置"
         }
       },
-      "wechat": {
-        "title": "配置 WeChat Server",
-        "subtitle": "用以支持通过微信进行登录注册",
-        "learn_more": "了解 WeChat Server",
-        "server_address": "WeChat Server 服务器地址",
-        "server_address_placeholder": "例如：https://yourdomain.com",
-        "token": "WeChat Server 访问凭证",
-        "token_placeholder": "敏感信息不会发送到前端显示",
-        "qrcode": "微信公众号二维码图片链接",
-        "qrcode_placeholder": "输入一个图片链接",
-        "buttons": {
-          "save": "保存 WeChat Server 设置"
-        }
-      },
       "turnstile": {
         "title": "配置 Turnstile",
         "subtitle": "用以支持用户校验",
@@ -703,7 +680,7 @@
         },
         "advanced": "高级模式（直接编辑倍率 JSON）",
         "price": {
-          "hint": "按价格填写，系统自动换算倍率。列表默认显示渠道里已有的模型，搜索可以给其他模型定价。",
+          "hint": "平台不内置厂商价目表：价格只能在这里手动填写，或用 OpenRouter 渠道的「获取模型」同步官方价格（只补缺，不覆盖你改过的价）。未配置输入价或输出价的模型会被拒绝计费。列表默认显示渠道里已有的模型，搜索可以给其他模型定价。",
           "search": "搜索模型名称",
           "model": "模型",
           "input": "输入价（$/百万 token）",
@@ -836,7 +813,6 @@
         "title": "系统配置",
         "email_verify": "邮箱验证：",
         "github_oauth": "GitHub 身份验证：",
-        "wechat_login": "微信身份验证：",
         "turnstile": "Turnstile 校验：",
         "enabled": "已启用",
         "disabled": "未启用"
@@ -854,11 +830,7 @@
       "reset_password": "点击重置",
       "no_account": "没有账户？",
       "register": "点击注册",
-      "other_methods": "使用其他方式登录",
-      "wechat": {
-        "scan_tip": "微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）",
-        "code_placeholder": "验证码"
-      }
+      "other_methods": "使用其他方式登录"
     },
     "register": {
       "title": "新用户注册",

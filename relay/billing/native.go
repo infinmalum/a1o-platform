@@ -45,15 +45,22 @@ func ReserveNativeQuota(ctx context.Context, reservation *NativeReservation, max
 	if maxOutputTokens < 0 {
 		return nil, errors.New("output token limit must not be negative")
 	}
-	reservation.ModelRatio = ratio.GetModelRatio(reservation.ModelName, reservation.ChannelType)
+	modelRatio, err := ratio.GetModelRatio(reservation.ModelName)
+	if err != nil {
+		return nil, err
+	}
+	completionRatio, err := ratio.GetCompletionRatio(reservation.ModelName)
+	if err != nil {
+		return nil, err
+	}
+	reservation.ModelRatio = modelRatio
 	reservation.GroupRatio = ratio.GetGroupRatio(reservation.Group)
-	reservation.CompletionRatio = ratio.GetCompletionRatio(reservation.ModelName, reservation.ChannelType)
+	reservation.CompletionRatio = completionRatio
 	reservation.StartedAt = time.Now()
 	reservation.Reserved = int64(math.Ceil(float64(config.PreConsumedQuota+maxOutputTokens) * reservation.ModelRatio * reservation.GroupRatio))
 	if reservation.Reserved < 0 {
 		return nil, errors.New("invalid quota reservation")
 	}
-	var err error
 	reservation.quota, err = Reserve(ctx, reservation.UserID, reservation.TokenID, reservation.Reserved)
 	if err != nil {
 		return nil, err
@@ -71,12 +78,17 @@ func ReserveFixedQuota(ctx context.Context, reservation *NativeReservation, amou
 	if amount < 0 {
 		return nil, errors.New("fixed quota must not be negative")
 	}
-	reservation.ModelRatio = ratio.GetModelRatio(reservation.ModelName, reservation.ChannelType)
+	modelRatio, err := ratio.GetModelRatio(reservation.ModelName)
+	if err != nil {
+		return nil, err
+	}
+	reservation.ModelRatio = modelRatio
 	reservation.GroupRatio = ratio.GetGroupRatio(reservation.Group)
-	reservation.CompletionRatio = ratio.GetCompletionRatio(reservation.ModelName, reservation.ChannelType)
+	// A fixed charge bills one computed amount and has no output component,
+	// so no completion price participates.
+	reservation.CompletionRatio = 0
 	reservation.StartedAt = time.Now()
 	reservation.Reserved = amount
-	var err error
 	reservation.quota, err = Reserve(ctx, reservation.UserID, reservation.TokenID, amount)
 	if err != nil {
 		return nil, err

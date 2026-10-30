@@ -87,8 +87,8 @@ func TestSystemOneRouteBillsThroughLifecycle(t *testing.T) {
 	r := gin.New()
 	SetRelayRouter(r)
 
-	if billingratio.GetModelRatio("jev-latest", channeltype.TypeSafe) != 0.021 || billingratio.GetCompletionRatio("jev-latest", channeltype.TypeSafe) != 0 {
-		t.Fatalf("jev pricing is wrong: %f %f", billingratio.GetModelRatio("jev-latest", channeltype.TypeSafe), billingratio.GetCompletionRatio("jev-latest", channeltype.TypeSafe))
+	if mustModelRatio(t, "jev-latest") != 0.021 || mustCompletionRatio(t, "jev-latest") != 0 {
+		t.Fatalf("jev pricing is wrong: %f %f", mustModelRatio(t, "jev-latest"), mustCompletionRatio(t, "jev-latest"))
 	}
 
 	quotaBefore, err := model.GetUserQuota(user.Id)
@@ -104,7 +104,7 @@ func TestSystemOneRouteBillsThroughLifecycle(t *testing.T) {
 		t.Fatalf("SystemOne response changed: status %d body %s", response.Code, response.Body.String())
 	}
 	// 307 input tokens at ratio 0.021 with a zero completion ratio: ceil(6.447) = 7.
-	expectedQuota := int64(math.Ceil(billingratio.GetModelRatio("jev-latest", channeltype.TypeSafe) * billingratio.GetGroupRatio("default") * 307))
+	expectedQuota := int64(math.Ceil(mustModelRatio(t, "jev-latest") * billingratio.GetGroupRatio("default") * 307))
 	quotaAfter, err := model.GetUserQuota(user.Id)
 	if err != nil || quotaBefore-quotaAfter != expectedQuota {
 		t.Fatalf("SystemOne request was not billed correctly: before %d after %d expected %d err %v", quotaBefore, quotaAfter, expectedQuota, err)

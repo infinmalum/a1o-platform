@@ -100,6 +100,7 @@ func TestIntegrationToolLoopBillsThroughLifecycle(t *testing.T) {
 	}
 
 	baseURL := upstream.URL
+	seedTestModelPrices(t)
 	channel := model.Channel{
 		Name: "chat-upstream", Type: 1, Key: "sk-channel", Status: model.ChannelStatusEnabled,
 		Group: "default", Models: "test-model", BaseURL: &baseURL,

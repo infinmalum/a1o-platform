@@ -36,6 +36,7 @@ func (w *notifyingRecorder) Write(p []byte) (int, error) {
 }
 
 func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := client.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes

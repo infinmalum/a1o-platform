@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/stretchr/testify/require"
 )
@@ -131,4 +132,31 @@ func TestFetchUpstreamModelsSurfacesUpstreamStatus(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "401")
 	require.Contains(t, err.Error(), "bad key")
+}
+
+// TestParseOpenRouterCatalog pins the live-catalog conversion: OpenRouter
+// publishes USD per token, the ratio scale is $2 per million tokens, and the
+// completion ratio is output over input.
+func TestParseOpenRouterCatalog(t *testing.T) {
+	body := []byte(`{"data":[
+		{"id":"vendor/paid","pricing":{"prompt":"0.000003","completion":"0.000015"}},
+		{"id":"vendor/free","pricing":{"prompt":"0","completion":"0"}},
+		{"id":"vendor/backwards","pricing":{"prompt":"0","completion":"0.00001"}},
+		{"id":"vendor/broken","pricing":{"prompt":"not-a-number","completion":"0.00001"}},
+		{"id":"vendor/paid","pricing":{"prompt":"0.000003","completion":"0.000015"}}
+	]}`)
+	models, prices, err := parseOpenRouterCatalog(body)
+	require.NoError(t, err)
+	require.Equal(t, []string{"vendor/backwards", "vendor/broken", "vendor/free", "vendor/paid"}, models)
+	require.Len(t, prices, 2)
+	// $3 per million input tokens -> ratio 1.5; output is 5x input.
+	require.Equal(t, billingratio.FetchedModelPrice{Input: 1.5, Completion: 5}, prices["vendor/paid"])
+	// A free model bills exactly nothing.
+	require.Equal(t, billingratio.FetchedModelPrice{Input: 0, Completion: 0}, prices["vendor/free"])
+	// Free input with paid output cannot be expressed in the charge formula
+	// and stays unpriced instead of being guessed at.
+	_, ok := prices["vendor/backwards"]
+	require.False(t, ok)
+	_, ok = prices["vendor/broken"]
+	require.False(t, ok)
 }

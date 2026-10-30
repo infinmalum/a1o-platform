@@ -180,11 +180,6 @@ const Home = () => {
                             enabled: statusState?.status?.github_oauth,
                           },
                           {
-                            icon: 'wechat',
-                            label: t('home.system_status.config.wechat_login'),
-                            enabled: statusState?.status?.wechat_login,
-                          },
-                          {
                             icon: 'shield alternate',
                             label: t('home.system_status.config.turnstile'),
                             enabled: statusState?.status?.turnstile_check,

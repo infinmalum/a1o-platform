@@ -31,7 +31,6 @@ func InitOptionMap() {
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
 	config.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(config.GitHubOAuthEnabled)
 	config.OptionMap["OidcEnabled"] = strconv.FormatBool(config.OidcEnabled)
-	config.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(config.WeChatAuthEnabled)
 	config.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(config.TurnstileCheckEnabled)
 	config.OptionMap["RegisterEnabled"] = strconv.FormatBool(config.RegisterEnabled)
 	config.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(config.AutomaticDisableChannelEnabled)
@@ -57,9 +56,6 @@ func InitOptionMap() {
 	config.OptionMap["ServerAddress"] = ""
 	config.OptionMap["GitHubClientId"] = ""
 	config.OptionMap["GitHubClientSecret"] = ""
-	config.OptionMap["WeChatServerAddress"] = ""
-	config.OptionMap["WeChatServerToken"] = ""
-	config.OptionMap["WeChatAccountQRCodeImageURL"] = ""
 	config.OptionMap["MessagePusherAddress"] = ""
 	config.OptionMap["MessagePusherToken"] = ""
 	config.OptionMap["TurnstileSiteKey"] = ""
@@ -93,9 +89,6 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	for _, option := range options {
-		if option.Key == "ModelRatio" {
-			option.Value = billingratio.AddNewMissingRatio(option.Value)
-		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			logger.SysError("failed to update option map: " + err.Error())
@@ -152,7 +145,6 @@ var boolOptionBindings = map[string]*bool{
 	"PasswordRegisterEnabled":        &config.PasswordRegisterEnabled,
 	"RegisterEnabled":                &config.RegisterEnabled,
 	"TurnstileCheckEnabled":          &config.TurnstileCheckEnabled,
-	"WeChatAuthEnabled":              &config.WeChatAuthEnabled,
 }
 
 var stringOptionBindings = map[string]*string{
@@ -182,9 +174,6 @@ var stringOptionBindings = map[string]*string{
 	"TopUpLink":                   &config.TopUpLink,
 	"TurnstileSecretKey":          &config.TurnstileSecretKey,
 	"TurnstileSiteKey":            &config.TurnstileSiteKey,
-	"WeChatAccountQRCodeImageURL": &config.WeChatAccountQRCodeImageURL,
-	"WeChatServerAddress":         &config.WeChatServerAddress,
-	"WeChatServerToken":           &config.WeChatServerToken,
 }
 
 var intOptionBindings = map[string]*int{

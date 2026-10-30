@@ -169,6 +169,7 @@ type subscriptionFixture struct {
 
 func newSubscriptionFixture(t *testing.T) *subscriptionFixture {
 	t.Helper()
+	seedTestModelPrices(t)
 	db := setupSubscriptionDB(t)
 	fixture := &subscriptionFixture{t: t, db: db}
 	fixture.accessToken = testToken(t, "sub-access")

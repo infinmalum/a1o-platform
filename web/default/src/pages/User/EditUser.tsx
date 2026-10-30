@@ -15,7 +15,6 @@ const EditUser = () => {
     display_name: '',
     password: '',
     github_id: '',
-    wechat_id: '',
     email: '',
     quota: 0,
     group: 'default',
@@ -26,7 +25,6 @@ const EditUser = () => {
     display_name,
     password,
     github_id,
-    wechat_id,
     email,
     quota,
     group,
@@ -165,16 +163,6 @@ const EditUser = () => {
                 value={github_id}
                 autoComplete='new-password'
                 placeholder={t('user.edit.github_id_placeholder')}
-                readOnly
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Input
-                label={t('user.edit.wechat_id')}
-                name='wechat_id'
-                value={wechat_id}
-                autoComplete='new-password'
-                placeholder={t('user.edit.wechat_id_placeholder')}
                 readOnly
               />
             </Form.Field>

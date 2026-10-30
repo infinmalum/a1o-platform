@@ -37,7 +37,6 @@ var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
 var GitHubOAuthEnabled = false
 var OidcEnabled = false
-var WeChatAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
 
@@ -78,10 +77,6 @@ var OidcWellKnown = ""
 var OidcAuthorizationEndpoint = ""
 var OidcTokenEndpoint = ""
 var OidcUserinfoEndpoint = ""
-
-var WeChatServerAddress = ""
-var WeChatServerToken = ""
-var WeChatAccountQRCodeImageURL = ""
 
 var MessagePusherAddress = ""
 var MessagePusherToken = ""

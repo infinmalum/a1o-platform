@@ -52,7 +52,7 @@ export const CHANNEL_OPTIONS = [
     color: 'blue',
     description: '统一协议，无需 Base URL',
     tip:
-      'OpenRouter 官方统一协议：一个地址（https://openrouter.ai/api/v1）同时服务 OpenAI Chat、OpenAI Responses、Anthropic Messages 和 SystemOne（Jev 决策）四种线，平台自动对接，只需填 OpenRouter 的 Key 并选择模型。「获取模型」按钮直接列出 OpenRouter 的全部模型。',
+      'OpenRouter 官方统一协议：一个地址（https://openrouter.ai/api/v1）同时服务 OpenAI Chat、OpenAI Responses、Anthropic Messages 和 SystemOne（Jev 决策）四种线，平台自动对接，只需填 OpenRouter 的 Key 并选择模型。「获取模型」按钮直接列出 OpenRouter 的全部模型，并把官方价格同步进价册（只补缺，不覆盖你改过的价）。',
   },
   { key: 33, text: 'AWS', value: 33, color: 'black' },
   {key: 3, text: 'Azure', value: 3, color: 'olive'},

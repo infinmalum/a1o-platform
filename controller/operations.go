@@ -72,7 +72,11 @@ func NativeOpenAIImages(c *gin.Context) {
 		writeNativeError(c, native.OpenAIImages, http.StatusBadRequest, errors.New("invalid value of n"))
 		return
 	}
-	modelRatio := billingratio.GetModelRatio(mappedModel, metadata.ChannelType)
+	modelRatio, err := billingratio.GetModelRatio(mappedModel)
+	if err != nil {
+		writeNativeError(c, native.OpenAIImages, http.StatusForbidden, err)
+		return
+	}
 	groupRatio := billingratio.GetGroupRatio(metadata.Group)
 	ratio := modelRatio * groupRatio
 	quota := int64(ratio*imageCostRatio(mappedModel, fields.Size, fields.Quality)*1000) * int64(fields.N)
@@ -141,7 +145,12 @@ func NativeOpenAIAudioSpeech(c *gin.Context) {
 	}
 	metadata := ginmeta.Get(c)
 	mappedModel := mappedModelOf(metadata, fields.Model)
-	ratio := billingratio.GetModelRatio(mappedModel, metadata.ChannelType) * billingratio.GetGroupRatio(metadata.Group)
+	modelRatio, err := billingratio.GetModelRatio(mappedModel)
+	if err != nil {
+		writeNativeError(c, native.OpenAIAudioSpeech, http.StatusForbidden, err)
+		return
+	}
+	ratio := modelRatio * billingratio.GetGroupRatio(metadata.Group)
 	forwardNative(c, nativeInput{protocol: native.OpenAIAudioSpeech, model: fields.Model,
 		fixedQuota: int64(float64(len(fields.Input)) * ratio), fixedPromptTokens: true, body: body})
 }
@@ -173,7 +182,12 @@ func nativeOpenAIAudio(c *gin.Context, protocol native.Protocol) {
 	responseFormat := multipartFormField(body, c.Request.Header.Get("Content-Type"), "response_format", "json")
 	metadata := ginmeta.Get(c)
 	mappedModel := mappedModelOf(metadata, model)
-	ratio := billingratio.GetModelRatio(mappedModel, metadata.ChannelType) * billingratio.GetGroupRatio(metadata.Group)
+	modelRatio, err := billingratio.GetModelRatio(mappedModel)
+	if err != nil {
+		writeNativeError(c, protocol, http.StatusForbidden, err)
+		return
+	}
+	ratio := modelRatio * billingratio.GetGroupRatio(metadata.Group)
 	reserve := int64(float64(config.PreConsumedQuota) * ratio)
 	forwardNative(c, nativeInput{protocol: protocol, model: model, fixedQuota: reserve,
 		responseCharge: audioResponseCharge(responseFormat, mappedModel), body: body})

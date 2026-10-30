@@ -31,6 +31,7 @@ import (
 // Responses lifecycle and the fixed-quota operations migrated in phase 5. No
 // external API credentials or live provider access are involved.
 func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := commonclient.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes
@@ -333,7 +334,7 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	if err := db.Where("model_name = ? AND type = ?", "dall-e-3", model.LogTypeConsume).Order("id desc").First(&imageLog).Error; err != nil {
 		t.Fatalf("image log missing: %v", err)
 	}
-	expectedImageQuota := int64(billingratio.GetModelRatio("dall-e-3", channeltype.OpenAI) * billingratio.GetGroupRatio("default") * 2 * 1000)
+	expectedImageQuota := int64(mustModelRatio(t, "dall-e-3") * billingratio.GetGroupRatio("default") * 2 * 1000)
 	if err != nil || quotaAfterImages != quotaBeforeImages-int64(imageLog.Quota) || int64(imageLog.Quota) != expectedImageQuota || imageLog.PromptTokens != 0 {
 		t.Fatalf("image quota wrong: expected %d logged %d before %d after %d prompt %d err %v", expectedImageQuota, imageLog.Quota, quotaBeforeImages, quotaAfterImages, imageLog.PromptTokens, err)
 	}
@@ -357,7 +358,7 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	if err := db.Where("model_name = ? AND type = ?", "phase5-tts", model.LogTypeConsume).Order("id desc").First(&speechLog).Error; err != nil {
 		t.Fatalf("speech log missing: %v", err)
 	}
-	expectedSpeechQuota := int64(float64(len("hello audio")) * billingratio.GetModelRatio("phase5-tts", channeltype.OpenAI) * billingratio.GetGroupRatio("default"))
+	expectedSpeechQuota := int64(float64(len("hello audio")) * mustModelRatio(t, "phase5-tts") * billingratio.GetGroupRatio("default"))
 	if int64(speechLog.Quota) != expectedSpeechQuota || int64(speechLog.PromptTokens) != expectedSpeechQuota {
 		t.Fatalf("speech quota wrong: expected %d logged quota %d prompt %d", expectedSpeechQuota, speechLog.Quota, speechLog.PromptTokens)
 	}
@@ -422,6 +423,7 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 // Provider channels keep their adapter-backed embeddings while operations the
 // adapters never supported fail before reaching the upstream.
 func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := commonclient.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes
@@ -526,6 +528,7 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 // upstream image response is forwarded untouched, and the fixed quota is
 // settled exactly.
 func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
+	seedFixturePrices(t)
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousClient := commonclient.HTTPClient
 	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes
@@ -603,7 +606,7 @@ func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 	if err := db.Where("channel_id = ? AND type = ?", compatibleChannel.Id, model.LogTypeConsume).First(&imageLog).Error; err != nil {
 		t.Fatalf("provider image quota was not settled: %v", err)
 	}
-	expectedQuota := int64(billingratio.GetModelRatio("upstream-cogview", channeltype.OpenAI) * billingratio.GetGroupRatio("default") * 1000)
+	expectedQuota := int64(mustModelRatio(t, "upstream-cogview") * billingratio.GetGroupRatio("default") * 1000)
 	if int64(imageLog.Quota) != expectedQuota {
 		t.Fatalf("provider image quota %d does not match the size-billing estimate %d", imageLog.Quota, expectedQuota)
 	}

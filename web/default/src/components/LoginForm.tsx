@@ -7,7 +7,6 @@ import {
   Header,
   Image,
   Message,
-  Modal,
   Segment,
   Card,
 } from 'semantic-ui-react';
@@ -23,7 +22,6 @@ const LoginForm = () => {
   const [inputs, setInputs] = useState({
     username: '',
     password: '',
-    wechat_verification_code: '',
   });
   const [searchParams, setSearchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
@@ -67,34 +65,6 @@ const LoginForm = () => {
       setStatus(JSON.parse(storedStatus) as import('../types/site').SiteStatus);
     }
   }, []);
-
-  const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
-
-  const onWeChatLoginClicked = () => {
-    setShowWeChatLoginModal(true);
-  };
-
-  const onSubmitWeChatVerificationCode = async () => {
-    let res;
-    try {
-      res = await API.get(
-        `/api/oauth/wechat?code=${inputs.wechat_verification_code}`
-      );
-    } catch (error) {
-      // interceptor toasts the error
-      return;
-    }
-    const { success, message, data } = res.data;
-    if (success) {
-      userDispatch({ type: 'login', payload: data });
-      localStorage.setItem('user', JSON.stringify(data));
-      redirectAfterLogin(landingPage());
-      showSuccess(t('messages.success.login'));
-      setShowWeChatLoginModal(false);
-    } else {
-      showError(message);
-    }
-  };
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -223,9 +193,7 @@ const LoginForm = () => {
               </div>
             </Message>
 
-            {(status.github_oauth ||
-              status.wechat_login ||
-              status.lark_client_id) && (
+            {(status.github_oauth || status.lark_client_id) && (
               <>
                 <Divider
                   horizontal
@@ -249,14 +217,6 @@ const LoginForm = () => {
                       onClick={() =>
                         onGitHubOAuthClicked(status.github_client_id)
                       }
-                    />
-                  )}
-                  {status.wechat_login && (
-                    <Button
-                      circular
-                      color='green'
-                      icon='wechat'
-                      onClick={onWeChatLoginClicked}
                     />
                   )}
                   {status.lark_client_id && (
@@ -289,43 +249,6 @@ const LoginForm = () => {
             )}
           </Card.Content>
         </Card>
-        <Modal
-          onClose={() => setShowWeChatLoginModal(false)}
-          onOpen={() => setShowWeChatLoginModal(true)}
-          open={showWeChatLoginModal}
-          size={'mini'}
-        >
-          <Modal.Content>
-            <Modal.Description>
-              <Image src={status.wechat_qrcode} fluid />
-              <div style={{ textAlign: 'center' }}>
-                <p>{t('auth.login.wechat.scan_tip')}</p>
-              </div>
-              <Form size='large'>
-                <Form.Input
-                  fluid
-                  placeholder={t('auth.login.wechat.code_placeholder')}
-                  name='wechat_verification_code'
-                  value={inputs.wechat_verification_code}
-                  onChange={handleChange}
-                />
-                <Button
-                  fluid
-                  size='large'
-                  style={{
-                    background: '#2185d0',
-                    color: 'white',
-                    borderRadius: 8,
-                    marginBottom: '1.5em',
-                  }}
-                  onClick={onSubmitWeChatVerificationCode}
-                >
-                  {t('auth.login.button')}
-                </Button>
-              </Form>
-            </Modal.Description>
-          </Modal.Content>
-        </Modal>
       </Grid.Column>
     </Grid>
   );

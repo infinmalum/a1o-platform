@@ -131,6 +131,7 @@
         "name_required": "Please enter channel name and key!",
         "models_required": "Please select at least one model!",
         "upstream_models_fetched": "Fetched {{count}} models; review and save",
+        "upstream_models_fetched_with_prices": "Fetched {{count}} models and synced {{synced}} prices (fills gaps only, never touches your edits); review and save",
         "model_mapping_invalid": "Model mapping must be valid JSON format!",
         "update_success": "Channel updated successfully!",
         "create_success": "Channel created successfully!"
@@ -419,8 +420,6 @@
       "quota_placeholder": "Please enter new remaining quota",
       "github_id": "Linked GitHub Account",
       "github_id_placeholder": "Read-only, user must link through personal settings page, cannot be modified directly",
-      "wechat_id": "Linked WeChat Account",
-      "wechat_id_placeholder": "Read-only, user must link through personal settings page, cannot be modified directly",
       "email": "Linked Email Account",
       "email_placeholder": "Read-only, user must link through personal settings page, cannot be modified directly",
       "buttons": {
@@ -524,16 +523,9 @@
       "binding": {
         "title": "Account Binding",
         "buttons": {
-          "bind_wechat": "Bind WeChat Account",
           "bind_github": "Bind GitHub Account",
           "bind_email": "Bind Email Address",
           "bind_lark": "Bind Lark Account"
-        },
-        "wechat": {
-          "title": "WeChat Binding",
-          "description": "Scan QR code to follow the official account, enter 'verification code' to get the code (valid for 3 minutes)",
-          "verification_code": "Verification Code",
-          "bind": "Bind"
         },
         "email": {
           "title": "Bind Email Address",
@@ -570,7 +562,6 @@
         "password_register": "Allow Password Registration",
         "email_verification": "Require Email Verification for Password Registration",
         "github_oauth": "Allow GitHub OAuth Login & Registration",
-        "wechat_login": "Allow WeChat Login & Registration",
         "registration": "Allow New User Registration (When disabled, new users cannot register by any means)",
         "turnstile": "Enable Turnstile User Verification"
       },
@@ -631,20 +622,6 @@
           "save": "Save Lark OAuth Settings"
         }
       },
-      "wechat": {
-        "title": "WeChat Server Configuration",
-        "subtitle": "Used to support WeChat login and registration",
-        "learn_more": "Learn about WeChat Server",
-        "server_address": "WeChat Server Address",
-        "server_address_placeholder": "e.g.: https://yourdomain.com",
-        "token": "WeChat Server Access Token",
-        "token_placeholder": "Sensitive information will not be sent to frontend",
-        "qrcode": "WeChat Official Account QR Code Image URL",
-        "qrcode_placeholder": "Enter an image URL",
-        "buttons": {
-          "save": "Save WeChat Server Settings"
-        }
-      },
       "turnstile": {
         "title": "Turnstile Configuration",
         "subtitle": "Used to support user verification",
@@ -703,7 +680,7 @@
         },
         "advanced": "Advanced (edit the ratio JSON directly)",
         "price": {
-          "hint": "Enter prices and the ratios are derived for you. The list shows the models your channels serve; search to price any other model.",
+          "hint": "The gateway ships no vendor price list: prices come only from this editor or from an OpenRouter channel\u0027s fetch-models sync (fills gaps, never touches your edits). Models missing an input or output price are refused. The list shows the models your channels serve; search to price any other model.",
           "search": "Search model name",
           "model": "Model",
           "input": "Input ($/million tokens)",
@@ -830,7 +807,6 @@
         "title": "System Configuration",
         "email_verify": "Email Verification: ",
         "github_oauth": "GitHub OAuth: ",
-        "wechat_login": "WeChat Login: ",
         "turnstile": "Turnstile Check: ",
         "enabled": "Enabled",
         "disabled": "Disabled"
@@ -848,11 +824,7 @@
       "reset_password": "Reset",
       "no_account": "No account?",
       "register": "Register",
-      "other_methods": "Other login methods",
-      "wechat": {
-        "scan_tip": "Scan QR code to follow WeChat Official Account, enter 'code' to get verification code (valid for 3 minutes)",
-        "code_placeholder": "Verification code"
-      }
+      "other_methods": "Other login methods"
     },    "register": {
       "title": "New User Registration",
       "username": "Username (max 12 characters)",
