@@ -23,13 +23,15 @@ func SendEmail(subject string, receiver string, content string) error {
 	if receiver == "" {
 		return fmt.Errorf("receiver is empty")
 	}
-	if config.SMTPFrom == "" { // for compatibility
-		config.SMTPFrom = config.SMTPAccount
+	// The sender defaults to the login account when no dedicated From is
+	// configured.
+	from := config.SMTPFrom
+	if from == "" {
+		from = config.SMTPAccount
 	}
 	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
 
-	// Extract domain from SMTPFrom
-	parts := strings.Split(config.SMTPFrom, "@")
+	parts := strings.Split(from, "@")
 	var domain string
 	if len(parts) > 1 {
 		domain = parts[1]
@@ -48,7 +50,7 @@ func SendEmail(subject string, receiver string, content string) error {
 		"Message-ID: %s\r\n"+ // add Message-ID header to avoid being treated as spam, RFC 5322
 		"Date: %s\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, config.SystemName, config.SMTPFrom, encodedSubject, messageId, time.Now().Format(time.RFC1123Z), content))
+		receiver, config.SystemName, from, encodedSubject, messageId, time.Now().Format(time.RFC1123Z), content))
 
 	auth := smtp.PlainAuth("", config.SMTPAccount, config.SMTPToken, config.SMTPServer)
 	addr := fmt.Sprintf("%s:%d", config.SMTPServer, config.SMTPPort)

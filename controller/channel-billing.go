@@ -99,15 +99,15 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		}
 	case channeltype.Azure:
 		return 0, errors.New("尚未实现")
-	case channeltype.OpenAICompatible:
-		// The compatible kind carries its version prefix in the base URL,
-		// so the billing paths hang directly off it.
-		baseURL = channel.GetBaseURL()
 	default:
 		return 0, errors.New("尚未实现")
 	}
+	// The official OpenAI endpoint keeps /v1 in the billing path; a vendor
+	// base URL carries its own version segment (the same filling rule as the
+	// request path), so the versioned prefix is dropped there.
 	billingRoot := "/v1/dashboard/billing"
-	if channel.Type == channeltype.OpenAICompatible {
+	if channel.Type == channeltype.OpenAI && channel.GetBaseURL() != "" &&
+		channel.GetBaseURL() != channeltype.BaseURL(channel.Type) {
 		billingRoot = "/dashboard/billing"
 	}
 	url := fmt.Sprintf("%s%s/subscription", baseURL, billingRoot)
@@ -185,7 +185,7 @@ func updateAllChannelsBalance() error {
 			continue
 		}
 		// TODO: support Azure
-		if channel.Type != channeltype.OpenAI && channel.Type != channeltype.OpenAICompatible {
+		if channel.Type != channeltype.OpenAI {
 			continue
 		}
 		balance, err := updateChannelBalance(channel)

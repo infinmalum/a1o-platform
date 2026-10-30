@@ -393,7 +393,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, chatNormal)
 	}))
 	defer chatServer.Close()
-	chatURL, chatMapping := chatServer.URL, `{"chat-alias":"chat-upstream"}`
+	chatURL, chatMapping := chatServer.URL + "/v1", `{"chat-alias":"chat-upstream"}`
 	chatChannel := model.Channel{Type: channeltype.OpenAI, Key: "chat-provider-key", Name: "chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "chat-alias", BaseURL: &chatURL, ModelMapping: &chatMapping}
 	if err := chatChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -529,7 +529,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"chat_reverse","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":"Searching","tool_calls":[{"id":"call_2","type":"function","function":{"name":"search","arguments":"{\"q\":\"next\"}"}}]}}],"usage":{"prompt_tokens":8,"completion_tokens":3,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":2}}}`)
 	}))
 	defer reverseServer.Close()
-	reverseURL, reverseMapping := reverseServer.URL, `{"reverse-alias":"reverse-upstream"}`
+	reverseURL, reverseMapping := reverseServer.URL + "/v1", `{"reverse-alias":"reverse-upstream"}`
 	reverseChannel := model.Channel{Type: channeltype.OpenAI, Key: "reverse-provider-key", Name: "reverse", Status: model.ChannelStatusEnabled, Group: "default", Models: "reverse-alias", BaseURL: &reverseURL, ModelMapping: &reverseMapping}
 	if err := reverseChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -628,7 +628,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, completionNormal)
 	}))
 	defer completionServer.Close()
-	completionURL, completionMapping := completionServer.URL, `{"completion-alias":"completion-upstream"}`
+	completionURL, completionMapping := completionServer.URL + "/v1", `{"completion-alias":"completion-upstream"}`
 	completionChannel := model.Channel{Type: channeltype.OpenAI, Key: "completion-provider-key", Name: "completion", Status: model.ChannelStatusEnabled, Group: "default", Models: "completion-alias", BaseURL: &completionURL, ModelMapping: &completionMapping}
 	if err := completionChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -676,7 +676,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, embeddingBody)
 	}))
 	defer embeddingServer.Close()
-	embeddingURL, embeddingMapping := embeddingServer.URL, `{"embedding-alias":"embedding-upstream"}`
+	embeddingURL, embeddingMapping := embeddingServer.URL + "/v1", `{"embedding-alias":"embedding-upstream"}`
 	embeddingChannel := model.Channel{Type: channeltype.OpenAI, Key: "embedding-provider-key", Name: "embedding", Status: model.ChannelStatusEnabled, Group: "default", Models: "embedding-alias", BaseURL: &embeddingURL, ModelMapping: &embeddingMapping}
 	if err := embeddingChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -748,7 +748,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, moderationBody)
 	}))
 	defer moderationServer.Close()
-	moderationURL, moderationMapping := moderationServer.URL, `{"moderation-alias":"moderation-upstream","omni-moderation-latest":"moderation-upstream"}`
+	moderationURL, moderationMapping := moderationServer.URL + "/v1", `{"moderation-alias":"moderation-upstream","omni-moderation-latest":"moderation-upstream"}`
 	moderationPrompt := "should not be added to Moderations"
 	moderationChannel := model.Channel{Type: channeltype.OpenAI, Key: "moderation-provider-key", Name: "moderation", Status: model.ChannelStatusEnabled, Group: "default", Models: "moderation-alias,omni-moderation-latest", BaseURL: &moderationURL, ModelMapping: &moderationMapping, SystemPrompt: &moderationPrompt}
 	if err := moderationChannel.Insert(); err != nil {
@@ -872,7 +872,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, responsesNormal)
 	}))
 	defer responsesServer.Close()
-	responsesURL, responsesMapping, responsesPrompt := responsesServer.URL, `{"responses-alias":"responses-upstream"}`, "configured"
+	responsesURL, responsesMapping, responsesPrompt := responsesServer.URL + "/v1", `{"responses-alias":"responses-upstream"}`, "configured"
 	responsesChannel := model.Channel{Type: channeltype.OpenAI, Key: "responses-provider-key", Name: "responses", Status: model.ChannelStatusEnabled, Group: "default", Models: "responses-alias", BaseURL: &responsesURL, ModelMapping: &responsesMapping, SystemPrompt: &responsesPrompt}
 	if err := responsesChannel.Insert(); err != nil {
 		t.Fatal(err)

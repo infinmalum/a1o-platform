@@ -64,28 +64,14 @@ var ModelRatio = map[string]float64{
 	"o3-mini-2025-01-31":      1.5,
 	"davinci-002":             1,   // $0.002 / 1K tokens
 	"babbage-002":             0.2, // $0.0004 / 1K tokens
-	"text-ada-001":            0.2,
-	"text-babbage-001":        0.25,
-	"text-curie-001":          1,
-	"text-davinci-002":        10,
-	"text-davinci-003":        10,
-	"text-davinci-edit-001":   10,
-	"code-davinci-edit-001":   10,
 	"whisper-1":               15,  // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
 	"tts-1":                   7.5, // $0.015 / 1K characters
 	"tts-1-1106":              7.5,
 	"tts-1-hd":                15, // $0.030 / 1K characters
 	"tts-1-hd-1106":           15,
-	"davinci":                 10,
-	"curie":                   10,
-	"babbage":                 10,
-	"ada":                     10,
 	"text-embedding-ada-002":  0.05,
 	"text-embedding-3-small":  0.01,
 	"text-embedding-3-large":  0.065,
-	"text-search-ada-doc-001": 10,
-	"text-moderation-stable":  0.1,
-	"text-moderation-latest":  0.1,
 
 	"omni-moderation-latest":     0.1,
 	"omni-moderation-2024-09-26": 0.1,
@@ -93,9 +79,6 @@ var ModelRatio = map[string]float64{
 	"dall-e-2": 0.02 * USD, // $0.016 - $0.020 / image
 	"dall-e-3": 0.04 * USD, // $0.040 - $0.120 / image
 	// https://docs.anthropic.com/en/docs/about-claude/models
-	"claude-instant-1.2":         0.8 / 1000 * USD,
-	"claude-2.0":                 8.0 / 1000 * USD,
-	"claude-2.1":                 8.0 / 1000 * USD,
 	"claude-3-haiku-20240307":    0.25 / 1000 * USD,
 	"claude-3-5-haiku-20241022":  1.0 / 1000 * USD,
 	"claude-3-5-haiku-latest":    1.0 / 1000 * USD,
@@ -150,8 +133,6 @@ var ModelRatio = map[string]float64{
 	"glm-4-long":       0.001 * RMB,
 	"glm-4-flashx":     0.0001 * RMB,
 	"glm-4-flash":      0,
-	"glm-4":            0.1 * RMB,   // deprecated model, available until 2025/06
-	"glm-3-turbo":      0.001 * RMB, // deprecated model, available until 2025/06
 	"glm-4v-plus":      0.004 * RMB,
 	"glm-4v":           0.05 * RMB,
 	"glm-4v-flash":     0,
@@ -409,12 +390,6 @@ var ModelRatio = map[string]float64{
 	"amazon/nova-pro-v1":                              1.6,
 	"anthracite-org/magnum-v2-72b":                    1.5,
 	"anthracite-org/magnum-v4-72b":                    1.125,
-	"anthropic/claude-2":                              12.0,
-	"anthropic/claude-2.0":                            12.0,
-	"anthropic/claude-2.0:beta":                       12.0,
-	"anthropic/claude-2.1":                            12.0,
-	"anthropic/claude-2.1:beta":                       12.0,
-	"anthropic/claude-2:beta":                         12.0,
 	"anthropic/claude-3-haiku":                        0.625,
 	"anthropic/claude-3-haiku:beta":                   0.625,
 	"anthropic/claude-3-opus":                         37.5,

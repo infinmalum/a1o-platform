@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
-	"github.com/infinmalum/a1o-platform/relay/adaptor/minimax"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/meta"
 	"github.com/infinmalum/a1o-platform/relay/model"
@@ -42,10 +41,6 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 		// {your endpoint}/openai/deployments/{your azure_model}/chat/completions?api-version={api_version}
 		requestURL = fmt.Sprintf("/openai/deployments/%s/%s", model_, task)
 		return GetFullRequestURL(meta.BaseURL, requestURL, meta.ChannelType), nil
-	case channeltype.Minimax:
-		// Minimax mounts chat under /v1/text/chatcompletion_v2, which no
-		// generic base URL convention can express.
-		return minimax.GetRequestURL(meta)
 	default:
 		return GetFullRequestURL(meta.BaseURL, meta.RequestURLPath, meta.ChannelType), nil
 	}

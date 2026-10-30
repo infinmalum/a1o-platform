@@ -25,13 +25,16 @@ func TestNativeChatChannelProfiles(t *testing.T) {
 		query   string
 		header  string
 	}{
-		{channeltype.OpenAI, "https://example.com", "", "/v1/chat/completions", "", "Authorization"},
-		// The compatible kind carries the version prefix in its base URL, so
-		// the /v1 path prefix is stripped on every OpenAI wire operation.
-		{channeltype.OpenAICompatible, "https://example.com/openai", "", "/openai/chat/completions", "", "Authorization"},
-		{channeltype.OpenAICompatible, "https://example.com/v1", "", "/v1/chat/completions", "", "Authorization"},
+		// The official default base keeps the versioned path.
+		{channeltype.OpenAI, "https://api.openai.com", "", "/v1/chat/completions", "", "Authorization"},
+		// A vendor base URL carries the version prefix itself, so the /v1
+		// path prefix is stripped on every OpenAI wire operation.
+		{channeltype.OpenAI, "https://example.com/openai", "", "/openai/chat/completions", "", "Authorization"},
+		{channeltype.OpenAI, "https://example.com/v1", "", "/v1/chat/completions", "", "Authorization"},
+		// OpenRouter's fixed unified base carries /api/v1, so the path drops
+		// its version prefix outright and the base's own version remains.
+		{channeltype.OpenRouter, "https://openrouter.ai/api/v1", "", "/api/v1/chat/completions", "", "Authorization"},
 		{channeltype.Azure, "https://example.com", "2026-01-01", "/openai/deployments/upstream/chat/completions", "2026-01-01", "api-key"},
-		{channeltype.Minimax, "https://example.com", "", "/v1/text/chatcompletion_v2", "", "Authorization"},
 	} {
 		request, err := BuildRequest(context.Background(), Request{Protocol: OpenAIChat, ChannelType: fixture.kind,
 			BaseURL: fixture.baseURL, Version: fixture.version, Model: "upstream", APIKey: "provider-key",
@@ -45,6 +48,21 @@ func TestNativeChatChannelProfiles(t *testing.T) {
 		if fixture.kind == channeltype.Azure && request.Header.Get("Authorization") != "" {
 			t.Fatal("Azure request forwarded a bearer credential")
 		}
+	}
+}
+
+func TestOpenRouterMessagesPassThroughWithBearer(t *testing.T) {
+	request, err := BuildRequest(context.Background(), Request{Protocol: Anthropic, ChannelType: channeltype.OpenRouter,
+		BaseURL: "https://openrouter.ai/api/v1", Model: "upstream-model", APIKey: "sk-or-test",
+		Body: []byte(`{"model":"client-model","max_tokens":20}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.URL.String() != "https://openrouter.ai/api/v1/messages" {
+		t.Fatalf("OpenRouter Messages request produced %s", request.URL)
+	}
+	if request.Header.Get("x-api-key") != "" || request.Header.Get("Authorization") != "Bearer sk-or-test" {
+		t.Fatalf("OpenRouter Messages must authenticate with the bearer key, got %v", request.Header)
 	}
 }
 
@@ -288,7 +306,7 @@ func TestOpenAIEmbeddingsPreserveFieldsAndLargeUsage(t *testing.T) {
 	if !bytes.Equal(unmappedBody, body) {
 		t.Fatalf("unmapped embedding request changed: %s", unmappedBody)
 	}
-	compatible, err := BuildRequest(context.Background(), Request{Protocol: OpenAIEmbeddings, ChannelType: channeltype.OpenAICompatible, BaseURL: "https://example.com/v1", Model: "alias", APIKey: "provider-key", Body: body})
+	compatible, err := BuildRequest(context.Background(), Request{Protocol: OpenAIEmbeddings, ChannelType: channeltype.OpenAI, BaseURL: "https://example.com/v1", Model: "alias", APIKey: "provider-key", Body: body})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,6 +23,11 @@ func GetFullRequestURL(baseURL string, requestURL string, channelType int) strin
 	// /v1 is dropped. A base equal to the kind's official default means the
 	// field was left empty and the versioned official path appends untouched.
 	// Azure keeps its deployment-shaped path rule below.
+	if channelType == channeltype.OpenRouter {
+		// OpenRouter's fixed base carries /api/v1; every OpenAI-wire
+		// operation appends its bare suffix.
+		return fmt.Sprintf("%s%s", strings.TrimSuffix(baseURL, "/"), strings.TrimPrefix(requestURL, "/v1"))
+	}
 	if channelType != channeltype.Azure && baseURL != channeltype.BaseURL(channelType) {
 		return fmt.Sprintf("%s%s", strings.TrimSuffix(baseURL, "/"), strings.TrimPrefix(requestURL, "/v1"))
 	}

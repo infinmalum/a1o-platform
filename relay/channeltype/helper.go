@@ -3,9 +3,9 @@ package channeltype
 import "github.com/infinmalum/a1o-platform/relay/apitype"
 
 // ToAPIType maps a channel kind onto its wire protocol. Kinds without a case
-// fall through to OpenAI: Minimax and OpenAICompatible speak the OpenAI wire
+// fall through to OpenAI: OpenAI, Azure, and OpenRouter speak the OpenAI wire
 // directly, and the shared OpenAI adapter plus the per-kind request-URL rules
-// in relay/adaptor/openai replace the old per-vendor adapters.
+// in relay/adaptor/openai cover their request shapes.
 func ToAPIType(channelType int) int {
 	apiType := apitype.OpenAI
 	switch channelType {
@@ -25,8 +25,6 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.VertexAI
 	case Replicate:
 		apiType = apitype.Replicate
-	case Proxy:
-		apiType = apitype.Proxy
 	case TypeSafe:
 		apiType = apitype.SystemOne
 	case OpenAIResponses:

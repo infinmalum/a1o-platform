@@ -159,11 +159,11 @@ func TestPhase3OfficialGoClients(t *testing.T) {
 	var successfulOllamaRetry *model.Channel
 	for _, channel := range []*model.Channel{
 		{Type: channeltype.OpenAI, Key: "provider-openai", Name: "sdk-openai", Status: model.ChannelStatusEnabled, Group: "default", Models: "chat-sdk-model", ModelMapping: &openAIMapping, BaseURL: &openAIURL},
-		{Type: channeltype.OpenAICompatible, Key: "provider-openai", Name: "sdk-compatible", Status: model.ChannelStatusEnabled, Group: "default", Models: "compatible-sdk-model", ModelMapping: &compatibleMapping, BaseURL: &openAIURL},
+		{Type: channeltype.OpenAI, Key: "provider-openai", Name: "sdk-compatible", Status: model.ChannelStatusEnabled, Group: "default", Models: "compatible-sdk-model", ModelMapping: &compatibleMapping, BaseURL: &openAIURL},
 		{Type: channeltype.Anthropic, Key: "provider-anthropic", Name: "sdk-anthropic", Status: model.ChannelStatusEnabled, Group: "default", Models: "messages-sdk-model", ModelMapping: &anthropicMapping, BaseURL: &anthropicURL},
-		{Type: channeltype.OpenAICompatible, Key: "provider-ollama", Name: "sdk-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-sdk-model", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL},
-		{Type: channeltype.OpenAICompatible, Key: "provider-ollama", Name: "sdk-ollama-fail", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-retry-model", ModelMapping: &retryOllamaMapping, BaseURL: &failingOllamaURL, Priority: &highPriority},
-		{Type: channeltype.OpenAICompatible, Key: "provider-ollama", Name: "sdk-ollama-retry", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-retry-model", ModelMapping: &retryOllamaMapping, BaseURL: &ollamaURL, Priority: &lowPriority},
+		{Type: channeltype.OpenAI, Key: "provider-ollama", Name: "sdk-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-sdk-model", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL},
+		{Type: channeltype.OpenAI, Key: "provider-ollama", Name: "sdk-ollama-fail", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-retry-model", ModelMapping: &retryOllamaMapping, BaseURL: &failingOllamaURL, Priority: &highPriority},
+		{Type: channeltype.OpenAI, Key: "provider-ollama", Name: "sdk-ollama-retry", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-retry-model", ModelMapping: &retryOllamaMapping, BaseURL: &ollamaURL, Priority: &lowPriority},
 	} {
 		if err := channel.Insert(); err != nil {
 			t.Fatal(err)

@@ -32,7 +32,6 @@ type Channel struct {
 	TestTime           int64   `json:"test_time" gorm:"bigint"`
 	ResponseTime       int     `json:"response_time"` // in milliseconds
 	BaseURL            *string `json:"base_url" gorm:"column:base_url;default:''"`
-	Other              *string `json:"other"`   // DEPRECATED: please save config to field Config
 	Balance            float64 `json:"balance"` // in USD
 	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
 	Models             string  `json:"models"`
@@ -163,7 +162,7 @@ func (channel *Channel) Update() error {
 	// Select the editable columns explicitly; server-maintained counters
 	// (balance, used_quota, test_time, response_time) stay excluded so a
 	// stale payload cannot rewind them.
-	columns := []string{"type", "status", "name", "weight", "base_url", "other",
+	columns := []string{"type", "status", "name", "weight", "base_url",
 		"models", "group", "model_mapping", "priority", "config", "system_prompt",
 		"upstream_account_id"}
 	if channel.Key != "" {

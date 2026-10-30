@@ -8,10 +8,10 @@ import (
 
 func TestGetAdaptor(t *testing.T) {
 	for i := 0; i < apitype.Dummy; i++ {
-		if i == apitype.Proxy || i == apitype.SystemOne || i == apitype.Dummy {
-			// Proxy requests bypass adapters entirely; the sentinel type has
-			// no adaptor. SystemOne channels only serve the native
-			// /v1/systemone route, so they have no legacy adapter either.
+		if i == apitype.SystemOne || i == apitype.Dummy {
+			// SystemOne channels only serve the native /v1/systemone route,
+			// so they have no legacy adapter. The sentinel type has none
+			// either.
 			continue
 		}
 		if i == apitype.OpenAIResponses {

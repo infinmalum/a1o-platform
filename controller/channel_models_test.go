@@ -21,7 +21,9 @@ func TestFetchUpstreamModelsOpenAIShape(t *testing.T) {
 
 	models, err := fetchUpstreamModels(server.Client(), channeltype.OpenAI, server.URL, "sk-test")
 	require.NoError(t, err)
-	require.Equal(t, "/v1/models", gotPath)
+	// A non-default base is a vendor prefix carrying its own version segment,
+	// so only /models is appended.
+	require.Equal(t, "/models", gotPath)
 	require.Equal(t, "Bearer sk-test", gotAuth)
 	require.Equal(t, []string{"m1", "m2"}, models)
 }
@@ -34,9 +36,9 @@ func TestFetchUpstreamModelsCustomBaseKeepsPrefix(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// The custom OpenAI-compatible kind carries the version prefix in its
+	// A vendor base URL on the OpenAI kind carries the version prefix in the
 	// base URL, so only /models is appended.
-	_, err := fetchUpstreamModels(server.Client(), channeltype.OpenAICompatible, server.URL+"/v1", "")
+	_, err := fetchUpstreamModels(server.Client(), channeltype.OpenAI, server.URL+"/v1", "")
 	require.NoError(t, err)
 	require.Equal(t, "/v1/models", gotPath)
 }
@@ -76,6 +78,37 @@ func TestFetchUpstreamModelsGeminiFiltersAndStripsPrefix(t *testing.T) {
 	require.Equal(t, []string{"aqa", "gemini-2.0-flash"}, models)
 }
 
+func TestFetchUpstreamModelsOpenRouterAndDeepL(t *testing.T) {
+	var gotPath, gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.URL.RawQuery != "" {
+			gotPath = r.URL.Path + "?" + r.URL.RawQuery
+		}
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		if gotAuth == "DeepL-Auth-Key dl-key" {
+			_, _ = w.Write([]byte(`[{"language":"ZH","name":"Chinese"},{"language":"EN-US","name":"English (American)"},{"language":"ZH"}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"m1"}]}`))
+	}))
+	defer server.Close()
+
+	// The fixed OpenRouter base carries /api/v1, so only /models appends.
+	_, err := fetchUpstreamModels(server.Client(), channeltype.OpenRouter, server.URL+"/api/v1", "or-key")
+	require.NoError(t, err)
+	require.Equal(t, "/api/v1/models", gotPath)
+	require.Equal(t, "Bearer or-key", gotAuth)
+
+	// DeepL lists its translatable target languages as the channel's models.
+	models, err := fetchUpstreamModels(server.Client(), channeltype.DeepL, server.URL, "dl-key")
+	require.NoError(t, err)
+	require.Equal(t, "/v2/languages?type=target", gotPath)
+	require.Equal(t, "DeepL-Auth-Key dl-key", gotAuth)
+	require.Equal(t, []string{"EN-US", "ZH"}, models)
+}
+
 func TestFetchUpstreamModelsRefusesTypeSafeAndBadURLs(t *testing.T) {
 	_, err := fetchUpstreamModels(http.DefaultClient, channeltype.TypeSafe, "https://api.typesafe.ai", "k")
 	require.Error(t, err)
@@ -83,7 +116,7 @@ func TestFetchUpstreamModelsRefusesTypeSafeAndBadURLs(t *testing.T) {
 	_, err = fetchUpstreamModels(http.DefaultClient, channeltype.OpenAI, "ftp://example.com", "k")
 	require.Error(t, err)
 
-	_, err = fetchUpstreamModels(http.DefaultClient, channeltype.OpenAICompatible, "", "k")
+	_, err = fetchUpstreamModels(http.DefaultClient, channeltype.VertextAI, "", "k")
 	require.Error(t, err)
 }
 

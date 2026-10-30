@@ -129,7 +129,7 @@ func TestStreamedConversionsUseTheNativeLifecycle(t *testing.T) {
 	}{
 		{channeltype.Anthropic, "anthropic-stream-key", anthropicServer.URL, "claude-streamed", ""},
 		{channeltype.Gemini, "gemini-stream-key", geminiServer.URL, "gemini-streamed", ""},
-		{channeltype.OpenAI, "chat-stream-key", chatServer.URL, "chat-streamed", ""},
+		{channeltype.OpenAI, "chat-stream-key", chatServer.URL + "/v1", "chat-streamed", ""},
 		{channeltype.Gemini, "gemini-stream-key", geminiServer.URL, "gemini-sync", ""},
 	} {
 		streamURL := item.url

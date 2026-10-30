@@ -9,7 +9,6 @@ const (
 	Cloudflare
 	DeepL
 	VertexAI
-	Proxy
 	Replicate
 	// SystemOne marks TypeSafe channels that only serve the native
 	// /v1/systemone route and have no legacy adapter.

@@ -48,8 +48,6 @@ function renderBalance(type, balance, t) {
             return <span>{t('channel.table.balance_not_supported')}</span>;
         }
       return <span>${balance.toFixed(2)}</span>;
-    case 50: // OpenAI 兼容
-      return <span>${balance.toFixed(2)}</span>;
     default:
       return <span>{t('channel.table.balance_not_supported')}</span>;
   }

@@ -15,9 +15,9 @@ import (
 )
 
 // GetAdaptor returns the per-protocol adapter for an api type. Channel kinds
-// that speak the OpenAI wire directly (Minimax, OpenAICompatible) map onto
-// apitype.OpenAI via ToAPIType and are served by the shared OpenAI adapter,
-// so this switch never sees them.
+// that speak the OpenAI wire directly (OpenAI, Azure) map onto apitype.OpenAI
+// via ToAPIType and are served by the shared OpenAI adapter, so this switch
+// never sees them.
 func GetAdaptor(apiType int) adaptor.Adaptor {
 	switch apiType {
 	case apitype.Anthropic:

@@ -28,7 +28,6 @@ const EditChannel = () => {
     type: 1,
     key: '',
     base_url: '',
-    other: '',
     model_mapping: '',
     system_prompt: '',
     models: [],
@@ -50,6 +49,7 @@ const EditChannel = () => {
     sk: '',
     ak: '',
     user_id: '',
+    api_version: '',
     vertex_ai_project_id: '',
     vertex_ai_adc: '',
   });
@@ -106,6 +106,11 @@ const EditChannel = () => {
   const fetchModels = async () => {
     try {
       let res = await API.get(`/api/channel/models`);
+      // A malformed or null payload must degrade to an empty option list
+      // instead of crashing the form.
+      if (!Array.isArray(res.data.data)) {
+        return;
+      }
       let localModelOptions = res.data.data.map((model) => ({
         key: model.id,
         text: model.id,
@@ -121,13 +126,15 @@ const EditChannel = () => {
   const fetchGroups = async () => {
     try {
       let res = await API.get(`/api/group/`);
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          key: group,
-          text: group,
-          value: group,
-        }))
-      );
+      if (res.data.success && Array.isArray(res.data.data)) {
+        setGroupOptions(
+          res.data.data.map((group) => ({
+            key: group,
+            text: group,
+            value: group,
+          }))
+        );
+      }
     } catch (error) {
       showError(error.message);
     }
@@ -136,7 +143,7 @@ const EditChannel = () => {
   const fetchUpstreamAccounts = async () => {
     try {
       let res = await API.get(`/api/upstream_account/?p=0`);
-      if (res.data.success) {
+      if (res.data.success && Array.isArray(res.data.data)) {
         setAccountOptions(
           res.data.data.map((account) => ({
             key: account.id,
@@ -196,9 +203,7 @@ const EditChannel = () => {
       showInfo(t('channel.edit.messages.name_required'));
       return;
     }
-    // Type 43 (Proxy library) serves its model list from the embedded
-    // library, so admin-picked models are neither required nor editable.
-    if (inputs.type !== 43 && inputs.models.length === 0) {
+    if (inputs.models.length === 0) {
       showInfo(t('channel.edit.messages.models_required'));
       return;
     }
@@ -216,15 +221,16 @@ const EditChannel = () => {
         localInputs.base_url.length - 1
       );
     }
-    if (localInputs.type === 3 && localInputs.other === '') {
-      localInputs.other = '2024-03-01-preview';
+    const submitConfig = { ...config };
+    if (localInputs.type === 3 && submitConfig.api_version === '') {
+      submitConfig.api_version = '2024-03-01-preview';
     }
     let res;
     const payload = {
       ...localInputs,
       models: localInputs.models.join(','),
       group: localInputs.groups.join(','),
-      config: JSON.stringify(config),
+      config: JSON.stringify(submitConfig),
       // 0 means an ordinary API-key channel; the backend rejects 0 as a
       // binding, so send null to leave the channel unbound.
       upstream_account_id:
@@ -399,20 +405,86 @@ const EditChannel = () => {
                 <Form.Field>
                   <Form.Input
                     label='默认 API 版本'
-                    name='other'
+                    name='api_version'
                     placeholder='请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'
-                    onChange={handleInputChange}
-                    value={inputs.other}
+                    onChange={handleConfigChange}
+                    value={config.api_version}
                     autoComplete='new-password'
                   />
                 </Form.Field>
               </>
             )}
 
+            {/* Coze's domestic and international platforms are separate
+                accounts with separate tokens; the operator picks the site the
+                token was issued on instead of typing a base URL. */}
+            {inputs.type === 34 && (
+              <Form.Field>
+                <Form.Select
+                  label='Coze 站点'
+                  placeholder='选择令牌所属的 Coze 平台'
+                  options={[
+                    {key: 'cn', text: '国内站（coze.cn）', value: 'cn'},
+                    {key: 'com', text: '国际站（coze.com）', value: 'com'},
+                  ]}
+                  value={
+                    (inputs.base_url || '').includes('coze.cn') ? 'cn' : 'com'
+                  }
+                  onChange={(e, {value}) => {
+                    handleInputChange(e, {
+                      name: 'base_url',
+                      value:
+                        value === 'cn'
+                          ? 'https://api.coze.cn'
+                          : 'https://api.coze.com',
+                    });
+                  }}
+                />
+              </Form.Field>
+            )}
+
+            {/* DeepL's free and pro accounts live on separate fixed hosts;
+                the operator picks the tier the auth key was issued for
+                instead of typing a base URL. */}
+            {inputs.type === 38 && (
+              <Form.Field>
+                <Form.Select
+                  label='DeepL 账号类型'
+                  placeholder='选择令牌所属的 DeepL 账号'
+                  options={[
+                    {
+                      key: 'free',
+                      text: '免费版（api-free.deepl.com）',
+                      value: 'free',
+                    },
+                    {
+                      key: 'pro',
+                      text: 'Pro 版（api.deepl.com）',
+                      value: 'pro',
+                    },
+                  ]}
+                  value={
+                    (inputs.base_url || '').includes('api.deepl.com') &&
+                    !(inputs.base_url || '').includes('api-free')
+                      ? 'pro'
+                      : 'free'
+                  }
+                  onChange={(e, {value}) => {
+                    handleInputChange(e, {
+                      name: 'base_url',
+                      value:
+                        value === 'free'
+                          ? 'https://api-free.deepl.com'
+                          : 'https://api.deepl.com',
+                    });
+                  }}
+                />
+              </Form.Field>
+            )}
+
             {BASE_URL_INPUT_KINDS.has(inputs.type) && (
-                <Form.Field>
-                  <Form.Input
-                      required={inputs.type === 50}
+              <Form.Field>
+                <Form.Input
                   label={t('channel.edit.base_url')}
                   name='base_url'
                   placeholder={t('channel.edit.base_url_placeholder')}
@@ -426,126 +498,116 @@ const EditChannel = () => {
             {inputs.type === 34 && (
               <Message>{t('channel.edit.coze_notice')}</Message>
             )}
-            {/* Type 43 (legacy Proxy library) owns its model list, so the
-                models picker stays hidden; the kind is no longer offered but
-                old rows still carry it. */}
-            {inputs.type !== 43 && (
-              <Form.Field>
-                <Form.Dropdown
-                  label={t('channel.edit.models')}
-                  placeholder={t('channel.edit.models_placeholder')}
-                  name='models'
-                  required
-                  fluid
-                  multiple
-                  search
-                  onLabelClick={(e, { value }) => {
-                    copy(value).then();
-                  }}
-                  selection
-                  onChange={handleInputChange}
-                  value={inputs.models}
-                  autoComplete='new-password'
-                  options={modelOptions}
-                />
-              </Form.Field>
-            )}
-            {inputs.type !== 43 && (
-              <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
-                {basicModels.length > 0 && (
-                  <Button
-                    type={'button'}
-                    onClick={() => {
-                      handleInputChange(null, {
-                        name: 'models',
-                        value: basicModels,
-                      });
-                    }}
-                  >
-                    {t('channel.edit.buttons.fill_models')}
-                  </Button>
-                )}
+            <Form.Field>
+              <Form.Dropdown
+                label={t('channel.edit.models')}
+                placeholder={t('channel.edit.models_placeholder')}
+                name='models'
+                required
+                fluid
+                multiple
+                search
+                onLabelClick={(e, { value }) => {
+                  copy(value).then();
+                }}
+                selection
+                onChange={handleInputChange}
+                value={inputs.models}
+                autoComplete='new-password'
+                options={modelOptions}
+              />
+            </Form.Field>
+            <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
+              {basicModels.length > 0 && (
                 <Button
                   type={'button'}
                   onClick={() => {
                     handleInputChange(null, {
                       name: 'models',
-                      value: fullModels,
+                      value: basicModels,
                     });
                   }}
                 >
-                  {t('channel.edit.buttons.fill_all')}
+                  {t('channel.edit.buttons.fill_models')}
                 </Button>
-                <Button
-                  type={'button'}
-                  loading={fetchingModels}
-                  onClick={fetchUpstreamModels}
-                >
-                  {t('channel.edit.buttons.fetch_models')}
-                </Button>
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, { name: 'models', value: [] });
-                  }}
-                >
-                  {t('channel.edit.buttons.clear')}
-                </Button>
-                <Input
-                  action={
-                    <Button type={'button'} onClick={addCustomModel}>
-                      {t('channel.edit.buttons.add_custom')}
-                    </Button>
+              )}
+              <Button
+                type={'button'}
+                onClick={() => {
+                  handleInputChange(null, {
+                    name: 'models',
+                    value: fullModels,
+                  });
+                }}
+              >
+                {t('channel.edit.buttons.fill_all')}
+              </Button>
+              <Button
+                type={'button'}
+                loading={fetchingModels}
+                onClick={fetchUpstreamModels}
+              >
+                {t('channel.edit.buttons.fetch_models')}
+              </Button>
+              <Button
+                type={'button'}
+                onClick={() => {
+                  handleInputChange(null, { name: 'models', value: [] });
+                }}
+              >
+                {t('channel.edit.buttons.clear')}
+              </Button>
+              <Input
+                action={
+                  <Button type={'button'} onClick={addCustomModel}>
+                    {t('channel.edit.buttons.add_custom')}
+                  </Button>
+                }
+                placeholder={t('channel.edit.buttons.custom_placeholder')}
+                value={customModel}
+                onChange={(e, { value }) => {
+                  setCustomModel(value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    addCustomModel();
+                    e.preventDefault();
                   }
-                  placeholder={t('channel.edit.buttons.custom_placeholder')}
-                  value={customModel}
-                  onChange={(e, { value }) => {
-                    setCustomModel(value);
+                }}
+              />
+            </div>
+            <>
+              <Form.Field>
+                <Form.TextArea
+                  label={t('channel.edit.model_mapping')}
+                  placeholder={`${t(
+                    'channel.edit.model_mapping_placeholder'
+                  )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
+                  name='model_mapping'
+                  onChange={handleInputChange}
+                  value={inputs.model_mapping}
+                  style={{
+                    minHeight: 150,
+                    fontFamily: 'JetBrains Mono, Consolas',
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addCustomModel();
-                      e.preventDefault();
-                    }
-                  }}
+                  autoComplete='new-password'
                 />
-              </div>
-            )}
-            {/* Same type-43 exemption for the model mapping. */}
-            {inputs.type !== 43 && (
-              <>
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.model_mapping')}
-                    placeholder={`${t(
-                      'channel.edit.model_mapping_placeholder'
-                    )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
-                    name='model_mapping'
-                    onChange={handleInputChange}
-                    value={inputs.model_mapping}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.system_prompt')}
-                    placeholder={t('channel.edit.system_prompt_placeholder')}
-                    name='system_prompt'
-                    onChange={handleInputChange}
-                    value={inputs.system_prompt}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              </>
-            )}
+              </Form.Field>
+              <Form.Field>
+                <Form.TextArea
+                  label={t('channel.edit.system_prompt')}
+                  placeholder={t('channel.edit.system_prompt_placeholder')}
+                  name='system_prompt'
+                  onChange={handleInputChange}
+                  value={inputs.system_prompt}
+                  style={{
+                    minHeight: 150,
+                    fontFamily: 'JetBrains Mono, Consolas',
+                  }}
+                  autoComplete='new-password'
+                />
+              </Form.Field>
+            </>
             {inputs.type === 33 && (
               <Form.Field>
                 <Form.Input

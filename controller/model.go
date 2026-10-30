@@ -12,8 +12,6 @@ import (
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/model"
 	relay "github.com/infinmalum/a1o-platform/relay"
-	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
-	"github.com/infinmalum/a1o-platform/relay/apitype"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/meta"
@@ -47,73 +45,15 @@ type OpenAIModels struct {
 	Parent     *string                 `json:"parent"`
 }
 
-var models []OpenAIModels
-var modelsMap map[string]OpenAIModels
 var channelId2Models map[int][]string
 
 func init() {
-	var permission []OpenAIModelPermission
-	permission = append(permission, OpenAIModelPermission{
-		Id:                 "modelperm-LwHkVFn8AcMItP432fKKDIKJ",
-		Object:             "model_permission",
-		Created:            1626777600,
-		AllowCreateEngine:  true,
-		AllowSampling:      true,
-		AllowLogprobs:      true,
-		AllowSearchIndices: false,
-		AllowView:          true,
-		AllowFineTuning:    false,
-		Organization:       "*",
-		Group:              nil,
-		IsBlocking:         false,
-	})
-	// https://platform.openai.com/docs/models/model-endpoint-compatibility
-	for i := 0; i < apitype.Dummy; i++ {
-		adaptor := relay.GetAdaptor(i)
-		if adaptor == nil {
-			continue
-		}
-		channelName := adaptor.GetChannelName()
-		modelNames := adaptor.GetModelList()
-		for _, modelName := range modelNames {
-			models = append(models, OpenAIModels{
-				Id:         modelName,
-				Object:     "model",
-				Created:    1626777600,
-				OwnedBy:    channelName,
-				Permission: permission,
-				Root:       modelName,
-				Parent:     nil,
-			})
-		}
-	}
-	for _, channelType := range openai.CompatibleChannels {
-		if channelType == channeltype.Azure {
-			continue
-		}
-		channelName, channelModelList := openai.GetCompatibleChannelMeta(channelType)
-		for _, modelName := range channelModelList {
-			models = append(models, OpenAIModels{
-				Id:         modelName,
-				Object:     "model",
-				Created:    1626777600,
-				OwnedBy:    channelName,
-				Permission: permission,
-				Root:       modelName,
-				Parent:     nil,
-			})
-		}
-	}
-	modelsMap = make(map[string]OpenAIModels)
-	for _, model := range models {
-		modelsMap[model.Id] = model
-	}
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
 		// A nil slice marshals as JSON null, which crashes frontend consumers
 		// that index the listing and read .length; store real empty slices.
 		if !channeltype.IsValid(i) {
-			// Vacant retired slots in the ID space are not kinds.
+			// Unassigned IDs in the range are not kinds.
 			channelId2Models[i] = []string{}
 			continue
 		}
@@ -144,10 +84,32 @@ func DashboardListModels(c *gin.Context) {
 	})
 }
 
+// ListAllModels backs the admin console channel form: the model universe is
+// what the deployed channels actually serve, aggregated from the ability
+// table, never a hardcoded preset list. The empty slice stays non-nil so the
+// JSON is [] and frontend .map consumers cannot crash on null.
 func ListAllModels(c *gin.Context) {
-	c.JSON(200, gin.H{
+	modelNames, err := model.GetAllModels(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	list := make([]OpenAIModels, 0, len(modelNames))
+	for _, name := range modelNames {
+		list = append(list, OpenAIModels{
+			Id:      name,
+			Object:  "model",
+			Created: 1626777600,
+			OwnedBy: "custom",
+			Root:    name,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   models,
+		"data":   list,
 	})
 }
 
@@ -161,40 +123,39 @@ func ListModels(c *gin.Context) {
 		userGroup, _ := model.CacheGetUserGroup(userId)
 		availableModels, _ = model.CacheGetGroupModels(ctx, userGroup)
 	}
-	modelSet := make(map[string]bool)
-	for _, availableModel := range availableModels {
-		modelSet[availableModel] = true
-	}
-	availableOpenAIModels := make([]OpenAIModels, 0)
-	for _, model := range models {
-		if _, ok := modelSet[model.Id]; ok {
-			modelSet[model.Id] = false
-			availableOpenAIModels = append(availableOpenAIModels, model)
-		}
-	}
-	for modelName, ok := range modelSet {
-		if ok {
-			availableOpenAIModels = append(availableOpenAIModels, OpenAIModels{
-				Id:      modelName,
-				Object:  "model",
-				Created: 1626777600,
-				OwnedBy: "custom",
-				Root:    modelName,
-				Parent:  nil,
-			})
-		}
+	list := make([]OpenAIModels, 0, len(availableModels))
+	for _, name := range availableModels {
+		list = append(list, OpenAIModels{
+			Id:      name,
+			Object:  "model",
+			Created: 1626777600,
+			OwnedBy: "custom",
+			Root:    name,
+		})
 	}
 	c.JSON(200, gin.H{
 		"object": "list",
-		"data":   availableOpenAIModels,
+		"data":   list,
 	})
 }
 
 func RetrieveModel(c *gin.Context) {
 	modelId := c.Param("model")
-	if model, ok := modelsMap[modelId]; ok {
-		c.JSON(200, model)
-	} else {
+	// Presets no longer define which models exist: a model resolves when some
+	// enabled channel serves it, which keeps the relay lookup consistent with
+	// the dynamic model universe.
+	exists, err := model.ModelExists(c.Request.Context(), modelId)
+	if err != nil {
+		Error := relaymodel.Error{
+			Message: err.Error(),
+			Type:    "service_unavailable",
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": Error,
+		})
+		return
+	}
+	if !exists {
 		Error := relaymodel.Error{
 			Message: fmt.Sprintf("The model '%s' does not exist", modelId),
 			Type:    "invalid_request_error",
@@ -204,7 +165,15 @@ func RetrieveModel(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"error": Error,
 		})
+		return
 	}
+	c.JSON(200, OpenAIModels{
+		Id:      modelId,
+		Object:  "model",
+		Created: 1626777600,
+		OwnedBy: "custom",
+		Root:    modelId,
+	})
 }
 
 func GetUserAvailableModels(c *gin.Context) {

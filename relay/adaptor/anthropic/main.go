@@ -82,12 +82,6 @@ func ConvertRequest(textRequest model.TextRequest) *Request {
 	if claudeRequest.MaxTokens == 0 {
 		claudeRequest.MaxTokens = 4096
 	}
-	// legacy model name mapping
-	if claudeRequest.Model == "claude-instant-1" {
-		claudeRequest.Model = "claude-instant-1.1"
-	} else if claudeRequest.Model == "claude-2" {
-		claudeRequest.Model = "claude-2.1"
-	}
 	for _, message := range textRequest.Messages {
 		if message.Role == "system" && claudeRequest.System == "" {
 			claudeRequest.System = message.StringContent()

@@ -92,8 +92,7 @@ func GetChannel(c *gin.Context) {
 	return
 }
 
-// validateChannelType rejects channel kinds that do not exist, including the
-// vacant slots retired kinds left behind in the ID space.
+// validateChannelType rejects channel kinds that do not exist.
 func validateChannelType(channel *model.Channel) error {
 	if !channeltype.IsValid(channel.Type) {
 		return fmt.Errorf("非法的渠道类型: %d", channel.Type)

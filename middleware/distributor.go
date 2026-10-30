@@ -10,7 +10,6 @@ import (
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
-	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 )
 
@@ -73,18 +72,5 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
 	c.Set(ctxkey.BaseURL, channel.GetBaseURL())
 	cfg, _ := channel.LoadConfig()
-	// this is for backward compatibility
-	if channel.Other != nil {
-		switch channel.Type {
-		case channeltype.Azure:
-			if cfg.APIVersion == "" {
-				cfg.APIVersion = *channel.Other
-			}
-		case channeltype.Gemini:
-			if cfg.APIVersion == "" {
-				cfg.APIVersion = *channel.Other
-			}
-		}
-	}
 	c.Set(ctxkey.Config, cfg)
 }

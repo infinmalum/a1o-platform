@@ -582,25 +582,26 @@ func requiredChannelType(protocol native.Protocol) int {
 // protocol, most specific first. Chat-family protocols accept the whole
 // OpenAI-compatible whitelist plus the Responses channel kind (the chat
 // request is bridged onto /v1/responses); Responses requests land on a
-// dedicated Responses channel or a plain OpenAI channel, whose /v1/responses
-// path passes through on the same wire. Vendors expose Completions and
+// dedicated Responses channel, a plain OpenAI channel, or OpenRouter, whose
+// unified base passes the wire through. Anthropic Messages and SystemOne
+// likewise pass through on OpenRouter. Vendors expose Completions and
 // Responses under different base URLs, so a channel holding a Completions
 // URL stays out of the Responses candidates.
 func candidateChannelTypes(protocol native.Protocol) []int {
 	switch protocol {
 	case native.Anthropic:
-		return []int{channeltype.Anthropic}
+		return []int{channeltype.Anthropic, channeltype.OpenRouter}
 	case native.Gemini:
 		return []int{channeltype.Gemini}
 	case native.OpenAIChat:
 		return append(chatCompatibleChannelTypes, channeltype.OpenAIResponses)
 	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
-		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
+		native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return chatCompatibleChannelTypes
 	case native.OpenAIResponses:
-		return []int{channeltype.OpenAI, channeltype.OpenAIResponses}
+		return []int{channeltype.OpenAI, channeltype.OpenAIResponses, channeltype.OpenRouter}
 	case native.SystemOne:
-		return []int{channeltype.TypeSafe}
+		return []int{channeltype.TypeSafe, channeltype.OpenRouter}
 	default:
 		return nil
 	}
@@ -631,10 +632,14 @@ func channelSupportsProtocol(kind int, protocol native.Protocol) bool {
 	case native.OpenAIChat:
 		return channeltype.NativeChatCompatible(kind) || kind == channeltype.OpenAIResponses
 	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
-		native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
+		native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return channeltype.NativeChatCompatible(kind)
 	case native.OpenAIResponses:
-		return kind == channeltype.OpenAI || kind == channeltype.OpenAIResponses
+		return kind == channeltype.OpenAI || kind == channeltype.OpenAIResponses || kind == channeltype.OpenRouter
+	case native.Anthropic:
+		return kind == channeltype.Anthropic || kind == channeltype.OpenRouter
+	case native.SystemOne:
+		return kind == channeltype.TypeSafe || kind == channeltype.OpenRouter
 	}
 	return kind == requiredChannelType(protocol)
 }
@@ -673,9 +678,6 @@ func channelFromModel(channel *model.Channel) (Channel, error) {
 	config, err := channel.LoadConfig()
 	if err != nil {
 		return Channel{}, err
-	}
-	if config.APIVersion == "" && channel.Type == channeltype.Gemini && channel.Other != nil {
-		config.APIVersion = *channel.Other
 	}
 	selected := Channel{
 		ID: channel.Id, Type: channel.Type, BaseURL: baseURL, APIKey: channel.Key,

@@ -189,7 +189,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		if r.URL.Path != "/v1/chat/completions" {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.URL.Path {
-			case "/v1/completions", "/v1/edits":
+			case "/v1/completions":
 				_, _ = io.WriteString(w, `{"choices":[{"text":"ok"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`)
 			case "/v1/embeddings":
 				_, _ = io.WriteString(w, `{"data":[{"embedding":[0.1],"index":0}],"usage":{"prompt_tokens":2,"total_tokens":2}}`)
@@ -214,7 +214,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}))
 	defer chatUpstream.Close()
 	chatURL := chatUpstream.URL + "/v1"
-	chatChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "upstream-key", Name: "legacy-chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "legacy-chat,legacy-completion,legacy-embed,legacy-edit,legacy-moderation", BaseURL: &chatURL}
+	chatChannel := model.Channel{Type: channeltype.OpenAI, Key: "upstream-key", Name: "legacy-chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "legacy-chat,legacy-completion,legacy-embed,legacy-moderation", BaseURL: &chatURL}
 	if err := chatChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,6 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}{
 		{"/v1/completions", `{"model":"legacy-completion","prompt":"hello"}`},
 		{"/v1/embeddings", `{"model":"legacy-embed","input":"hello"}`},
-		{"/v1/edits", `{"model":"legacy-edit","instruction":"improve","input":"hello"}`},
 		{"/v1/moderations", `{"model":"legacy-moderation","input":"hello"}`},
 	} {
 		request := httptest.NewRequest(http.MethodPost, fixture.path, strings.NewReader(fixture.body))
@@ -269,7 +268,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		}
 	}
 	var textLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&textLogs).Error; err != nil || len(textLogs) != 10 {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&textLogs).Error; err != nil || len(textLogs) != 9 {
 		t.Fatalf("legacy text routes must each settle once: logs %+v error %v", textLogs, err)
 	}
 	for _, log := range textLogs[6:] {
@@ -292,7 +291,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}()
 	router.ServeHTTP(cancelResponse, cancelRequest)
 	var cancellationLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&cancellationLogs).Error; err != nil || len(cancellationLogs) != 11 || cancellationLogs[10].ChannelId != channel.Id || cancellationLogs[10].Quota <= 0 {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&cancellationLogs).Error; err != nil || len(cancellationLogs) != 10 || cancellationLogs[9].ChannelId != channel.Id || cancellationLogs[9].Quota <= 0 {
 		t.Fatalf("cancelled audio must settle once on selected channel: logs %+v error %v", cancellationLogs, err)
 	}
 	for _, path := range []string{"/v1/audio/transcriptions", "/v1/audio/translations"} {
@@ -321,7 +320,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		}
 	}
 	var audioLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&audioLogs).Error; err != nil || len(audioLogs) != 13 || audioLogs[11].ChannelId != channel.Id || audioLogs[12].ChannelId != channel.Id {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&audioLogs).Error; err != nil || len(audioLogs) != 12 || audioLogs[10].ChannelId != channel.Id || audioLogs[11].ChannelId != channel.Id {
 		t.Fatalf("multipart audio must settle once per request: logs %+v error %v", audioLogs, err)
 	}
 	proxyUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -332,7 +331,9 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}))
 	defer proxyUpstream.Close()
 	proxyURL := proxyUpstream.URL
-	proxyChannel := model.Channel{Type: channeltype.Proxy, Key: "proxy-key", Name: "proxy", Status: model.ChannelStatusEnabled, Group: "default", BaseURL: &proxyURL}
+	// The proxy route is kind-agnostic — it forwards on any channel's base
+	// and key — so a plain OpenAI channel serves as the target here.
+	proxyChannel := model.Channel{Type: channeltype.OpenAI, Key: "proxy-key", Name: "proxy", Status: model.ChannelStatusEnabled, Group: "default", BaseURL: &proxyURL}
 	if err := db.Create(&proxyChannel).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +345,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		t.Fatalf("proxy response: status %d body %s", proxyResponse.Code, proxyResponse.Body.String())
 	}
 	var logCount int64
-	if err := db.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&logCount).Error; err != nil || logCount != 13 {
+	if err := db.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&logCount).Error; err != nil || logCount != 12 {
 		t.Fatalf("unmetered proxy must not create a usage charge: count %d error %v", logCount, err)
 	}
 }

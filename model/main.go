@@ -157,6 +157,12 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Channel{}); err != nil {
 		return err
 	}
+	// The model no longer maps `other`; retire the column outright.
+	if DB.Migrator().HasColumn(&Channel{}, "other") {
+		if err = DB.Migrator().DropColumn(&Channel{}, "other"); err != nil {
+			return err
+		}
+	}
 	if err = DB.AutoMigrate(&Token{}); err != nil {
 		return err
 	}

@@ -1,11 +1,7 @@
 package channeltype
 
-// Channel kind IDs are persisted database identifiers: the numbers below are
-// permanent, and so are the gaps. Retired kinds keep their old numbers
-// reserved forever — never renumber a kind and never reuse a vacant slot for
-// a new kind, or existing rows silently change meaning.
-//
-// Vacant retired IDs: 2, 4-13, 15-23, 25-26, 28-32, 35-36, 39-41, 44-45, 47-49, 51.
+// Channel kind IDs are persisted database identifiers: the numbers below
+// address rows in the channels table and must never be renumbered.
 const (
 	Unknown = 0
 	OpenAI  = 1
@@ -13,7 +9,6 @@ const (
 
 	Anthropic = 14
 	Gemini    = 24
-	Minimax   = 27
 	AwsClaude = 33
 	Coze      = 34
 
@@ -22,10 +17,8 @@ const (
 
 	VertextAI = 42
 	Replicate = 46
-	Proxy     = 43
 
-	OpenAICompatible = 50
-	TypeSafe         = 52
+	TypeSafe = 52
 
 	// OpenAIResponses targets upstreams that serve the Responses API
 	// (/v1/responses) rather than Chat Completions; it shares the OpenAI
@@ -33,19 +26,25 @@ const (
 	// the right endpoint per upstream.
 	OpenAIResponses = 53
 
+	// OpenRouter is the aggregator's unified API: one key and one
+	// version-bearing base (https://openrouter.ai/api/v1) serve the OpenAI
+	// chat, OpenAI Responses, Anthropic Messages, and SystemOne wires, so
+	// the kind forwards all four and needs no operator-supplied base URL.
+	OpenRouter = 54
+
 	// Dummy is the exclusive upper bound of valid kind IDs, not a kind.
-	Dummy = 54
+	Dummy = 55
 )
 
 // IsValid reports whether kind names a channel kind that actually exists.
-// The vacant retired slots inside the ID range are not kinds, so a range
-// check alone would accept zombie rows; every validation and switch over
-// kinds goes through this or names kinds explicitly.
+// The ID space has gaps, so a range check alone would accept unassigned
+// IDs; every validation and switch over kinds goes through this or names
+// kinds explicitly.
 func IsValid(kind int) bool {
 	switch kind {
-	case OpenAI, Azure, Anthropic, Gemini, Minimax, AwsClaude, Coze,
-		Cloudflare, DeepL, VertextAI, Replicate, Proxy, OpenAICompatible,
-		TypeSafe, OpenAIResponses:
+	case OpenAI, Azure, Anthropic, Gemini, AwsClaude, Coze,
+		Cloudflare, DeepL, VertextAI, Replicate,
+		TypeSafe, OpenAIResponses, OpenRouter:
 		return true
 	}
 	return false

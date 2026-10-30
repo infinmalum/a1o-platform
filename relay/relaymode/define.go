@@ -7,7 +7,6 @@ const (
 	Embeddings
 	Moderations
 	ImagesGenerations
-	Edits
 	AudioSpeech
 	AudioTranscription
 	AudioTranslation

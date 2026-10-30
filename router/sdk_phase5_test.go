@@ -156,18 +156,6 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	defer transcriptionServer.Close()
 
 	completionsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/edits" {
-			if r.Header.Get("Authorization") != "Bearer phase5-edits-key" {
-				t.Errorf("Edits provider request: %s %v", r.URL, r.Header)
-			}
-			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), `"model":"phase5-edit"`) || !strings.Contains(string(body), `"instruction":"fix it"`) || !strings.Contains(string(body), `"unknown_extension":{"keep":true}`) {
-				t.Errorf("Edits provider lost fields: %s", body)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"object":"edit","created":1,"choices":[{"text":"fixed"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`)
-			return
-		}
 		if r.URL.Path == "/v1/completions" {
 			if r.Header.Get("Authorization") != "Bearer phase5-completions-key" {
 				t.Errorf("Completions provider request: %s %v", r.URL, r.Header)
@@ -192,11 +180,10 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	}))
 	defer proxyServer.Close()
 
-	responsesURL, imagesURL := responsesServer.URL, imagesServer.URL
-	speechURL, transcriptionURL := speechServer.URL, transcriptionServer.URL
-	completionsURL, proxyURL := completionsServer.URL, proxyServer.URL
+	responsesURL, imagesURL := responsesServer.URL + "/v1", imagesServer.URL + "/v1"
+	speechURL, transcriptionURL := speechServer.URL + "/v1", transcriptionServer.URL + "/v1"
+	completionsURL, proxyURL := completionsServer.URL + "/v1", proxyServer.URL
 	responsesMapping, speechMapping := `{"responses-sdk":"responses-upstream"}`, `{"tts-1":"phase5-tts"}`
-	editsMapping := `{"text-davinci-edit-001":"phase5-edit"}`
 	completionsPrompt := "phase5-system-instruction"
 	var responsesChannel *model.Channel
 	for _, channel := range []*model.Channel{
@@ -204,9 +191,8 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 		{Type: channeltype.OpenAI, Key: "phase5-images-key", Name: "phase5-images", Status: model.ChannelStatusEnabled, Group: "default", Models: "dall-e-3", BaseURL: &imagesURL},
 		{Type: channeltype.OpenAI, Key: "phase5-speech-key", Name: "phase5-speech", Status: model.ChannelStatusEnabled, Group: "default", Models: "tts-1", ModelMapping: &speechMapping, BaseURL: &speechURL},
 		{Type: channeltype.OpenAI, Key: "phase5-whisper-key", Name: "phase5-whisper", Status: model.ChannelStatusEnabled, Group: "default", Models: "whisper-1", BaseURL: &transcriptionURL},
-		{Type: channeltype.OpenAI, Key: "phase5-edits-key", Name: "phase5-edits", Status: model.ChannelStatusEnabled, Group: "default", Models: "text-davinci-edit-001", ModelMapping: &editsMapping, BaseURL: &completionsURL},
 		{Type: channeltype.OpenAI, Key: "phase5-completions-key", Name: "phase5-completions", Status: model.ChannelStatusEnabled, Group: "default", Models: "phase5-gpt", SystemPrompt: &completionsPrompt, BaseURL: &completionsURL},
-		{Type: channeltype.Proxy, Key: "phase5-proxy-key", Name: "phase5-proxy", Status: model.ChannelStatusEnabled, Group: "default", Models: "", BaseURL: &proxyURL},
+		{Type: channeltype.OpenAI, Key: "phase5-proxy-key", Name: "phase5-proxy", Status: model.ChannelStatusEnabled, Group: "default", Models: "", BaseURL: &proxyURL},
 	} {
 		if err := channel.Insert(); err != nil {
 			t.Fatal(err)
@@ -394,21 +380,6 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 		t.Fatalf("transcription quota wrong: quota %d prompt %d", whisperLog.Quota, whisperLog.PromptTokens)
 	}
 
-	// Edits forward unknown extensions and settle on provider usage.
-	editRequest := httptest.NewRequest(http.MethodPost, "/v1/edits", strings.NewReader(`{"model":"text-davinci-edit-001","input":"broken","instruction":"fix it","unknown_extension":{"keep":true}}`))
-	editRequest.Header.Set("Content-Type", "application/json")
-	editRequest.Header.Set("Authorization", "Bearer sk-phase5-gateway-key")
-	editResponse := httptest.NewRecorder()
-	routes.ServeHTTP(editResponse, editRequest)
-	if editResponse.Code != http.StatusOK || !strings.Contains(editResponse.Body.String(), `"text":"fixed"`) {
-		t.Fatalf("edits passthrough changed: status %d body %s", editResponse.Code, editResponse.Body.String())
-	}
-	time.Sleep(100 * time.Millisecond)
-	var editLog model.Log
-	if err := db.Where("model_name = ? AND type = ?", "phase5-edit", model.LogTypeConsume).Order("id desc").First(&editLog).Error; err != nil || editLog.PromptTokens != 4 || editLog.CompletionTokens != 2 {
-		t.Fatalf("edits usage was not settled: %+v err %v", editLog, err)
-	}
-
 	// A configured system prompt is prepended to Completions prompts.
 	completion, err := openaiClient.Completions.New(ctx, openai.CompletionNewParams{
 		Model: openai.CompletionNewParamsModel("phase5-gpt"),
@@ -508,7 +479,7 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 
 	ollamaURL := ollamaServer.URL + "/v1"
 	ollamaMapping := `{"ollama-embed":"upstream-ollama-embed"}`
-	ollamaChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "phase5-ollama-key", Name: "phase5-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-embed", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL}
+	ollamaChannel := model.Channel{Type: channeltype.OpenAI, Key: "phase5-ollama-key", Name: "phase5-ollama", Status: model.ChannelStatusEnabled, Group: "default", Models: "ollama-embed", ModelMapping: &ollamaMapping, BaseURL: &ollamaURL}
 	if err := ollamaChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +507,6 @@ func TestPhase5ProviderChannelEmbeddingsFallbackAndRejections(t *testing.T) {
 	// The compatible kind forwards the whole OpenAI wire, so only a model no
 	// channel carries is refused before the provider is contacted.
 	for _, fixture := range []struct{ path, body string }{
-		{"/v1/edits", `{"model":"orphan-model","instruction":"fix"}`},
 		{"/v1/moderations", `{"model":"orphan-model","input":"text"}`},
 		{"/v1/audio/speech", `{"model":"orphan-model","input":"text","voice":"alloy"}`},
 	} {
@@ -609,7 +579,7 @@ func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 
 	compatibleURL := compatibleServer.URL + "/api/paas/v4"
 	compatibleMapping := `{"cogview-3":"upstream-cogview"}`
-	compatibleChannel := model.Channel{Type: channeltype.OpenAICompatible, Key: "phase5-zhipu-key", Name: "phase5-zhipu", Status: model.ChannelStatusEnabled, Group: "default", Models: "cogview-3", ModelMapping: &compatibleMapping, BaseURL: &compatibleURL}
+	compatibleChannel := model.Channel{Type: channeltype.OpenAI, Key: "phase5-zhipu-key", Name: "phase5-zhipu", Status: model.ChannelStatusEnabled, Group: "default", Models: "cogview-3", ModelMapping: &compatibleMapping, BaseURL: &compatibleURL}
 	if err := compatibleChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +603,7 @@ func TestPhase5ProviderImageRouteUsesLifecycleBilling(t *testing.T) {
 	if err := db.Where("channel_id = ? AND type = ?", compatibleChannel.Id, model.LogTypeConsume).First(&imageLog).Error; err != nil {
 		t.Fatalf("provider image quota was not settled: %v", err)
 	}
-	expectedQuota := int64(billingratio.GetModelRatio("upstream-cogview", channeltype.OpenAICompatible) * billingratio.GetGroupRatio("default") * 1000)
+	expectedQuota := int64(billingratio.GetModelRatio("upstream-cogview", channeltype.OpenAI) * billingratio.GetGroupRatio("default") * 1000)
 	if int64(imageLog.Quota) != expectedQuota {
 		t.Fatalf("provider image quota %d does not match the size-billing estimate %d", imageLog.Quota, expectedQuota)
 	}

@@ -10,10 +10,9 @@ import (
 // nativeChatWhitelist is pinned literally so NativeChatCompatible can never
 // drift from it.
 var nativeChatWhitelist = map[int]bool{
-	OpenAI:           true,
-	Azure:            true,
-	Minimax:          true,
-	OpenAICompatible: true,
+	OpenAI:     true,
+	Azure:      true,
+	OpenRouter: true,
 }
 
 func TestAllOpenAIAdapterChannelsUseNativeChat(t *testing.T) {
@@ -34,7 +33,7 @@ func TestOpenAIWireSupportsOperation(t *testing.T) {
 		}
 		for _, mode := range []int{
 			relaymode.ChatCompletions, relaymode.Completions, relaymode.Embeddings,
-			relaymode.Moderations, relaymode.ImagesGenerations, relaymode.Edits,
+			relaymode.Moderations, relaymode.ImagesGenerations,
 			relaymode.AudioSpeech, relaymode.AudioTranscription, relaymode.AudioTranslation,
 		} {
 			if !OpenAIWireSupportsOperation(kind, mode) {

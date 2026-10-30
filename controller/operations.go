@@ -22,28 +22,6 @@ import (
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
-// NativeOpenAIEdits forwards the deprecated Edits wire format on channels that
-// speak the OpenAI JSON protocol.
-func NativeOpenAIEdits(c *gin.Context) {
-	body, err := common.GetRequestBody(c)
-	if err != nil {
-		writeNativeError(c, native.OpenAIEdits, http.StatusBadRequest, err)
-		return
-	}
-	var fields struct {
-		Model       string `json:"model"`
-		Instruction string `json:"instruction"`
-		Stream      bool   `json:"stream"`
-		MaxTokens   int64  `json:"max_tokens"`
-	}
-	if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" || fields.Instruction == "" || fields.MaxTokens < 0 {
-		writeNativeError(c, native.OpenAIEdits, http.StatusBadRequest, errors.New("model, instruction are required and max_tokens must not be negative"))
-		return
-	}
-	forwardNative(c, nativeInput{protocol: native.OpenAIEdits, model: fields.Model,
-		stream: fields.Stream, maxOutputTokens: fields.MaxTokens, body: body})
-}
-
 // NativeOpenAIImages forwards image generation with operation-specific
 // billing: the charge is the model and size ratio times the image count,
 // reserved before the upstream request and charged exactly on success.

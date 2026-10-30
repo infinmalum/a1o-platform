@@ -173,6 +173,42 @@ func GetGroupModels(ctx context.Context, group string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if models == nil {
+		// An empty group must marshal as [] in API responses, not null.
+		models = []string{}
+	}
 	sort.Strings(models)
 	return models, err
+}
+
+// GetAllModels lists the distinct models served by any enabled channel. With
+// the preset model lists removed, this is the only "all known models" universe
+// the console and the relay model listings can honestly report.
+func GetAllModels(ctx context.Context) ([]string, error) {
+	trueVal := "1"
+	if common.UsingPostgreSQL {
+		trueVal = "true"
+	}
+	var models []string
+	err := DB.Model(&Ability{}).Distinct("model").Where("enabled = "+trueVal).Pluck("model", &models).Error
+	if err != nil {
+		return nil, err
+	}
+	if models == nil {
+		models = []string{}
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
+// ModelExists reports whether any enabled channel serves the model; the relay
+// per-model lookup needs this because presets no longer define the universe.
+func ModelExists(ctx context.Context, name string) (bool, error) {
+	trueVal := "1"
+	if common.UsingPostgreSQL {
+		trueVal = "true"
+	}
+	var count int64
+	err := DB.WithContext(ctx).Model(&Ability{}).Where("model = ? and enabled = "+trueVal, name).Count(&count).Error
+	return count > 0, err
 }

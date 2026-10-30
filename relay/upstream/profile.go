@@ -36,7 +36,7 @@ var (
 			UpstreamProtocols: []native.Protocol{
 				native.Anthropic, native.Gemini, native.OpenAIChat, native.OpenAICompletions,
 				native.OpenAIEmbeddings, native.OpenAIModerations, native.OpenAIResponses,
-				native.OpenAIEdits, native.OpenAIImages, native.OpenAIAudioSpeech,
+				native.OpenAIImages, native.OpenAIAudioSpeech,
 				native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations,
 			},
 		},

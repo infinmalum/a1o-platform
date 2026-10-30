@@ -23,7 +23,6 @@ const (
 	OpenAIEmbeddings  Protocol = "openai_embeddings"
 	OpenAIModerations Protocol = "openai_moderations"
 	OpenAIResponses   Protocol = "openai_responses"
-	OpenAIEdits       Protocol = "openai_edits"
 	OpenAIImages      Protocol = "openai_images"
 	OpenAIAudioSpeech Protocol = "openai_audio_speech"
 	// Audio transcription and translation bodies are multipart forms that the
@@ -53,7 +52,7 @@ func (p Protocol) azureKeyAuth(channelType int) bool {
 	}
 	switch p {
 	case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
-		OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions:
+		OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions:
 		return true
 	}
 	return false
@@ -151,12 +150,6 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		if err != nil {
 			return nil, err
 		}
-	case OpenAIEdits:
-		path = "/v1/edits"
-		body, _, err = prepareOpenAIEditsBody(body, input.Model)
-		if err != nil {
-			return nil, err
-		}
 	case OpenAIImages:
 		path = "/v1/images/generations"
 		body, err = prepareOpenAIImagesBody(body, input.Model)
@@ -176,20 +169,16 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	default:
 		return nil, errors.New("unsupported native protocol")
 	}
-	// Azure deployments are addressed in the URL, and Minimax mounts chat
-	// under its own text-completion route.
+	// Azure deployments are addressed in the URL rather than the model field.
 	switch input.Protocol {
 	case OpenAIChat:
-		switch input.ChannelType {
-		case channeltype.Azure:
+		if input.ChannelType == channeltype.Azure {
 			if input.Model == "" || strings.ContainsAny(input.Model, "/?#") || input.Version == "" {
 				return nil, errors.New("Azure Chat requires a mapped deployment and API version")
 			}
 			path = "/openai/deployments/" + url.PathEscape(strings.ReplaceAll(input.Model, ".", "")) + "/chat/completions"
-		case channeltype.Minimax:
-			path = "/v1/text/chatcompletion_v2"
 		}
-	case OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
+	case OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
 		OpenAICompletions, OpenAIEmbeddings, OpenAIModerations:
 		if input.ChannelType == channeltype.Azure {
 			if input.Model == "" || strings.ContainsAny(input.Model, "/?#") || input.Version == "" {
@@ -197,8 +186,6 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			}
 			deployment := url.PathEscape(strings.ReplaceAll(input.Model, ".", ""))
 			switch input.Protocol {
-			case OpenAIEdits:
-				path = "/openai/deployments/" + deployment + "/edits"
 			case OpenAIImages:
 				path = "/openai/deployments/" + deployment + "/images/generations"
 			case OpenAIAudioSpeech:
@@ -215,12 +202,28 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			break
 		}
 	}
-	// The compatible kind carries its version prefix in the base URL instead
-	// of the request path, uniformly across the OpenAI wire.
-	if input.ChannelType == channeltype.OpenAICompatible {
+	// OpenRouter's fixed base carries /api/v1 itself, and its unified API
+	// serves the OpenAI family, Anthropic Messages, and SystemOne wires from
+	// that one base as bare operation suffixes, so each canonical path drops
+	// its version prefix outright.
+	if input.ChannelType == channeltype.OpenRouter {
 		switch input.Protocol {
-		case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
-			OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
+		case OpenAIChat, OpenAIResponses, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+			OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
+			Anthropic, SystemOne:
+			path = strings.TrimPrefix(path, "/v1")
+		}
+	}
+	// A vendor base URL on the OpenAI wire carries the version segment itself
+	// (the filling rule mirrors relay/adaptor/openai.GetFullRequestURL), so the
+	// path's /v1 is dropped to avoid doubling it; the official default base
+	// keeps the versioned path. Azure is deployment-shaped and was handled
+	// above; Anthropic, Gemini, and SystemOne keep the version in the path.
+	if channeltype.IsValid(input.ChannelType) && input.ChannelType != channeltype.Azure &&
+		input.BaseURL != channeltype.BaseURL(input.ChannelType) {
+		switch input.Protocol {
+		case OpenAIChat, OpenAIResponses, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+			OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 			path = strings.TrimPrefix(path, "/v1")
 		}
 	}
@@ -249,7 +252,7 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	}
 	if input.ChannelType == channeltype.Azure && input.Version != "" {
 		switch input.Protocol {
-		case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations, OpenAIEdits, OpenAIImages,
+		case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations, OpenAIImages,
 			OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 			query.Set("api-version", input.Version)
 		}
@@ -268,7 +271,13 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	azureKey := input.Protocol.azureKeyAuth(input.ChannelType)
 	switch input.Protocol {
 	case Anthropic:
-		req.Header.Set("x-api-key", input.APIKey)
+		if input.ChannelType == channeltype.OpenRouter {
+			// OpenRouter authenticates every wire, Messages included, with
+			// the same bearer key.
+			req.Header.Set("Authorization", "Bearer "+input.APIKey)
+		} else {
+			req.Header.Set("x-api-key", input.APIKey)
+		}
 		version := input.Headers.Get("anthropic-version")
 		if version == "" {
 			version = "2023-06-01"
@@ -284,7 +293,7 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	case SystemOne:
 		req.Header.Set("Authorization", "Bearer "+input.APIKey)
 	case OpenAIResponses, OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
-		OpenAIEdits, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
+		OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 		if azureKey {
 			req.Header.Set("api-key", input.APIKey)
 		} else {
@@ -510,32 +519,6 @@ func prepareGeminiBody(body []byte, systemPrompt string) ([]byte, error) {
 	}
 	fields["systemInstruction"] = instruction
 	return json.Marshal(fields)
-}
-
-// prepareOpenAIEditsBody replaces the model and preserves unknown fields on
-// the deprecated Edits wire format.
-func prepareOpenAIEditsBody(body []byte, model string) ([]byte, bool, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		return nil, false, errors.New("invalid OpenAI Edits JSON request")
-	}
-	var requestedModel string
-	if err := json.Unmarshal(fields["model"], &requestedModel); err != nil || requestedModel == "" {
-		return nil, false, errors.New("OpenAI Edits model is required")
-	}
-	if len(fields["instruction"]) == 0 || string(fields["instruction"]) == "null" {
-		return nil, false, errors.New("OpenAI Edits instruction is required")
-	}
-	var stream bool
-	if raw, ok := fields["stream"]; ok && json.Unmarshal(raw, &stream) != nil {
-		return nil, false, errors.New("OpenAI Edits stream must be boolean")
-	}
-	if model == "" || model == requestedModel {
-		return body, stream, nil
-	}
-	fields["model"], _ = json.Marshal(model)
-	updated, err := json.Marshal(fields)
-	return updated, stream, err
 }
 
 // prepareOpenAIImagesBody replaces the model and preserves unknown fields on

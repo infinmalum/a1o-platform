@@ -52,12 +52,12 @@ func callChannelMutation(t *testing.T, method string, kind int) map[string]any {
 	return response
 }
 
-// TestChannelMutationRejectsNonexistentTypes pins the entry guard: kinds that
-// do not exist — out-of-range values and the vacant retired slots in the ID
-// space — must be refused and persist nothing.
+// TestChannelMutationRejectsNonexistentTypes pins the entry guard: kinds
+// that do not exist — out-of-range values and unassigned IDs — must be
+// refused and persist nothing.
 func TestChannelMutationRejectsNonexistentTypes(t *testing.T) {
 	setupChannelTypeTest(t)
-	for _, kind := range []int{-1, 0, 2, 36, 51, channeltype.Dummy, channeltype.Dummy + 7} {
+	for _, kind := range []int{-1, 0, 43, channeltype.Dummy, channeltype.Dummy + 7} {
 		response := callChannelMutation(t, http.MethodPost, kind)
 		require.Equal(t, false, response["success"], "kind %d must be refused", kind)
 		require.Contains(t, response["message"], "非法的渠道类型")
@@ -76,13 +76,13 @@ func TestChannelMutationRejectsNonexistentTypes(t *testing.T) {
 // cannot be expressed as a custom endpoint) must keep creating fine.
 func TestAddChannelAcceptsLiveKinds(t *testing.T) {
 	setupChannelTypeTest(t)
-	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Minimax, channeltype.OpenAICompatible, channeltype.Anthropic} {
+	for _, kind := range []int{channeltype.OpenAI, channeltype.Azure, channeltype.Anthropic, channeltype.OpenRouter} {
 		response := callChannelMutation(t, http.MethodPost, kind)
 		require.Equal(t, true, response["success"], "kind %d should be accepted: %v", kind, response["message"])
 	}
 	var count int64
 	require.NoError(t, model.DB.Model(&model.Channel{}).Count(&count).Error)
-	require.EqualValues(t, 5, count)
+	require.EqualValues(t, 4, count)
 }
 
 // TestDashboardModelList pins the dashboard listing: model presets are gone

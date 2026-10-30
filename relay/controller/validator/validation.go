@@ -28,10 +28,6 @@ func ValidateTextRequest(textRequest *model.TextRequest, relayMode int) error {
 		if textRequest.Input == "" {
 			return errors.New("field input is required")
 		}
-	case relaymode.Edits:
-		if textRequest.Instruction == "" {
-			return errors.New("field instruction is required")
-		}
 	}
 	return nil
 }

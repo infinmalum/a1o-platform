@@ -48,13 +48,6 @@ func TestGetFullRequestURL(t *testing.T) {
 			want:       "https://open.bigmodel.cn/api/v1/responses",
 		},
 		{
-			name:       "compatible kind always strips /v1",
-			baseURL:    "https://api.deepseek.com/v1",
-			requestURL: "/v1/chat/completions",
-			kind:       channeltype.OpenAICompatible,
-			want:       "https://api.deepseek.com/v1/chat/completions",
-		},
-		{
 			name:       "azure deployment path appends untouched",
 			baseURL:    "https://docs-test-001.openai.azure.com",
 			requestURL: "/openai/deployments/gpt4o/chat/completions",

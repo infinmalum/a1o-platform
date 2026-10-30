@@ -87,19 +87,6 @@ func RelayModerations(c *gin.Context) {
 	}
 }
 
-// RelayEdits serves OpenAI wire channels natively and rejects provider
-// channels; no provider adapter ever converted the deprecated edits format.
-func RelayEdits(c *gin.Context) {
-	switch {
-	case openAIWireChannel(c, relaymode.Edits):
-		NativeOpenAIEdits(c)
-	case wireChannelWithoutOperation(c, relaymode.Edits):
-		unsupportedOperation(c, "this channel type does not serve the edits operation")
-	default:
-		unsupportedOperation(c, "edits require an OpenAI-compatible channel")
-	}
-}
-
 // RelayImages serves OpenAI wire channels through the native lifecycle with
 // image-specific billing; the retained provider image format (Replicate)
 // keeps its adapter conversion.

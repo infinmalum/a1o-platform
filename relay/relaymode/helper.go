@@ -16,8 +16,6 @@ func GetByPath(path string) int {
 		relayMode = Moderations
 	} else if strings.HasPrefix(path, "/v1/images/generations") {
 		relayMode = ImagesGenerations
-	} else if strings.HasPrefix(path, "/v1/edits") {
-		relayMode = Edits
 	} else if strings.HasPrefix(path, "/v1/audio/speech") {
 		relayMode = AudioSpeech
 	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {

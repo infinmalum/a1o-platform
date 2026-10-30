@@ -105,8 +105,9 @@ func TokenAuth() func(c *gin.Context) {
 		token, err := model.ValidateUserToken(key)
 		var channelFromToken string
 		if err != nil {
-			// Legacy administrator tokens may have a channel ID appended. Try the
-			// complete key first so hyphens in real tokens remain valid.
+			// An administrator may pin a channel by appending its ID to the
+			// token. Try the complete key first so hyphens in real tokens
+			// remain valid.
 			if split := strings.LastIndexByte(key, '-'); split >= 0 {
 				if candidate, candidateErr := model.ValidateUserToken(key[:split]); candidateErr == nil {
 					token, err = candidate, nil
