@@ -1062,5 +1062,48 @@
         "description": "Standalone DeepL translation workbench."
       }
     }
+  },
+  "work": {
+    "title": "Work Tasks",
+    "tagline": "Submit a goal and it keeps running in the background — leave the page and come back to progress and results.",
+    "create": "New task",
+    "createHint": "Your goal is pursued by the work assistant in the background; a summary is produced on completion.",
+    "titleLabel": "Title (optional)",
+    "titlePlaceholder": "e.g. Organize quarterly sales data",
+    "goalLabel": "Goal",
+    "goalPlaceholder": "Describe what to accomplish, constraints, and acceptance criteria.",
+    "modelLabel": "Model",
+    "modelPlaceholder": "Select a model",
+    "submit": "Submit task",
+    "loading": "Loading…",
+    "empty": "No tasks yet. Submit a goal to begin.",
+    "refresh": "Refresh",
+    "backToList": "Back to tasks",
+    "cancel": "Cancel task",
+    "summary": "Result summary",
+    "progress": "Progress",
+    "usage": "in {{prompt}} / out {{completion}} tokens",
+    "queuedHint": "The task is queued and waiting for a worker.",
+    "noProgress": "No output yet.",
+    "inputPlaceholder": "Append context, requirements, or corrections while the task runs…",
+    "inputDisabled": "This run has ended; inputs are no longer accepted.",
+    "inputHint": "Appended inputs are consumed at the next safe boundary between model or tool batches.",
+    "pendingInputs": "{{count}} input(s) waiting to be consumed",
+    "sendInput": "Send",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "waiting_input": "Waiting for input",
+      "cancel_requested": "Cancelling",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "needs_reconciliation": "Needs reconciliation"
+    },
+    "events": {
+      "toolCalled": "Called tool {{name}}",
+      "toolResult": "Tool returned a result",
+      "inputAppended": "Input appended"
+    }
   }
 }

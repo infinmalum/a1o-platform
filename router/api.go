@@ -161,6 +161,17 @@ func SetApiRouter(router *gin.Engine) {
 			chatAdminRoute.PUT("/skills/global/:id", controller.UpdateGlobalChatSkill)
 			chatAdminRoute.DELETE("/skills/global/:id", controller.DeleteGlobalChatSkill)
 		}
+		studioRoute := apiRouter.Group("/studio")
+		studioRoute.Use(middleware.UserAuth())
+		{
+			studioRoute.POST("/runs", controller.CreateStudioRun)
+			studioRoute.GET("/runs/:id", controller.GetStudioRun)
+			studioRoute.GET("/runs/:id/events", controller.StreamStudioRunEvents)
+			studioRoute.POST("/runs/:id/inputs", controller.AppendStudioRunInput)
+			studioRoute.POST("/runs/:id/cancel", controller.CancelStudioRun)
+			studioRoute.GET("/tasks", controller.ListStudioTasks)
+			studioRoute.GET("/tasks/:id", controller.GetStudioTask)
+		}
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.AdminAuth())
 		{

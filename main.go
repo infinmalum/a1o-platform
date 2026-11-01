@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
 
+	"github.com/infinmalum/a1o-platform/agent"
 	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/common/client"
 	"github.com/infinmalum/a1o-platform/common/config"
@@ -107,6 +108,10 @@ func main() {
 	}
 	openai.InitTokenEncoders()
 	client.Init()
+
+	// Work runs (R3): reconcile runs interrupted by the previous process,
+	// then start the persistent queue workers.
+	agent.DefaultScheduler().Start()
 
 	// Initialize i18n
 	if err := i18n.Init(); err != nil {

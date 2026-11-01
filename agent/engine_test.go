@@ -40,18 +40,30 @@ func eventTypes(events []EventEnvelope) []string {
 	return types
 }
 
-// fakeExecutor scripts Invoke results and records every request.
+// fakeExecutor scripts Invoke results and records every request. hook, when
+// set, runs after the request is recorded (tests use it to mutate run state
+// mid-leg, e.g. simulating a fencing takeover).
 type fakeExecutor struct {
 	responses []InvokeResult
 	errs      []error
 	requests  []InvokeRequest
+	hook      func()
 }
 
 func (f *fakeExecutor) Invoke(ctx context.Context, req InvokeRequest) (InvokeResult, error) {
 	f.requests = append(f.requests, req)
+	if f.hook != nil {
+		f.hook()
+	}
 	index := len(f.requests) - 1
 	if index < len(f.errs) && f.errs[index] != nil {
-		return InvokeResult{}, f.errs[index]
+		// A paired response carries partial state (e.g. the upstream's
+		// response id) so tests can script engaged-but-failed legs.
+		result := InvokeResult{}
+		if index < len(f.responses) {
+			result = f.responses[index]
+		}
+		return result, f.errs[index]
 	}
 	if index < len(f.responses) {
 		response := f.responses[index]

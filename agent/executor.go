@@ -53,6 +53,10 @@ type InvokeRequest struct {
 	// context, for auxiliary legs (summarization) and hosts whose history
 	// lives elsewhere (chat sessions persist their own rows).
 	SkipContextAppend bool
+	// FencingToken, when positive, guards the run-context append with the
+	// work claim's fencing token so a stale worker's write fails instead of
+	// clobbering the new owner's state; 0 (chat) keeps the plain write.
+	FencingToken int64
 }
 
 // InvokeResult reports one completed model call.
@@ -120,7 +124,7 @@ func (e *ModelExecutor) Invoke(ctx context.Context, req InvokeRequest) (InvokeRe
 	if req.SkipContextAppend {
 		return result, nil
 	}
-	if err := e.appendRunContext(run, result.Items); err != nil {
+	if err := e.appendRunContext(run, result.Items, req.FencingToken); err != nil {
 		return result, fmt.Errorf("persist run context: %w", err)
 	}
 	return result, nil
@@ -256,8 +260,10 @@ func (e *ModelExecutor) recordOutcome(runID int, invocation *model.ModelInvocati
 }
 
 // appendRunContext appends the call's output items to the run's persisted
-// context so the next invocation replays them.
-func (e *ModelExecutor) appendRunContext(run *model.AgentRun, items []Item) error {
+// context so the next invocation replays them. A positive fencing token
+// switches to the fenced write; a failed guard means this worker lost the
+// claim and must not keep advancing.
+func (e *ModelExecutor) appendRunContext(run *model.AgentRun, items []Item, fencing int64) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -271,6 +277,16 @@ func (e *ModelExecutor) appendRunContext(run *model.AgentRun, items []Item) erro
 	encoded, err := json.Marshal(contextItems)
 	if err != nil {
 		return err
+	}
+	if fencing > 0 {
+		ok, err := model.UpdateAgentRunContextFenced(run.Id, fencing, string(encoded))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errLeaseLost
+		}
+		return nil
 	}
 	return model.UpdateAgentRunContext(run.Id, string(encoded))
 }

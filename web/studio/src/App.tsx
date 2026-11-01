@@ -8,6 +8,8 @@ import { clearUser, storeUser, useUser } from './context/User';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Chat from './pages/Chat';
+import Work from './pages/Work';
+import WorkTaskDetail from './pages/Work/WorkTaskDetail';
 import OAuthCallback from './pages/OAuthCallback';
 import { Button } from '@/components/ui/button';
 
@@ -109,6 +111,22 @@ const App: React.FC = () => {
             element={
               <PrivateRoute>
                 <Chat />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/work'
+            element={
+              <PrivateRoute>
+                <Work />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/work/:taskId'
+            element={
+              <PrivateRoute>
+                <WorkTaskDetail />
               </PrivateRoute>
             }
           />

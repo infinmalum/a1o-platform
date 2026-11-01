@@ -29,7 +29,7 @@ const Home: React.FC = () => {
       open: true,
       onClick: () => navigate('/chat'),
     },
-    { key: 'work', icon: Wrench, open: false },
+    { key: 'work', icon: Wrench, open: true, onClick: () => navigate('/work') },
     { key: 'agent', icon: Bot, open: false },
     { key: 'image', icon: ImageIcon, open: false },
     { key: 'translate', icon: Languages, open: false },

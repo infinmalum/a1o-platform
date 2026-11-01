@@ -38,11 +38,18 @@ const (
 // the OpenResponses event names verbatim; the run-level types below are the
 // a1o control plane.
 const (
-	RunEventRunQueued           = "run.queued"
-	RunEventRunStarted          = "run.started"
-	RunEventRunCompleted        = "run.completed"
-	RunEventRunFailed           = "run.failed"
-	RunEventRunCancelled        = "run.cancelled"
+	RunEventRunQueued    = "run.queued"
+	RunEventRunStarted   = "run.started"
+	RunEventRunCompleted = "run.completed"
+	RunEventRunFailed    = "run.failed"
+	RunEventRunCancelled = "run.cancelled"
+	// R3 work-runtime control events. waiting_input marks a paused work run
+	// that ended its turn without declaring completion; cancel_requested and
+	// needs_reconciliation record asynchronous stop and restart-recovery
+	// transitions.
+	RunEventRunWaitingInput     = "run.waiting_input"
+	RunEventRunCancelRequest    = "run.cancel_requested"
+	RunEventRunNeedsReconcile   = "run.needs_reconciliation"
 	RunEventInvocationStarted   = "invocation.started"
 	RunEventInvocationUsage     = "invocation.usage"
 	RunEventInvocationCompleted = "invocation.completed"
@@ -68,11 +75,21 @@ type AgentRun struct {
 	Kind   string `json:"kind" gorm:"type:varchar(16)"`
 	Status string `json:"status" gorm:"type:varchar(32);index"`
 	// SessionId links a chat-mode run to its conversation; 0 for runs
-	// without a session (Work tasks carry their own task reference).
-	SessionId      int    `json:"session_id" gorm:"index"`
+	// without a session.
+	SessionId int `json:"session_id" gorm:"index"`
+	// TaskId links a work-mode run to its WorkTask; 0 for chat runs.
+	TaskId         int    `json:"task_id" gorm:"index"`
 	IdempotencyKey string `json:"idempotency_key" gorm:"type:varchar(255);uniqueIndex:idx_agent_run_idempotency,priority:2"`
-	Model          string `json:"model" gorm:"type:varchar(255)"`
-	Instructions   string `json:"instructions" gorm:"type:text"`
+	// Lease and fencing for work-mode queue claims: LeaseOwner identifies
+	// the claiming scheduler instance, LeaseExpireTime the heartbeat
+	// deadline, and FencingToken increments on every claim so a stale
+	// worker's guarded writes no-op instead of clobbering the new owner's
+	// state. Chat runs execute inside the HTTP request and never claim.
+	LeaseOwner      string `json:"lease_owner" gorm:"type:varchar(64)"`
+	LeaseExpireTime int64  `json:"lease_expire_time" gorm:"bigint"`
+	FencingToken    int64  `json:"fencing_token"`
+	Model           string `json:"model" gorm:"type:varchar(255)"`
+	Instructions    string `json:"instructions" gorm:"type:text"`
 	// InputItems is the frozen JSON snapshot of the run's input Items.
 	InputItems *string `json:"input_items" gorm:"type:text"`
 	// ContextItems is the accumulated standard Item list the next model call
@@ -161,6 +178,26 @@ func GetAgentRun(id, userId int) (*AgentRun, error) {
 		return nil, err
 	}
 	return &run, nil
+}
+
+// GetAgentRunByIdempotencyKey resolves the owner's original run for a
+// replayed creation request.
+func GetAgentRunByIdempotencyKey(userId int, key string) (*AgentRun, error) {
+	var run AgentRun
+	if err := DB.Where("user_id = ? AND idempotency_key = ?", userId, key).First(&run).Error; err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+// CountQueuedWorkRuns reports how many of the user's work runs wait in the
+// queue; the creation endpoint uses it as a flood guard.
+func CountQueuedWorkRuns(userId int) (int64, error) {
+	var count int64
+	err := DB.Model(&AgentRun{}).
+		Where("user_id = ? AND kind = ? AND status = ?", userId, "work", RunStatusQueued).
+		Count(&count).Error
+	return count, err
 }
 
 // UpdateAgentRunStatus transitions the run status and records the terminal

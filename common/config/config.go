@@ -117,6 +117,27 @@ var ChatMCPStdioEnabled = false
 // command's base name. "*" allows every command; an empty list allows none.
 var ChatMCPStdioAllowlist = "npx,uvx,bunx,python3,node"
 
+// Work runtime options (R3): the queue lives in the agent_runs table, and
+// these fix the lease/heartbeat terms, worker capacity, and run budgets set
+// out in the runtime reconstruction plan. Environment-configured only.
+var (
+	// WorkWorkerCount caps concurrently executing work runs per instance.
+	WorkWorkerCount = env.Int("WORK_WORKER_COUNT", 2)
+	// WorkUserConcurrency caps one user's concurrently running work runs
+	// across all instances (best-effort: the check races the claim).
+	WorkUserConcurrency = env.Int("WORK_USER_CONCURRENCY", 1)
+	// WorkLeaseSeconds is the claim lease term; WorkHeartbeatSeconds the
+	// renewal interval. A lost renewal (lease expired or cancel requested)
+	// stops the worker.
+	WorkLeaseSeconds     = int64(env.Int("WORK_LEASE_SECONDS", 60))
+	WorkHeartbeatSeconds = int64(env.Int("WORK_HEARTBEAT_SECONDS", 20))
+	// WorkRunTimeoutSeconds bounds one work run's wall clock; the run fails
+	// when the budget is exhausted.
+	WorkRunTimeoutSeconds = env.Int("WORK_RUN_TIMEOUT_SECONDS", 1800)
+	// WorkMaxToolIterations bounds the model/tool steps of one work run.
+	WorkMaxToolIterations = env.Int("WORK_MAX_TOOL_ITERATIONS", 32)
+)
+
 var RootUserEmail = ""
 
 var IsMasterNode = os.Getenv("NODE_TYPE") != "slave"

@@ -1062,5 +1062,48 @@
         "description": "DeepL 独立翻译工作台。"
       }
     }
+  },
+  "work": {
+    "title": "Work 任务",
+    "tagline": "提交目标后在后台持久执行，离页继续，随时回来查看进度与结果。",
+    "create": "新建任务",
+    "createHint": "任务目标会交给执行助手在后台推进；完成后会产出总结。",
+    "titleLabel": "任务标题（可选）",
+    "titlePlaceholder": "例如：整理季度销售数据",
+    "goalLabel": "任务目标",
+    "goalPlaceholder": "描述要完成什么、有什么要求与验收标准。",
+    "modelLabel": "模型",
+    "modelPlaceholder": "选择模型",
+    "submit": "提交任务",
+    "loading": "加载中…",
+    "empty": "还没有任务。提交一个目标开始。",
+    "refresh": "刷新",
+    "backToList": "返回任务列表",
+    "cancel": "取消任务",
+    "summary": "结果总结",
+    "progress": "执行进度",
+    "usage": "输入 {{prompt}} / 输出 {{completion}} tokens",
+    "queuedHint": "任务已进入队列，等待执行。",
+    "noProgress": "暂无输出。",
+    "inputPlaceholder": "任务执行中可以随时补充信息、要求或纠正…",
+    "inputDisabled": "运行已结束，无法追加输入。",
+    "inputHint": "追加输入会在模型或工具批次结束后被安全消费。",
+    "pendingInputs": "{{count}} 条输入等待消费",
+    "sendInput": "发送",
+    "status": {
+      "queued": "排队中",
+      "running": "执行中",
+      "waiting_input": "等待输入",
+      "cancel_requested": "取消中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "needs_reconciliation": "待核对"
+    },
+    "events": {
+      "toolCalled": "调用工具 {{name}}",
+      "toolResult": "工具返回结果",
+      "inputAppended": "收到追加输入"
+    }
   }
 }

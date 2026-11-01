@@ -211,6 +211,12 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&RunEvent{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&WorkTask{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&RunInput{}); err != nil {
+		return err
+	}
 	return nil
 }
 
