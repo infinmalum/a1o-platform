@@ -9,6 +9,7 @@ export interface AgentVersionSpec {
   instructions: string;
   model: string;
   skill_ids: number[];
+  file_ids: number[];
   sandbox_enabled: boolean;
   modes: AgentMode[];
   opening_hint: string;
@@ -45,6 +46,7 @@ export interface AgentPayload {
   instructions: string;
   model: string;
   skill_ids: number[];
+  file_ids: number[];
   sandbox_enabled: boolean;
   modes: AgentMode[];
   opening_hint: string;
@@ -54,6 +56,20 @@ export interface ChatSkillLite {
   id: number;
   name: string;
   enabled: boolean;
+}
+
+export interface ChatFileLite {
+  id: number;
+  name: string;
+  kind: 'text' | 'image';
+  size: number;
+}
+
+export interface AgentDraft {
+  name: string;
+  description: string;
+  instructions: string;
+  opening_hint: string;
 }
 
 interface ApiResponse<T> {
@@ -110,4 +126,12 @@ export const agentsApi = {
   // the chat page but duplicated here to keep page boundaries clean.
   listSkills: () => request<ChatSkillLite[]>('/api/chat/skills'),
   listModels: () => request<string[]>('/api/user/available_models'),
+  listFiles: () => request<ChatFileLite[]>('/api/chat/files'),
+  duplicate: (id: number) =>
+    request<AgentView>(`/api/chat/agents/${id}/duplicate`, { method: 'POST' }),
+  draft: (description: string, model: string) =>
+    request<AgentDraft>('/api/chat/agents/draft', {
+      method: 'POST',
+      body: JSON.stringify({ description, model }),
+    }),
 };

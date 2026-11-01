@@ -933,7 +933,12 @@
     "maxFileBytes": "附件大小上限（字节）",
     "balance": "余额",
     "globalSkills": "全局技能",
-    "noSkills": "暂无可用技能"
+    "noSkills": "暂无可用技能",
+    "saveAgent": "存为智能体",
+    "saveAgentTitle": "把当前会话设置存为智能体",
+    "saveAgentHint": "模型、系统提示词、技能与沙箱设置会写入智能体第 1 版，可重复使用",
+    "saveAgentSubmit": "保存",
+    "saveAgentDefaultName": "我的智能体"
   },
   "errorBoundary": {
     "title": "页面渲染出错了",
@@ -1055,11 +1060,11 @@
       },
       "image": {
         "title": "图像生成",
-        "description": "文生图工作台。"
+        "description": "提示词生成图像，离开页面不中断，产物持久保存。"
       },
       "translate": {
         "title": "翻译",
-        "description": "DeepL 独立翻译工作台。"
+        "description": "DeepL 或 LLM 驱动的双栏翻译工作台。"
       },
       "workspace": {
         "title": "工作区",
@@ -1151,7 +1156,20 @@
     "loading": "加载中…",
     "cancel": "取消",
     "submit": "创建",
-    "saveVersion": "保存为新版本"
+    "saveVersion": "保存为新版本",
+    "duplicate": "复制",
+    "filesLabel": "参考文件",
+    "noFiles": "还没有可用的上传文件；先在对话页上传素材",
+    "fileText": "文本",
+    "fileImage": "图像",
+    "draftHint": "描述你想创建的智能体，由 AI 生成草稿",
+    "draftButton": "AI 生成草稿",
+    "draftTitle": "AI 生成智能体草稿",
+    "draftDialogHint": "草稿会填入下方表单，保存前可以自由修改",
+    "draftInputLabel": "描述",
+    "draftInputPlaceholder": "例如：一个帮我把英文论文摘要改写成中文、并保持术语一致的助手",
+    "draftModelLabel": "使用模型",
+    "draftGenerate": "生成草稿"
   },
   "workspace": {
     "title": "工作区",
@@ -1176,5 +1194,59 @@
     },
     "untitledTask": "未命名任务",
     "untitledChat": "未命名会话"
+  },
+  "translate": {
+    "title": "翻译",
+    "tagline": "双栏文本翻译：显式发起、按实际用量计费、历史可回看",
+    "engineDeepl": "DeepL 翻译",
+    "engineLLM": "LLM 翻译",
+    "modelPlaceholder": "选择翻译模型",
+    "autoDetect": "自动检测",
+    "targetPlaceholder": "目标语言",
+    "swap": "交换语言",
+    "sourcePane": "原文",
+    "targetPane": "译文",
+    "sourcePlaceholder": "输入要翻译的文本…",
+    "outputEmpty": "译文会显示在这里",
+    "translating": "翻译中…",
+    "submit": "翻译",
+    "copy": "复制",
+    "copied": "已复制",
+    "detected": "检测语言",
+    "usageCharacters": "计费字符：{count}",
+    "usageTokens": "Token：输入 {input} / 输出 {output}",
+    "failed": "失败",
+    "running": "进行中",
+    "deeplUnavailable": "未接入 DeepL 渠道，可改用 LLM 翻译",
+    "historyTitle": "翻译历史",
+    "historyEmpty": "还没有翻译记录"
+  },
+  "images": {
+    "title": "图像创作",
+    "tagline": "提示词生成图像：离开页面不中断，产物持久保存",
+    "createTitle": "新建生成",
+    "modelLabel": "模型",
+    "modelPlaceholder": "选择图像模型",
+    "knownModels": "已知图像模型",
+    "otherModels": "其他可用模型（参数按网关校验为准）",
+    "sizeLabel": "尺寸",
+    "countLabel": "数量",
+    "promptLabel": "提示词",
+    "promptPlaceholder": "描述你想生成的图像…",
+    "submit": "生成",
+    "runsTitle": "生成记录",
+    "runsEmpty": "还没有生成记录",
+    "galleryTitle": "素材库",
+    "galleryEmpty": "生成的图像会保存在这里",
+    "retrySave": "重试保存",
+    "cancel": "取消",
+    "needsReconciliation": "执行结果待核对：请勿重复提交，等待管理员处理",
+    "status.queued": "排队中",
+    "status.running": "生成中",
+    "status.completed": "已完成",
+    "status.save_failed": "保存失败",
+    "status.failed": "生成失败",
+    "status.cancelled": "已取消",
+    "status.needs_reconciliation": "待核对"
   }
 }

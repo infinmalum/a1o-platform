@@ -371,6 +371,24 @@ func GetUserChatFiles(userId int) ([]*ChatFile, error) {
 	return files, err
 }
 
+// GetChatFilesByIds loads file rows by id without an owner filter: agent
+// version specs validated the references at authoring time, and a built-in
+// agent's files belong to its admin author while runners are other users.
+func GetChatFilesByIds(ids []int) (map[int]*ChatFile, error) {
+	files := make(map[int]*ChatFile, len(ids))
+	if len(ids) == 0 {
+		return files, nil
+	}
+	var rows []*ChatFile
+	if err := DB.Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		files[row.Id] = row
+	}
+	return files, nil
+}
+
 func GetChatFileById(id int, userId int) (*ChatFile, error) {
 	if id == 0 {
 		return nil, errors.New("文件不存在")

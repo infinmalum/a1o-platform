@@ -281,3 +281,46 @@ func TestCompactIfNeededSurvivesSummarizerFailure(t *testing.T) {
 		t.Fatalf("working set = %d, want unchanged %d", len(working), len(history))
 	}
 }
+
+// TestReferenceFileItemsBuildPreamble pins the agent version's reference
+// file preamble: one user item ahead of the conversation carrying a hint
+// part, inlined text payloads, and image data URLs in file order.
+func TestReferenceFileItemsBuildPreamble(t *testing.T) {
+	dir := t.TempDir()
+	textPath := filepath.Join(dir, "spec.txt")
+	if err := os.WriteFile(textPath, []byte("输出必须使用表格"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	imagePath := filepath.Join(dir, "logo.png")
+	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+	if err := os.WriteFile(imagePath, png, 0600); err != nil {
+		t.Fatal(err)
+	}
+	files := []*model.ChatFile{
+		{Id: 3, Name: "spec.txt", Kind: model.ChatFileKindText, Path: textPath},
+		{Id: 5, Name: "logo.png", Kind: model.ChatFileKindImage, Path: imagePath},
+	}
+	items, err := referenceFileItems(files)
+	if err != nil {
+		t.Fatalf("referenceFileItems failed: %v", err)
+	}
+	if len(items) != 1 || items[0].Type != ItemMessage || items[0].Role != "user" {
+		t.Fatalf("preamble = %+v", items)
+	}
+	parts := items[0].Content
+	if len(parts) != 3 {
+		t.Fatalf("parts = %d, want 3", len(parts))
+	}
+	if !strings.Contains(parts[0].Text, "参考文件") {
+		t.Fatalf("hint part = %+v", parts[0])
+	}
+	if !strings.Contains(parts[1].Text, "[文件 spec.txt]") || !strings.Contains(parts[1].Text, "输出必须使用表格") {
+		t.Fatalf("text part = %+v", parts[1])
+	}
+	if parts[2].Type != PartInputImage || !strings.HasPrefix(parts[2].ImageURL, "data:image/png;base64,") {
+		t.Fatalf("image part = %+v", parts[2])
+	}
+	if empty, err := referenceFileItems(nil); err != nil || empty != nil {
+		t.Fatalf("no files must produce no items: %v %v", empty, err)
+	}
+}

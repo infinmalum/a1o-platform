@@ -173,4 +173,23 @@ func TestCreateAgentDefinitionRejectsBadSpecs(t *testing.T) {
 		&AgentVersionSpec{Modes: []string{AgentModeChat}, SkillIds: []int{999}}); err == nil {
 		t.Fatal("invisible skill binding must be rejected")
 	}
+	// Reference files must belong to the author and stay within the count cap.
+	if err := CreateAgentDefinition(&AgentDefinition{Name: "越权文件"}, 42,
+		&AgentVersionSpec{Modes: []string{AgentModeChat}, FileIds: []int{77}}); err == nil {
+		t.Fatal("foreign reference file must be rejected")
+	}
+	tooMany := make([]int, AgentMaxReferenceFiles+1)
+	for i := range tooMany {
+		tooMany[i] = i + 1
+	}
+	if err := normalizeAgentSpec(&AgentVersionSpec{Modes: []string{AgentModeChat}, FileIds: tooMany}); err == nil {
+		t.Fatal("too many reference files must be rejected")
+	}
+	spec := &AgentVersionSpec{Modes: []string{AgentModeChat}, FileIds: []int{3, 3, 0, -1}}
+	if err := normalizeAgentSpec(spec); err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.FileIds) != 1 || spec.FileIds[0] != 3 {
+		t.Fatalf("file ids must dedupe and drop invalid entries, got %v", spec.FileIds)
+	}
 }

@@ -113,6 +113,10 @@ func main() {
 	// then start the persistent queue workers.
 	agent.DefaultScheduler().Start()
 
+	// Image workbench (studio proposal §7): reconcile interrupted
+	// generations, then start the same-process generation workers.
+	controller.StartImageWorker()
+
 	// Initialize i18n
 	if err := i18n.Init(); err != nil {
 		logger.FatalLog("failed to initialize i18n: " + err.Error())

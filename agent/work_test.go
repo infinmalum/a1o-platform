@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"context"
 	"encoding/json"
 	"errors"
@@ -571,5 +573,69 @@ func TestSchedulerBuildTurnRequestResolvesAgent(t *testing.T) {
 	}
 	if _, err := scheduler.buildTurnRequest(claimed, func(EventEnvelope) error { return nil }); err == nil {
 		t.Fatal("archived agent must fail the build")
+	}
+}
+
+// TestRunWorkInjectsReferenceFiles pins that the agent version's reference
+// files reach the work leg as a user preamble item carrying the file
+// content, ahead of the task input.
+func TestRunWorkInjectsReferenceFiles(t *testing.T) {
+	openWorkTestDB(t)
+	migrateAgentDefs(t)
+	task, run := newWorkFixture(t, 1)
+	dir := t.TempDir()
+	specPath := filepath.Join(dir, "rules.txt")
+	if err := os.WriteFile(specPath, []byte("报告必须以结论开头。"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file := &model.ChatFile{UserId: 1, Name: "rules.txt", Kind: model.ChatFileKindText,
+		Size: int64(len("报告必须以结论开头。")), Path: specPath}
+	if err := model.DB.Create(file).Error; err != nil {
+		t.Fatal(err)
+	}
+	def := &model.AgentDefinition{Name: "文件助手"}
+	if err := model.CreateAgentDefinition(def, 1, &model.AgentVersionSpec{
+		Instructions: "按参考文件执行。", Modes: []string{model.AgentModeWork},
+		FileIds:       []int{file.Id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	version, err := model.GetLatestAgentVersion(def.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.DB.Model(&model.AgentRun{}).Where("id = ?", run.Id).
+		Update("agent_version_id", version.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	fencing := claimFixture(t, run)
+
+	executor := &fakeExecutor{responses: []InvokeResult{{
+		Items: []Item{{Type: ItemFunctionCall, CallID: "c1", Name: CompleteTaskToolName,
+			Arguments: `{"summary":"完成"}`}},
+	}}}
+	err = (&Engine{}).RunWork(context.Background(), WorkTurnRequest{
+		Run: run, Fencing: fencing, Task: task,
+		AgentSpec:      &model.AgentVersionSpec{Instructions: "按参考文件执行。", Modes: []string{model.AgentModeWork}, FileIds: []int{file.Id}},
+		ReferenceFiles: []*model.ChatFile{file},
+		Executor:       executor, Emit: func(EventEnvelope) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("RunWork failed: %v", err)
+	}
+	if len(executor.requests) == 0 {
+		t.Fatal("no model leg ran")
+	}
+	items := executor.requests[0].Items
+	if len(items) < 2 {
+		t.Fatalf("leg items = %d, want at least preamble + task", len(items))
+	}
+	preamble := items[0]
+	if preamble.Type != ItemMessage || preamble.Role != "user" || len(preamble.Content) != 2 {
+		t.Fatalf("preamble item = %+v", preamble)
+	}
+	if !strings.Contains(preamble.Content[0].Text, "参考文件") ||
+		!strings.Contains(preamble.Content[1].Text, "报告必须以结论开头。") {
+		t.Fatalf("preamble content = %+v", preamble.Content)
 	}
 }

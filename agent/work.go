@@ -48,6 +48,9 @@ type WorkTurnRequest struct {
 	// pinned, or nil for runs without an agent. Its instructions join the
 	// work contract and its sandbox flag gates code execution.
 	AgentSpec *model.AgentVersionSpec
+	// ReferenceFiles are the agent version's reference-file attachments,
+	// delivered as a preamble item on every leg.
+	ReferenceFiles []*model.ChatFile
 	// Executor performs the model legs with the run owner's billing identity.
 	Executor ModelInvoker
 	// Emit receives every envelope (persisted events and transient deltas);
@@ -102,6 +105,12 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 			return e.workFail(req, fmt.Errorf("消费追加输入失败: %w", err))
 		}
 		items = append(items, inputItems...)
+		// The agent version's reference files ride ahead of the task context.
+		preamble, err := referenceFileItems(req.ReferenceFiles)
+		if err != nil {
+			return e.workFail(req, err)
+		}
+		items = append(preamble, items...)
 
 		leg, legErr := e.workLeg(ctx, req, items, tools)
 		if ctx.Err() != nil {

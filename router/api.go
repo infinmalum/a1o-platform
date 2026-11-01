@@ -155,6 +155,8 @@ func SetApiRouter(router *gin.Engine) {
 			chatRoute.POST("/agents", controller.CreateAgent)
 			chatRoute.PUT("/agents/:id", controller.UpdateAgent)
 			chatRoute.POST("/agents/:id/archive", controller.ArchiveAgent)
+			chatRoute.POST("/agents/:id/duplicate", controller.DuplicateAgent)
+			chatRoute.POST("/agents/draft", controller.DraftAgent)
 		}
 		chatAdminRoute := apiRouter.Group("/chat")
 		chatAdminRoute.Use(middleware.AdminAuth())
@@ -180,6 +182,19 @@ func SetApiRouter(router *gin.Engine) {
 			studioRoute.POST("/runs/:id/cancel", controller.CancelStudioRun)
 			studioRoute.GET("/tasks", controller.ListStudioTasks)
 			studioRoute.GET("/tasks/:id", controller.GetStudioTask)
+			// Dedicated workbenches (studio proposal §6/§7): the translation
+			// service with its engine metadata, and the persistent image
+			// generation runs with their products.
+			studioRoute.GET("/translations/meta", controller.GetTranslationMeta)
+			studioRoute.POST("/translations", controller.CreateTranslation)
+			studioRoute.GET("/translations", controller.GetTranslations)
+			studioRoute.GET("/images/meta", controller.GetImageMeta)
+			studioRoute.POST("/images", controller.CreateImageGeneration)
+			studioRoute.GET("/images", controller.ListImageGenerations)
+			studioRoute.GET("/images/:id", controller.GetImageGenerationStatus)
+			studioRoute.POST("/images/:id/retry-save", controller.RetryImageSave)
+			studioRoute.POST("/images/:id/cancel", controller.CancelImageGeneration)
+			studioRoute.GET("/images/assets/:id/content", controller.ServeImageAsset)
 		}
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.AdminAuth())

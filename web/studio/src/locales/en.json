@@ -933,7 +933,12 @@
     "maxFileBytes": "Attachment size limit (bytes)",
     "balance": "Balance",
     "globalSkills": "Global Skills",
-    "noSkills": "No skills available"
+    "noSkills": "No skills available",
+    "saveAgent": "Save as agent",
+    "saveAgentTitle": "Save this session as an agent",
+    "saveAgentHint": "Model, system prompt, skills and sandbox become version 1 of a reusable agent",
+    "saveAgentSubmit": "Save",
+    "saveAgentDefaultName": "My agent"
   },
   "errorBoundary": {
     "title": "Something went wrong while rendering this page",
@@ -1055,11 +1060,11 @@
       },
       "image": {
         "title": "Image generation",
-        "description": "Text-to-image workbench."
+        "description": "Prompt-driven generation that survives leaving the page, with persisted products."
       },
       "translate": {
         "title": "Translate",
-        "description": "Standalone DeepL translation workbench."
+        "description": "Two-pane translation powered by DeepL or an LLM."
       },
       "workspace": {
         "title": "Workspace",
@@ -1151,7 +1156,20 @@
     "loading": "Loading…",
     "cancel": "Cancel",
     "submit": "Create",
-    "saveVersion": "Save as new version"
+    "saveVersion": "Save as new version",
+    "duplicate": "Duplicate",
+    "filesLabel": "Reference files",
+    "noFiles": "No uploads available yet; upload material from the chat page first",
+    "fileText": "text",
+    "fileImage": "image",
+    "draftHint": "Describe the agent you want and let AI draft it",
+    "draftButton": "AI draft",
+    "draftTitle": "AI agent draft",
+    "draftDialogHint": "The draft fills the form below; edit freely before saving",
+    "draftInputLabel": "Description",
+    "draftInputPlaceholder": "e.g. An assistant that rewrites English paper abstracts into Chinese with consistent terminology",
+    "draftModelLabel": "Model",
+    "draftGenerate": "Generate draft"
   },
   "workspace": {
     "title": "Workspace",
@@ -1176,5 +1194,59 @@
     },
     "untitledTask": "Untitled task",
     "untitledChat": "Untitled chat"
+  },
+  "translate": {
+    "title": "Translate",
+    "tagline": "Two-pane text translation: explicit submission, exact usage billing, persistent history",
+    "engineDeepl": "DeepL",
+    "engineLLM": "LLM translation",
+    "modelPlaceholder": "Pick a translation model",
+    "autoDetect": "Auto detect",
+    "targetPlaceholder": "Target language",
+    "swap": "Swap languages",
+    "sourcePane": "Source",
+    "targetPane": "Translation",
+    "sourcePlaceholder": "Enter the text to translate…",
+    "outputEmpty": "The translation will appear here",
+    "translating": "Translating…",
+    "submit": "Translate",
+    "copy": "Copy",
+    "copied": "Copied",
+    "detected": "Detected",
+    "usageCharacters": "Billed characters: {count}",
+    "usageTokens": "Tokens: {input} in / {output} out",
+    "failed": "Failed",
+    "running": "Running",
+    "deeplUnavailable": "No DeepL channel connected; LLM translation is available",
+    "historyTitle": "History",
+    "historyEmpty": "No translations yet"
+  },
+  "images": {
+    "title": "Image studio",
+    "tagline": "Prompt-driven generation that survives leaving the page, with persisted products",
+    "createTitle": "New generation",
+    "modelLabel": "Model",
+    "modelPlaceholder": "Pick an image model",
+    "knownModels": "Known image models",
+    "otherModels": "Other available models (parameters validated by the gateway)",
+    "sizeLabel": "Size",
+    "countLabel": "Count",
+    "promptLabel": "Prompt",
+    "promptPlaceholder": "Describe the image you want…",
+    "submit": "Generate",
+    "runsTitle": "Generations",
+    "runsEmpty": "No generations yet",
+    "galleryTitle": "Gallery",
+    "galleryEmpty": "Generated images are saved here",
+    "retrySave": "Retry save",
+    "cancel": "Cancel",
+    "needsReconciliation": "Outcome pending reconciliation: do not resubmit, awaiting review",
+    "status.queued": "Queued",
+    "status.running": "Running",
+    "status.completed": "Completed",
+    "status.save_failed": "Save failed",
+    "status.failed": "Failed",
+    "status.cancelled": "Cancelled",
+    "status.needs_reconciliation": "Pending review"
   }
 }

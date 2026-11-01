@@ -17,8 +17,8 @@ import { getSystemName } from '@/helpers/utils';
 
 // Entry point per docs/studio-transformation-proposal.md §布局: the overview
 // offers the task kinds; Chat / Work / 智能体广场 / 工作区 are wired, the
-// dedicated image and translate workbenches remain 未开放 so the IA is
-// visible without faking entries.
+// every confirmed entry is live: the image and translate workbenches
+// shipped with the P3 pass.
 const Home: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -33,8 +33,8 @@ const Home: React.FC = () => {
     { key: 'work', icon: Wrench, open: true, onClick: () => navigate('/work') },
     { key: 'agent', icon: Bot, open: true, onClick: () => navigate('/agents') },
     { key: 'workspace', icon: FolderOpen, open: true, onClick: () => navigate('/workspace') },
-    { key: 'image', icon: ImageIcon, open: false },
-    { key: 'translate', icon: Languages, open: false },
+    { key: 'image', icon: ImageIcon, open: true, onClick: () => navigate('/images') },
+    { key: 'translate', icon: Languages, open: true, onClick: () => navigate('/translate') },
   ];
 
   return (

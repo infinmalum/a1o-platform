@@ -236,6 +236,17 @@ func (s *Scheduler) buildTurnRequest(run *model.AgentRun, emit Emitter) (*WorkTu
 			return nil, err
 		}
 		req.Skills = skills
+		if len(spec.FileIds) > 0 {
+			filesById, err := model.GetChatFilesByIds(spec.FileIds)
+			if err != nil {
+				return nil, err
+			}
+			for _, id := range spec.FileIds {
+				if file := filesById[id]; file != nil {
+					req.ReferenceFiles = append(req.ReferenceFiles, file)
+				}
+			}
+		}
 	}
 	return req, nil
 }

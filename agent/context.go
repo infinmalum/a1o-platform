@@ -88,6 +88,23 @@ func loadHistoryFiles(session *model.ChatSession, history []*model.ChatMessage) 
 	return files, nil
 }
 
+// fileContentPart converts one stored file into its standard content part:
+// images become data URLs, everything else inlines as labelled text.
+func fileContentPart(file *model.ChatFile) (ContentPart, error) {
+	payload, err := model.ReadChatFilePayload(file)
+	if err != nil {
+		return ContentPart{}, fmt.Errorf("读取附件 %s 失败: %w", file.Name, err)
+	}
+	if file.Kind == model.ChatFileKindImage {
+		mimeType := http.DetectContentType(payload)
+		dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType,
+			base64.StdEncoding.EncodeToString(payload))
+		return ContentPart{Type: PartInputImage, ImageURL: dataURL}, nil
+	}
+	return ContentPart{Type: PartInputText,
+		Text: fmt.Sprintf("[文件 %s]\n%s", file.Name, string(payload))}, nil
+}
+
 // resolveParts expands a user message's stored attachments into standard
 // content parts, inlining text payloads and converting images to data URLs.
 func resolveParts(msg *model.ChatMessage, files map[int]*model.ChatFile) ([]ContentPart, error) {
@@ -115,21 +132,33 @@ func resolveParts(msg *model.ChatMessage, files map[int]*model.ChatFile) ([]Cont
 				Text: fmt.Sprintf("[附件 #%d 已删除]", part.FileID)})
 			continue
 		}
-		payload, err := model.ReadChatFilePayload(file)
+		converted, err := fileContentPart(file)
 		if err != nil {
-			return nil, fmt.Errorf("读取附件 %s 失败: %w", file.Name, err)
+			return nil, err
 		}
-		if file.Kind == model.ChatFileKindImage {
-			mimeType := http.DetectContentType(payload)
-			dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType,
-				base64.StdEncoding.EncodeToString(payload))
-			parts = append(parts, ContentPart{Type: PartInputImage, ImageURL: dataURL})
-		} else {
-			parts = append(parts, ContentPart{Type: PartInputText,
-				Text: fmt.Sprintf("[文件 %s]\n%s", file.Name, string(payload))})
-		}
+		parts = append(parts, converted)
 	}
 	return parts, nil
+}
+
+// referenceFileItems builds the agent version's reference-file preamble: one
+// user-role item ahead of the conversation so the frozen configuration's
+// material is available on every leg without touching stored history.
+func referenceFileItems(files []*model.ChatFile) ([]Item, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	parts := make([]ContentPart, 0, len(files)+1)
+	parts = append(parts, ContentPart{Type: PartInputText,
+		Text: "[参考文件] 以下是智能体配置携带的参考材料，供本次任务使用。"})
+	for _, file := range files {
+		converted, err := fileContentPart(file)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, converted)
+	}
+	return []Item{{Type: ItemMessage, Role: "user", Content: parts}}, nil
 }
 
 // historyToItems converts stored messages into standard Items in history

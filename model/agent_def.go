@@ -56,10 +56,15 @@ type AgentVersion struct {
 // SkillIds reference the runner-visible skills allowed by the agent: actual
 // permissions are the intersection of the current user's enabled skills and
 // this list, re-resolved at every execution so revocation stays immediate.
+// FileIds are the version's reference files (the restricted attachment
+// context): personal agents reference their author's uploads, built-in
+// agents reference admin-published material delivered as part of the frozen
+// configuration.
 type AgentVersionSpec struct {
 	Instructions   string   `json:"instructions"`
 	Model          string   `json:"model"`
 	SkillIds       []int    `json:"skill_ids"`
+	FileIds        []int    `json:"file_ids"`
 	SandboxEnabled bool     `json:"sandbox_enabled"`
 	Modes          []string `json:"modes"`
 	OpeningHint    string   `json:"opening_hint"`
@@ -67,6 +72,14 @@ type AgentVersionSpec struct {
 	TopP           *float64 `json:"top_p,omitempty"`
 	MaxTokens      int      `json:"max_tokens"`
 }
+
+// Reference file limits: attachments ride every model leg, so the count and
+// payload stay bounded instead of letting one version carry a corpus.
+const (
+	AgentMaxReferenceFiles     = 8
+	AgentReferenceFileMaxBytes = int64(4 << 20)
+	AgentReferenceFileMaxTotal = int64(8 << 20)
+)
 
 // normalizeAgentSpec clamps a submitted spec into its persisted form.
 func normalizeAgentSpec(spec *AgentVersionSpec) error {
@@ -97,6 +110,20 @@ func normalizeAgentSpec(spec *AgentVersionSpec) error {
 	if len(spec.SkillIds) > 64 {
 		return errors.New("Skill 绑定过多")
 	}
+	// Deduplicate and sanity-check the reference file ids; ownership and
+	// payload limits are validated against the author's files in
+	// validateAgentFileIds.
+	ids := make([]int, 0, len(spec.FileIds))
+	for _, id := range spec.FileIds {
+		if id <= 0 || slices.Contains(ids, id) {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) > AgentMaxReferenceFiles {
+		return fmt.Errorf("参考文件最多 %d 个", AgentMaxReferenceFiles)
+	}
+	spec.FileIds = ids
 	return nil
 }
 
@@ -130,6 +157,39 @@ func validateAgentSkillIds(userId int, skillIds []int) error {
 	return nil
 }
 
+// validateAgentFileIds rejects reference files the author does not own or
+// that exceed the payload caps: a version snapshot stores configuration, and
+// a file reference the author cannot control would either fail at run time
+// or silently grant nothing.
+func validateAgentFileIds(userId int, fileIds []int) error {
+	if len(fileIds) == 0 {
+		return nil
+	}
+	files, err := GetUserChatFiles(userId)
+	if err != nil {
+		return err
+	}
+	owned := make(map[int]*ChatFile, len(files))
+	var total int64
+	for _, file := range files {
+		owned[file.Id] = file
+	}
+	for _, id := range fileIds {
+		file, ok := owned[id]
+		if !ok {
+			return fmt.Errorf("参考文件 #%d 不存在或不可见", id)
+		}
+		if file.Size > AgentReferenceFileMaxBytes {
+			return fmt.Errorf("参考文件 %s 超过单文件上限", file.Name)
+		}
+		total += file.Size
+	}
+	if total > AgentReferenceFileMaxTotal {
+		return errors.New("参考文件总大小超过上限")
+	}
+	return nil
+}
+
 // CreateAgentDefinition persists a definition together with its first
 // immutable version. skillIds are validated against the author's visible
 // skills; userId 0 (built-in authorship) validates against admin-visible
@@ -139,6 +199,9 @@ func CreateAgentDefinition(def *AgentDefinition, userId int, spec *AgentVersionS
 		return err
 	}
 	if err := validateAgentSkillIds(userId, spec.SkillIds); err != nil {
+		return err
+	}
+	if err := validateAgentFileIds(userId, spec.FileIds); err != nil {
 		return err
 	}
 	encoded, err := json.Marshal(spec)
@@ -170,6 +233,9 @@ func CreateAgentVersion(defId int, spec *AgentVersionSpec) (*AgentVersion, error
 		return nil, err
 	}
 	if err := validateAgentSkillIds(def.OwnerId, spec.SkillIds); err != nil {
+		return nil, err
+	}
+	if err := validateAgentFileIds(def.OwnerId, spec.FileIds); err != nil {
 		return nil, err
 	}
 	encoded, err := json.Marshal(spec)

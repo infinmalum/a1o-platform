@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/random"
 	"github.com/infinmalum/a1o-platform/monitor"
 	"github.com/infinmalum/a1o-platform/relay"
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
@@ -544,6 +546,34 @@ func providerRequestBody(transport *adaptor.Context, requestMeta *meta.Meta, req
 		return nil, err
 	}
 	return bytes.NewReader(jsonData), nil
+}
+
+// GenerateProviderImages drives one provider-format image generation
+// (currently the retained Replicate format) headlessly for the studio image
+// workbench: the caller has already selected the channel and computed the
+// fixed image quota; the attempt runs under the shared lifecycle and the
+// OpenAI-shaped response lands in dst instead of a relay client connection.
+func GenerateProviderImages(ctx context.Context, imageRequest *relaymodel.ImageRequest,
+	principal lifecycle.Principal, channel lifecycle.Channel, fixedQuota int64, dst http.ResponseWriter,
+) *lifecycle.HTTPError {
+	synthetic, err := http.NewRequestWithContext(ctx, http.MethodPost, "/v1/images/generations", http.NoBody)
+	if err != nil {
+		return &lifecycle.HTTPError{Status: http.StatusInternalServerError, Message: err.Error()}
+	}
+	transport := adaptor.NewContext(synthetic, dst)
+	requestID := random.GetUUID()
+	transport.Set(helper.RequestIdKey, requestID)
+	transport.Set("response_format", imageRequest.ResponseFormat)
+	transport.Set(ctxkey.RequestModel, imageRequest.Model)
+	transport.Set(ctxkey.OriginalModel, imageRequest.Model)
+	attempt := providerImageAttempt(imageRequest, principal, transport)
+	input := lifecycle.Request{
+		Protocol: native.OpenAIImages, Model: imageRequest.Model,
+		FixedQuota: fixedQuota, RetryLimit: config.RetryTimes,
+		Channel:   channel,
+		Principal: principal,
+	}
+	return lifecycle.ForwardAdapter(ctx, input, attempt)
 }
 
 // providerImageRequestBody builds the upstream body for provider image

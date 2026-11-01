@@ -64,6 +64,11 @@ type ChatTurnRequest struct {
 	// pinned, or nil for plain sessions. Its instructions prepend the run's
 	// system content; its sandbox flag caps the session's.
 	AgentSpec *model.AgentVersionSpec
+	// ReferenceFiles are the agent version's reference-file attachments;
+	// they ride every leg as a preamble item, exactly like attachments do,
+	// regardless of the current user (built-in agents carry their admin
+	// author's published material).
+	ReferenceFiles []*model.ChatFile
 	// Executor performs the model legs; it carries the billing identity.
 	Executor ModelInvoker
 	// ContextBudget overrides the configured budget when positive.
@@ -164,7 +169,13 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	if err != nil {
 		return e.fail(turn, emit, err)
 	}
-	items := make([]Item, 0, len(working)*2)
+	// The agent version's reference files ride ahead of the conversation.
+	preamble, err := referenceFileItems(turn.ReferenceFiles)
+	if err != nil {
+		return e.fail(turn, emit, err)
+	}
+	items := make([]Item, 0, len(working)*2+len(preamble))
+	items = append(items, preamble...)
 	for _, entry := range working {
 		items = append(items, entry.items...)
 	}

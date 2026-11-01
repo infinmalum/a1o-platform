@@ -223,6 +223,15 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&AgentVersion{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&TranslationRecord{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ImageGeneration{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ImageAsset{}); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -12,6 +12,8 @@ import Work from './pages/Work';
 import WorkTaskDetail from './pages/Work/WorkTaskDetail';
 import Agents from './pages/Agents';
 import Workspace from './pages/Workspace';
+import Translate from './pages/Translate';
+import Images from './pages/Images';
 import OAuthCallback from './pages/OAuthCallback';
 import { Button } from '@/components/ui/button';
 
@@ -145,6 +147,22 @@ const App: React.FC = () => {
             element={
               <PrivateRoute>
                 <Workspace />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/translate'
+            element={
+              <PrivateRoute>
+                <Translate />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/images'
+            element={
+              <PrivateRoute>
+                <Images />
               </PrivateRoute>
             }
           />

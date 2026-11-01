@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquarePlus, Pencil, Settings2, Trash2, Wrench } from 'lucide-react';
+import { Bot, MessageSquarePlus, Pencil, Save, Settings2, Trash2, Wrench } from 'lucide-react';
 
 import { API } from '@/helpers/api';
 import { renderQuota } from '@/helpers/render';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -21,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -63,6 +65,10 @@ const Chat = () => {
   const [streaming, setStreaming] = React.useState(false);
   const [streamError, setStreamError] = React.useState('');
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [saveAgentOpen, setSaveAgentOpen] = React.useState(false);
+  const [saveAgentName, setSaveAgentName] = React.useState('');
+  const [saveAgentDesc, setSaveAgentDesc] = React.useState('');
+  const [savingAgent, setSavingAgent] = React.useState(false);
   const [toolsOpen, setToolsOpen] = React.useState(false);
   const [renameTarget, setRenameTarget] = React.useState<ChatSession | null>(null);
   const [renameValue, setRenameValue] = React.useState('');
@@ -430,6 +436,34 @@ const Chat = () => {
     setDeleteTarget(null);
   };
 
+  // Save the active session's settings as a reusable personal agent draft
+  // (P2a): model, system prompt, sampling, skills and sandbox carry over;
+  // the agent starts as chat-only and version 1.
+  const saveSessionAsAgent = async () => {
+    if (!activeSession || savingAgent) return;
+    setSavingAgent(true);
+    try {
+      await agentsApi.create({
+        name: saveAgentName.trim() || activeSession.title || t('chat.saveAgentDefaultName'),
+        description: saveAgentDesc.trim(),
+        instructions: activeSession.system_prompt || '',
+        model: activeSession.model,
+        skill_ids: selectedSkillIds,
+        file_ids: [],
+        sandbox_enabled: activeSession.sandbox_enabled,
+        modes: ['chat'],
+        opening_hint: '',
+      });
+      setSaveAgentOpen(false);
+      setSaveAgentName('');
+      setSaveAgentDesc('');
+    } catch {
+      // toast already surfaced by the client helper
+    } finally {
+      setSavingAgent(false);
+    }
+  };
+
   return (
     <div className='mx-auto w-full max-w-6xl px-4 py-4'>
       <div className='flex h-[calc(100vh-7rem)] min-h-[480px] overflow-hidden rounded-xl border'>
@@ -494,6 +528,19 @@ const Chat = () => {
           <div className='flex gap-1.5 border-t p-2.5'>
             <Button variant='outline' size='sm' className='flex-1' onClick={() => setToolsOpen(true)}>
               <Wrench /> {t('chat.toolsManager')}
+            </Button>
+            <Button
+              variant='outline'
+              size='icon-sm'
+              disabled={!activeSession}
+              onClick={() => {
+                setSaveAgentName(activeSession?.title || '');
+                setSaveAgentDesc('');
+                setSaveAgentOpen(true);
+              }}
+              title={t('chat.saveAgent')}
+            >
+              <Save />
             </Button>
             <Button
               variant='outline'
@@ -589,6 +636,42 @@ const Chat = () => {
             </Button>
             <Button variant='destructive' onClick={removeSession}>
               {t('chat.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={saveAgentOpen} onOpenChange={setSaveAgentOpen}>
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>{t('chat.saveAgentTitle')}</DialogTitle>
+            <DialogDescription>{t('chat.saveAgentHint')}</DialogDescription>
+          </DialogHeader>
+          <div className='grid gap-4 py-2'>
+            <div className='grid gap-2'>
+              <Label htmlFor='save-agent-name'>{t('agents.nameLabel')}</Label>
+              <Input
+                id='save-agent-name'
+                value={saveAgentName}
+                onChange={(event) => setSaveAgentName(event.target.value)}
+                placeholder={t('agents.namePlaceholder')}
+              />
+            </div>
+            <div className='grid gap-2'>
+              <Label htmlFor='save-agent-desc'>{t('agents.descLabel')}</Label>
+              <Input
+                id='save-agent-desc'
+                value={saveAgentDesc}
+                onChange={(event) => setSaveAgentDesc(event.target.value)}
+                placeholder={t('agents.descPlaceholder')}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setSaveAgentOpen(false)}>
+              {t('chat.cancel')}
+            </Button>
+            <Button onClick={saveSessionAsAgent} disabled={savingAgent}>
+              <Bot /> {t('chat.saveAgentSubmit')}
             </Button>
           </DialogFooter>
         </DialogContent>

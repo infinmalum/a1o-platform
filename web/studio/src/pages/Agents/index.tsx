@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Archive, ArchiveRestore, MessageCircle, Pencil, Plus, Wrench } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  Copy,
+  Loader2,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Sparkles,
+  Wrench,
+} from 'lucide-react';
 
 import { isAdmin } from '@/helpers/utils';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +45,14 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { agentsApi, type AgentMode, type AgentPayload, type AgentView } from './agentsApi';
+import {
+  agentsApi,
+  type AgentDraft,
+  type AgentMode,
+  type AgentPayload,
+  type AgentView,
+  type ChatFileLite,
+} from './agentsApi';
 
 interface AgentFormState {
   name: string;
@@ -44,6 +61,7 @@ interface AgentFormState {
   model: string;
   opening_hint: string;
   skill_ids: number[];
+  file_ids: number[];
   sandbox_enabled: boolean;
   modes: AgentMode[];
 }
@@ -55,6 +73,7 @@ const emptyForm: AgentFormState = {
   model: '',
   opening_hint: '',
   skill_ids: [],
+  file_ids: [],
   sandbox_enabled: false,
   modes: ['chat', 'work'],
 };
@@ -67,6 +86,7 @@ function formFromAgent(agent: AgentView): AgentFormState {
     model: agent.spec?.model || '',
     opening_hint: agent.spec?.opening_hint || '',
     skill_ids: agent.spec?.skill_ids || [],
+    file_ids: agent.spec?.file_ids || [],
     sandbox_enabled: !!agent.spec?.sandbox_enabled,
     modes: agent.spec?.modes?.length ? agent.spec.modes : ['chat', 'work'],
   };
@@ -81,6 +101,7 @@ const Agents: React.FC = () => {
   const [builtin, setBuiltin] = useState<AgentView[]>([]);
   const [mine, setMine] = useState<AgentView[]>([]);
   const [skills, setSkills] = useState<{ id: number; name: string; enabled: boolean }[]>([]);
+  const [files, setFiles] = useState<ChatFileLite[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -88,6 +109,10 @@ const Agents: React.FC = () => {
   const [form, setForm] = useState<AgentFormState>(emptyForm);
   const [builtinTarget, setBuiltinTarget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftDescription, setDraftDescription] = useState('');
+  const [draftModel, setDraftModel] = useState('');
+  const [drafting, setDrafting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +131,7 @@ const Agents: React.FC = () => {
     load();
     agentsApi.listSkills().then(setSkills).catch(() => undefined);
     agentsApi.listModels().then(setModels).catch(() => undefined);
+    agentsApi.listFiles().then(setFiles).catch(() => undefined);
   }, [load]);
 
   const openCreate = (builtin: boolean) => {
@@ -132,6 +158,7 @@ const Agents: React.FC = () => {
       model: form.model,
       opening_hint: form.opening_hint,
       skill_ids: form.skill_ids,
+      file_ids: form.file_ids,
       sandbox_enabled: form.sandbox_enabled,
       modes: form.modes,
     };
@@ -158,6 +185,36 @@ const Agents: React.FC = () => {
       await load();
     } catch {
       // toast already surfaced
+    }
+  };
+
+  const duplicate = async (agent: AgentView) => {
+    try {
+      await agentsApi.duplicate(agent.id);
+      await load();
+    } catch {
+      // toast already surfaced by the client helper
+    }
+  };
+
+  const generateDraft = async () => {
+    if (!draftDescription.trim() || drafting) return;
+    setDrafting(true);
+    try {
+      const draft: AgentDraft = await agentsApi.draft(draftDescription.trim(), draftModel || form.model);
+      setForm((current) => ({
+        ...current,
+        name: draft.name || current.name,
+        description: draft.description || current.description,
+        instructions: draft.instructions || current.instructions,
+        opening_hint: draft.opening_hint || current.opening_hint,
+      }));
+      setDraftOpen(false);
+      setDraftDescription('');
+    } catch {
+      // toast already surfaced by the client helper
+    } finally {
+      setDrafting(false);
     }
   };
 
@@ -197,6 +254,11 @@ const Agents: React.FC = () => {
             <MessageCircle /> {t('agents.startChat')}
           </Button>
         )}
+        {!agent.archived && (
+          <Button size='sm' variant='ghost' onClick={() => duplicate(agent)}>
+            <Copy /> {t('agents.duplicate')}
+          </Button>
+        )}
         {agent.spec?.modes?.includes('work') && !agent.archived && (
           <Button size='sm' variant='outline' onClick={() => startWork(agent)}>
             <Wrench /> {t('agents.startWork')}
@@ -232,6 +294,15 @@ const Agents: React.FC = () => {
       skill_ids: checked
         ? [...current.skill_ids, id]
         : current.skill_ids.filter((item) => item !== id),
+    }));
+  };
+
+  const toggleFile = (id: number, checked: boolean) => {
+    setForm((current) => ({
+      ...current,
+      file_ids: checked
+        ? [...current.file_ids, id]
+        : current.file_ids.filter((item) => item !== id),
     }));
   };
 
@@ -304,6 +375,24 @@ const Agents: React.FC = () => {
                 placeholder={t('agents.descPlaceholder')}
               />
             </div>
+            {!editing && (
+              <div className='flex items-center justify-between rounded-md border bg-muted/30 p-2'>
+                <span className='text-muted-foreground text-xs'>{t('agents.draftHint')}</span>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={() => {
+                    // Preselect only the form's own model choice: capability
+                    // cannot be guessed from names, and an unpriced or
+                    // non-chat pick surfaces a precise gateway error.
+                    setDraftModel((current) => current || form.model);
+                    setDraftOpen(true);
+                  }}
+                >
+                  <Sparkles /> {t('agents.draftButton')}
+                </Button>
+              </div>
+            )}
             <div className='grid gap-2'>
               <Label htmlFor='agent-instructions'>{t('agents.instructionsLabel')}</Label>
               <Textarea
@@ -359,6 +448,30 @@ const Agents: React.FC = () => {
                 </div>
               )}
             </div>
+            <div className='grid gap-2'>
+              <Label>{t('agents.filesLabel')}</Label>
+              {files.length === 0 ? (
+                <p className='text-muted-foreground text-xs'>{t('agents.noFiles')}</p>
+              ) : (
+                <div className='grid max-h-32 gap-1.5 overflow-y-auto rounded-md border p-2'>
+                  {files.map((file) => (
+                    <label
+                      key={file.id}
+                      className='flex cursor-pointer items-center gap-2 text-sm'
+                    >
+                      <Checkbox
+                        checked={form.file_ids.includes(file.id)}
+                        onCheckedChange={(checked) => toggleFile(file.id, checked === true)}
+                      />
+                      {file.name}
+                      <span className='text-muted-foreground ml-auto text-xs'>
+                        {file.kind === 'image' ? t('agents.fileImage') : t('agents.fileText')}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className='flex items-center justify-between'>
               <Label htmlFor='agent-sandbox'>{t('agents.sandboxLabel')}</Label>
               <Switch
@@ -391,6 +504,51 @@ const Agents: React.FC = () => {
               disabled={!form.name.trim() || form.modes.length === 0 || submitting}
             >
               {editing ? t('agents.saveVersion') : t('agents.submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>{t('agents.draftTitle')}</DialogTitle>
+            <DialogDescription>{t('agents.draftDialogHint')}</DialogDescription>
+          </DialogHeader>
+          <div className='grid gap-4 py-2'>
+            <div className='grid gap-2'>
+              <Label htmlFor='agent-draft'>{t('agents.draftInputLabel')}</Label>
+              <Textarea
+                id='agent-draft'
+                value={draftDescription}
+                onChange={(event) => setDraftDescription(event.target.value)}
+                placeholder={t('agents.draftInputPlaceholder')}
+                rows={4}
+              />
+            </div>
+            <div className='grid gap-2'>
+              <Label>{t('agents.draftModelLabel')}</Label>
+              <Select value={draftModel} onValueChange={setDraftModel}>
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder={t('agents.modelPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent className='max-h-72'>
+                  {models.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setDraftOpen(false)}>
+              {t('agents.cancel')}
+            </Button>
+            <Button onClick={generateDraft} disabled={!draftDescription.trim() || drafting}>
+              {drafting ? <Loader2 className='animate-spin' /> : <Sparkles />}
+              {t('agents.draftGenerate')}
             </Button>
           </DialogFooter>
         </DialogContent>

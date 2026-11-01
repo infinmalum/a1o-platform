@@ -296,6 +296,7 @@ func RunChatTurn(c *gin.Context) {
 	// archived definitions block it, other users' private ones never resolve,
 	// and the skill/sandbox scope re-checks current grants.
 	var agentSpec *model.AgentVersionSpec
+	var referenceFiles []*model.ChatFile
 	if session.AgentVersionId > 0 {
 		_, _, agentSpec, err = model.ResolveAgentVersionForRun(userId, session.AgentVersionId, model.AgentModeChat)
 		if err != nil {
@@ -305,6 +306,18 @@ func RunChatTurn(c *gin.Context) {
 		skills = filterSkillsInAgentScope(skills, agentSpec)
 		if !agentSpec.SandboxEnabled {
 			session.SandboxEnabled = false
+		}
+		if len(agentSpec.FileIds) > 0 {
+			filesById, err := model.GetChatFilesByIds(agentSpec.FileIds)
+			if err != nil {
+				chatError(c, fmt.Errorf("加载参考文件失败: %w", err))
+				return
+			}
+			for _, id := range agentSpec.FileIds {
+				if file := filesById[id]; file != nil {
+					referenceFiles = append(referenceFiles, file)
+				}
+			}
 		}
 	}
 	token, err := model.EnsureChatToken(userId)
@@ -347,13 +360,14 @@ func RunChatTurn(c *gin.Context) {
 		return nil
 	}
 	turn := agent.ChatTurnRequest{
-		Run:           run,
-		Session:       session,
-		History:       history,
-		Skills:        skills,
-		AgentSpec:     agentSpec,
-		Executor:      &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
-		ContextBudget: session.ContextBudget,
+		Run:            run,
+		Session:        session,
+		History:        history,
+		Skills:         skills,
+		AgentSpec:      agentSpec,
+		ReferenceFiles: referenceFiles,
+		Executor:       &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
+		ContextBudget:  session.ContextBudget,
 	}
 	_ = agent.Default().RunChat(ctx, emit, turn)
 }
