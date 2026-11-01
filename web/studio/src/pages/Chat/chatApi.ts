@@ -15,6 +15,7 @@ export interface ChatSession {
   sandbox_enabled: boolean;
   context_budget: number;
   skill_ids: number[] | null;
+  agent_version_id: number;
   updated_time: number;
 }
 

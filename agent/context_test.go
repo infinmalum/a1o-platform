@@ -28,8 +28,18 @@ func TestSystemContentJoinsPromptAndSkills(t *testing.T) {
 		{Name: "翻译", Instructions: "把用户输入翻译成英文。"},
 		{Name: "空", Instructions: "  "},
 	}
-	got := systemContent(session, skills)
+	got := systemContent(session, skills, nil)
 	want := "保持简洁\n\n## Skill: 翻译\n把用户输入翻译成英文。"
+	if got != want {
+		t.Fatalf("systemContent = %q, want %q", got, want)
+	}
+}
+
+func TestSystemContentPrependsAgentInstructions(t *testing.T) {
+	session := &model.ChatSession{SystemPrompt: "保持简洁"}
+	spec := &model.AgentVersionSpec{Instructions: "你是论文助手。"}
+	got := systemContent(session, nil, spec)
+	want := "你是论文助手。\n\n保持简洁"
 	if got != want {
 		t.Fatalf("systemContent = %q, want %q", got, want)
 	}

@@ -73,6 +73,13 @@ export interface StudioRunCreateResult {
   task?: WorkTask;
 }
 
+export interface StudioRunCreatePayload {
+  title: string;
+  input: string;
+  model: string;
+  agent_version_id?: number;
+}
+
 interface ApiResponse<T> {
   success: boolean;
   message: string;
@@ -117,7 +124,7 @@ export const workApi = {
   getTask: (taskId: number) =>
     request<{ task: WorkTask; runs: AgentRun[] }>(`/api/studio/tasks/${taskId}`),
   getRun: (runId: number) => request<RunProjection>(`/api/studio/runs/${runId}`),
-  createRun: (payload: { title: string; input: string; model: string }) =>
+  createRun: (payload: StudioRunCreatePayload) =>
     request<StudioRunCreateResult>('/api/studio/runs', {
       method: 'POST',
       body: JSON.stringify({ kind: 'work', ...payload, idempotency_key: newIdempotencyKey() }),

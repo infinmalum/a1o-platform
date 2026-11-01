@@ -41,6 +41,9 @@ type chatSessionPayload struct {
 	SandboxEnabled bool     `json:"sandbox_enabled"`
 	ContextBudget  int      `json:"context_budget"`
 	SkillIds       []int    `json:"skill_ids"`
+	// AgentVersionId binds the session to an immutable agent version at
+	// creation; 0 keeps a plain session. The binding never changes after.
+	AgentVersionId int `json:"agent_version_id"`
 }
 
 // validateChatSession clamps session fields into safe ranges.
@@ -92,18 +95,46 @@ func GetChatSessions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": sessions})
 }
 
-// CreateChatSession starts a new conversation.
+// CreateChatSession starts a new conversation. When the payload pins an
+// agent version, the server — never the client — resolves it, seeds the
+// session with the frozen configuration, and stores the binding.
 func CreateChatSession(c *gin.Context) {
+	userId := c.GetInt(ctxkey.Id)
 	var payload chatSessionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		chatError(c, err)
 		return
 	}
-	session := &model.ChatSession{UserId: c.GetInt(ctxkey.Id)}
+	if payload.AgentVersionId > 0 {
+		_, _, spec, err := model.ResolveAgentVersionForRun(userId, payload.AgentVersionId, model.AgentModeChat)
+		if err != nil {
+			chatError(c, err)
+			return
+		}
+		// The agent's frozen values are defaults: the payload may still
+		// override the model and sampling, while skills and sandbox come
+		// from the version (the run re-checks their scope anyway).
+		if strings.TrimSpace(payload.Model) == "" {
+			payload.Model = spec.Model
+		}
+		if payload.Temperature == nil {
+			payload.Temperature = spec.Temperature
+		}
+		if payload.TopP == nil {
+			payload.TopP = spec.TopP
+		}
+		if payload.MaxTokens == 0 {
+			payload.MaxTokens = spec.MaxTokens
+		}
+		payload.SkillIds = spec.SkillIds
+		payload.SandboxEnabled = spec.SandboxEnabled
+	}
+	session := &model.ChatSession{UserId: userId}
 	if err := applyChatSessionPayload(session, &payload); err != nil {
 		chatError(c, err)
 		return
 	}
+	session.AgentVersionId = payload.AgentVersionId
 	if session.Title == "" {
 		session.Title = "新会话"
 	}
@@ -261,6 +292,21 @@ func RunChatTurn(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
+	// A turn is a new run, so it re-resolves the pinned agent version:
+	// archived definitions block it, other users' private ones never resolve,
+	// and the skill/sandbox scope re-checks current grants.
+	var agentSpec *model.AgentVersionSpec
+	if session.AgentVersionId > 0 {
+		_, _, agentSpec, err = model.ResolveAgentVersionForRun(userId, session.AgentVersionId, model.AgentModeChat)
+		if err != nil {
+			chatError(c, err)
+			return
+		}
+		skills = filterSkillsInAgentScope(skills, agentSpec)
+		if !agentSpec.SandboxEnabled {
+			session.SandboxEnabled = false
+		}
+	}
 	token, err := model.EnsureChatToken(userId)
 	if err != nil {
 		chatError(c, fmt.Errorf("计费令牌不可用: %w", err))
@@ -272,7 +318,8 @@ func RunChatTurn(c *gin.Context) {
 		return
 	}
 	run := &model.AgentRun{UserId: userId, SessionId: session.Id, Kind: "chat",
-		Status: model.RunStatusQueued, Model: session.Model}
+		Status: model.RunStatusQueued, Model: session.Model,
+		AgentVersionId: session.AgentVersionId}
 	if err := model.CreateAgentRun(run); err != nil {
 		chatError(c, fmt.Errorf("记录运行失败: %w", err))
 		return
@@ -304,10 +351,35 @@ func RunChatTurn(c *gin.Context) {
 		Session:       session,
 		History:       history,
 		Skills:        skills,
+		AgentSpec:     agentSpec,
 		Executor:      &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
 		ContextBudget: session.ContextBudget,
 	}
 	_ = agent.Default().RunChat(ctx, emit, turn)
+}
+
+// filterSkillsInAgentScope narrows the session's selected skills to the
+// intersection with the pinned agent version's declared set: the agent may
+// only ever grant skills it binds, and revoking a skill takes effect on the
+// next run.
+func filterSkillsInAgentScope(skills []*model.ChatSkill, spec *model.AgentVersionSpec) []*model.ChatSkill {
+	if spec == nil {
+		return skills
+	}
+	if len(spec.SkillIds) == 0 {
+		return nil
+	}
+	allowed := make(map[int]bool, len(spec.SkillIds))
+	for _, id := range spec.SkillIds {
+		allowed[id] = true
+	}
+	scoped := make([]*model.ChatSkill, 0, len(skills))
+	for _, skill := range skills {
+		if allowed[skill.Id] {
+			scoped = append(scoped, skill)
+		}
+	}
+	return scoped
 }
 
 // truncateChatTitle derives a session title from the first user message.

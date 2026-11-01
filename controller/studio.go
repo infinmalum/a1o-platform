@@ -42,6 +42,9 @@ type studioRunPayload struct {
 	Input          string `json:"input"`
 	Model          string `json:"model"`
 	IdempotencyKey string `json:"idempotency_key"`
+	// AgentVersionId pins an immutable agent configuration on the run; 0
+	// runs the platform's default work behavior.
+	AgentVersionId int `json:"agent_version_id"`
 }
 
 // CreateStudioRun accepts a new work run: creates (or reuses) the task,
@@ -69,9 +72,24 @@ func CreateStudioRun(c *gin.Context) {
 	if len(payload.IdempotencyKey) > 255 {
 		payload.IdempotencyKey = payload.IdempotencyKey[:255]
 	}
-	if payload.Model == "" {
-		chatError(c, errors.New("模型不能为空"))
-		return
+	// The pinned agent resolves server-side and contributes the model when
+	// the payload does not name one; both feed the idempotency comparison.
+	var agentSpec *model.AgentVersionSpec
+	if payload.AgentVersionId > 0 {
+		_, _, spec, err := model.ResolveAgentVersionForRun(userId, payload.AgentVersionId, model.AgentModeWork)
+		if err != nil {
+			chatError(c, err)
+			return
+		}
+		agentSpec = spec
+	}
+	effectiveModel := payload.Model
+	if effectiveModel == "" {
+		if agentSpec == nil || agentSpec.Model == "" {
+			chatError(c, errors.New("模型不能为空"))
+			return
+		}
+		effectiveModel = agentSpec.Model
 	}
 
 	// Idempotent replay: the same key with the same request returns the
@@ -82,7 +100,8 @@ func CreateStudioRun(c *gin.Context) {
 		// explicitly; an omitted task_id auto-created one on the original
 		// request, so the stored value is always more specific.
 		taskMatches := payload.TaskId == 0 || existing.TaskId == payload.TaskId
-		if existing.Kind != payload.Kind || existing.Model != payload.Model ||
+		if existing.Kind != payload.Kind || existing.Model != effectiveModel ||
+			existing.AgentVersionId != payload.AgentVersionId ||
 			!taskMatches || !runInputMatches(existing, input) {
 			chatError(c, errors.New("幂等键已用于不同的运行请求"))
 			return
@@ -117,7 +136,8 @@ func CreateStudioRun(c *gin.Context) {
 	run := &model.AgentRun{
 		UserId: userId, Kind: "work", Status: model.RunStatusQueued,
 		TaskId: task.Id, IdempotencyKey: payload.IdempotencyKey,
-		Model: payload.Model, InputItems: &frozen, ContextItems: &frozen,
+		AgentVersionId: payload.AgentVersionId,
+		Model:          effectiveModel, InputItems: &frozen, ContextItems: &frozen,
 	}
 	if err := model.CreateAgentRun(run); err != nil {
 		if errors.Is(err, model.ErrAgentRunIdempotencyConflict) {
@@ -128,7 +148,7 @@ func CreateStudioRun(c *gin.Context) {
 		return
 	}
 	if err := model.AppendRunControlEvent(run.Id, model.RunEventRunQueued,
-		map[string]any{"task_id": task.Id, "model": payload.Model}); err != nil {
+		map[string]any{"task_id": task.Id, "model": effectiveModel}); err != nil {
 		// Queue state is the truth; a missing timeline entry never blocks.
 	}
 	agent.DefaultScheduler().Wake()
@@ -532,6 +552,58 @@ func ListStudioTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": studioTaskViews(userId, tasks)})
+}
+
+// studioRunListItem decorates a run with the title of its chat session or
+// work task so the workspace history can link without extra round-trips.
+type studioRunListItem struct {
+	model.AgentRun
+	TaskTitle    string `json:"task_title,omitempty"`
+	SessionTitle string `json:"session_title,omitempty"`
+}
+
+// ListStudioRuns returns the caller's newest runs across both kinds — the
+// workspace history view over the single run fact source.
+func ListStudioRuns(c *gin.Context) {
+	userId := c.GetInt(ctxkey.Id)
+	limit := 50
+	if raw := c.Query("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	runs, err := model.GetRecentAgentRuns(userId, limit)
+	if err != nil {
+		chatError(c, err)
+		return
+	}
+	taskIds := make([]int, 0, len(runs))
+	sessionIds := make([]int, 0, len(runs))
+	for _, run := range runs {
+		if run.TaskId > 0 {
+			taskIds = append(taskIds, run.TaskId)
+		}
+		if run.SessionId > 0 {
+			sessionIds = append(sessionIds, run.SessionId)
+		}
+	}
+	taskTitles, err := model.GetWorkTaskTitles(taskIds)
+	if err != nil {
+		taskTitles = map[int]string{}
+	}
+	sessionTitles, err := model.GetChatSessionTitles(userId, sessionIds)
+	if err != nil {
+		sessionTitles = map[int]string{}
+	}
+	items := make([]studioRunListItem, 0, len(runs))
+	for _, run := range runs {
+		items = append(items, studioRunListItem{
+			AgentRun:     run,
+			TaskTitle:    taskTitles[run.TaskId],
+			SessionTitle: sessionTitles[run.SessionId],
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
 
 // GetStudioTask returns one owned task with its runs, newest first.

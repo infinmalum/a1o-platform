@@ -148,10 +148,18 @@ func SetApiRouter(router *gin.Engine) {
 			chatRoute.POST("/mcp/user", controller.CreateChatUserMCPServer)
 			chatRoute.PUT("/mcp/user/:id", controller.UpdateChatUserMCPServer)
 			chatRoute.DELETE("/mcp/user/:id", controller.DeleteChatUserMCPServer)
+			// Agent plaza (R4): built-in and own definitions; edits append
+			// immutable versions. Built-in creation is admin-only below.
+			chatRoute.GET("/agents", controller.GetAgentPlaza)
+			chatRoute.GET("/agents/:id", controller.GetAgentDetail)
+			chatRoute.POST("/agents", controller.CreateAgent)
+			chatRoute.PUT("/agents/:id", controller.UpdateAgent)
+			chatRoute.POST("/agents/:id/archive", controller.ArchiveAgent)
 		}
 		chatAdminRoute := apiRouter.Group("/chat")
 		chatAdminRoute.Use(middleware.AdminAuth())
 		{
+			chatAdminRoute.POST("/agents/builtin", controller.CreateBuiltinAgent)
 			chatAdminRoute.GET("/mcp", controller.GetChatMCPServers)
 			chatAdminRoute.POST("/mcp", controller.CreateChatMCPServer)
 			chatAdminRoute.PUT("/mcp/:id", controller.UpdateChatMCPServer)
@@ -165,6 +173,7 @@ func SetApiRouter(router *gin.Engine) {
 		studioRoute.Use(middleware.UserAuth())
 		{
 			studioRoute.POST("/runs", controller.CreateStudioRun)
+			studioRoute.GET("/runs", controller.ListStudioRuns)
 			studioRoute.GET("/runs/:id", controller.GetStudioRun)
 			studioRoute.GET("/runs/:id/events", controller.StreamStudioRunEvents)
 			studioRoute.POST("/runs/:id/inputs", controller.AppendStudioRunInput)

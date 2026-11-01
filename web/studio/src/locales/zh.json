@@ -1051,7 +1051,7 @@
       },
       "agent": {
         "title": "智能体广场",
-        "description": "内置与社区智能体配置复用。"
+        "description": "内置与我的智能体配置复用，可发起对话或任务。"
       },
       "image": {
         "title": "图像生成",
@@ -1060,6 +1060,10 @@
       "translate": {
         "title": "翻译",
         "description": "DeepL 独立翻译工作台。"
+      },
+      "workspace": {
+        "title": "工作区",
+        "description": "运行历史与素材文件。"
       }
     }
   },
@@ -1105,5 +1109,72 @@
       "toolResult": "工具返回结果",
       "inputAppended": "收到追加输入"
     }
+  },
+  "agents": {
+    "title": "智能体广场",
+    "tagline": "内置与我的智能体配置复用；每次保存生成新的不可变版本，不影响已有运行。",
+    "builtinSection": "内置智能体",
+    "mineSection": "我的智能体",
+    "emptyBuiltin": "暂无内置智能体。",
+    "emptyMine": "还没有自己的智能体，点击右上角创建。",
+    "create": "创建智能体",
+    "createBuiltin": "新建内置智能体",
+    "createTitle": "创建智能体",
+    "editTitle": "编辑智能体（生成新版本）",
+    "editHint": "保存会生成新的不可变版本；已有会话与运行仍使用其固定的版本。",
+    "nameLabel": "名称",
+    "namePlaceholder": "例如：论文助手",
+    "descLabel": "用途说明",
+    "descPlaceholder": "这个智能体擅长什么",
+    "instructionsLabel": "指令",
+    "instructionsPlaceholder": "以什么规则与风格执行任务",
+    "modelLabel": "默认模型",
+    "modelPlaceholder": "选择模型（可选）",
+    "openingLabel": "开场建议",
+    "openingPlaceholder": "新会话展示的第一条提示（可选）",
+    "skillsLabel": "绑定 Skill",
+    "noSkills": "暂无可绑定的 Skill。",
+    "sandboxLabel": "允许代码执行",
+    "modesLabel": "支持模式",
+    "mode": {
+      "chat": "对话",
+      "work": "任务"
+    },
+    "startChat": "开始对话",
+    "startWork": "新建任务",
+    "edit": "编辑",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "archived": "已归档",
+    "noDescription": "暂无说明。",
+    "noInstructions": "暂无指令。",
+    "loading": "加载中…",
+    "cancel": "取消",
+    "submit": "创建",
+    "saveVersion": "保存为新版本"
+  },
+  "workspace": {
+    "title": "工作区",
+    "tagline": "运行历史与素材文件。",
+    "loading": "加载中…",
+    "runsSection": "我的运行",
+    "emptyRuns": "还没有运行记录。",
+    "runName": "名称",
+    "runKind": "类型",
+    "runStatus": "状态",
+    "runModel": "模型",
+    "runTime": "更新时间",
+    "kind": {
+      "chat": "对话",
+      "work": "任务"
+    },
+    "assetsSection": "我的素材",
+    "emptyAssets": "还没有素材文件。上传入口在对话页。",
+    "assetKind": {
+      "text": "文本",
+      "image": "图像"
+    },
+    "untitledTask": "未命名任务",
+    "untitledChat": "未命名会话"
   }
 }

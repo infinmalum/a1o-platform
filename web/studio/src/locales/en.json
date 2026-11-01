@@ -1051,7 +1051,7 @@
       },
       "agent": {
         "title": "Agent plaza",
-        "description": "Reusable built-in and community agents."
+        "description": "Reuse built-in and personal agent configurations to start chats or tasks."
       },
       "image": {
         "title": "Image generation",
@@ -1060,6 +1060,10 @@
       "translate": {
         "title": "Translate",
         "description": "Standalone DeepL translation workbench."
+      },
+      "workspace": {
+        "title": "Workspace",
+        "description": "Run history and asset files."
       }
     }
   },
@@ -1105,5 +1109,72 @@
       "toolResult": "Tool returned a result",
       "inputAppended": "Input appended"
     }
+  },
+  "agents": {
+    "title": "Agent Plaza",
+    "tagline": "Reuse built-in and personal agents; every save appends a new immutable version and never changes existing runs.",
+    "builtinSection": "Built-in",
+    "mineSection": "Mine",
+    "emptyBuiltin": "No built-in agents yet.",
+    "emptyMine": "No personal agents yet — create one from the top-right.",
+    "create": "Create agent",
+    "createBuiltin": "New built-in agent",
+    "createTitle": "Create agent",
+    "editTitle": "Edit agent (new version)",
+    "editHint": "Saving appends a new immutable version; existing sessions and runs keep their pinned version.",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Paper Assistant",
+    "descLabel": "Description",
+    "descPlaceholder": "What is this agent good at",
+    "instructionsLabel": "Instructions",
+    "instructionsPlaceholder": "Rules and style the agent follows",
+    "modelLabel": "Default model",
+    "modelPlaceholder": "Pick a model (optional)",
+    "openingLabel": "Opening hint",
+    "openingPlaceholder": "First prompt shown in new sessions (optional)",
+    "skillsLabel": "Bound skills",
+    "noSkills": "No skills available to bind.",
+    "sandboxLabel": "Allow code execution",
+    "modesLabel": "Supported modes",
+    "mode": {
+      "chat": "Chat",
+      "work": "Work"
+    },
+    "startChat": "Start chat",
+    "startWork": "New task",
+    "edit": "Edit",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "archived": "Archived",
+    "noDescription": "No description.",
+    "noInstructions": "No instructions.",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "submit": "Create",
+    "saveVersion": "Save as new version"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "tagline": "Run history and asset files.",
+    "loading": "Loading…",
+    "runsSection": "My runs",
+    "emptyRuns": "No runs yet.",
+    "runName": "Name",
+    "runKind": "Kind",
+    "runStatus": "Status",
+    "runModel": "Model",
+    "runTime": "Updated",
+    "kind": {
+      "chat": "Chat",
+      "work": "Work"
+    },
+    "assetsSection": "My assets",
+    "emptyAssets": "No assets yet. Upload from the chat page.",
+    "assetKind": {
+      "text": "Text",
+      "image": "Image"
+    },
+    "untitledTask": "Untitled task",
+    "untitledChat": "Untitled chat"
   }
 }

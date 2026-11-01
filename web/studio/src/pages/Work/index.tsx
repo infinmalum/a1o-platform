@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Bot, Plus, RefreshCw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,13 +32,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { agentsApi, type AgentView } from '@/pages/Agents/agentsApi';
 import { statusBadgeVariant, workApi, WorkTaskView } from './workApi';
 
 // Work task list (R3): the minimal entry over /api/studio/tasks — creation
 // queues a run, the detail page follows progress and collects results.
+// R4: /work?agent=<id> deep links from the plaza and pins the agent version.
 const Work: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tasks, setTasks] = useState<WorkTaskView[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,6 +49,7 @@ const Work: React.FC = () => {
   const [goal, setGoal] = useState('');
   const [model, setModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
+  const [boundAgent, setBoundAgent] = useState<AgentView | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -64,6 +68,23 @@ const Work: React.FC = () => {
     load();
   }, [load]);
 
+  // Deep link from the agent plaza: prefill the create dialog with the
+  // agent's frozen model and pin its latest version on the created run.
+  const agentParam = searchParams.get('agent');
+  useEffect(() => {
+    if (!agentParam) return;
+    agentsApi
+      .getDetail(Number(agentParam))
+      .then((agent) => {
+        setBoundAgent(agent);
+        if (agent.spec?.model) setModel(agent.spec.model);
+        setCreateOpen(true);
+        setSearchParams({}, { replace: true });
+      })
+      .catch(() => setSearchParams({}, { replace: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentParam]);
+
   useEffect(() => {
     if (!createOpen) return;
     workApi
@@ -80,10 +101,16 @@ const Work: React.FC = () => {
     if (!goal.trim() || !model || submitting) return;
     setSubmitting(true);
     try {
-      const result = await workApi.createRun({ title: title.trim(), input: goal.trim(), model });
+      const result = await workApi.createRun({
+        title: title.trim(),
+        input: goal.trim(),
+        model,
+        agent_version_id: boundAgent?.latest.id,
+      });
       setCreateOpen(false);
       setTitle('');
       setGoal('');
+      setBoundAgent(null);
       navigate(`/work/${result.task?.id ?? result.run.task_id}`);
     } catch {
       // toast already surfaced
@@ -115,6 +142,13 @@ const Work: React.FC = () => {
                 <DialogDescription>{t('work.createHint')}</DialogDescription>
               </DialogHeader>
               <div className='grid gap-4 py-2'>
+                {boundAgent && (
+                  <div className='flex items-center gap-2 rounded-md border px-3 py-2 text-sm'>
+                    <Bot className='size-4' />
+                    <span className='font-medium'>{boundAgent.name}</span>
+                    <Badge variant='secondary'>v{boundAgent.current_version}</Badge>
+                  </div>
+                )}
                 <div className='grid gap-2'>
                   <Label htmlFor='work-title'>{t('work.titleLabel')}</Label>
                   <Input

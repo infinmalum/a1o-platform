@@ -184,12 +184,16 @@ func (s *Scheduler) runWork(run *model.AgentRun) {
 		}
 	}()
 
-	req := s.buildTurnRequest(run, func(event EventEnvelope) error {
+	req, buildErr := s.buildTurnRequest(run, func(event EventEnvelope) error {
 		PublishRun(run.Id, event)
 		return nil
 	})
 	var err error
-	if req != nil {
+	if buildErr != nil {
+		// A run whose pinned agent became unavailable between queueing and
+		// claiming fails with the explainable cause; finalize records it.
+		err = buildErr
+	} else if req != nil {
 		err = s.Engine.RunWork(workCtx, *req)
 	} else {
 		err = errors.New("计费令牌不可用")
@@ -199,9 +203,10 @@ func (s *Scheduler) runWork(run *model.AgentRun) {
 	s.finalize(run, fencing, err)
 }
 
-// buildTurnRequest assembles the engine request: task row and the run
-// owner's billing identity.
-func (s *Scheduler) buildTurnRequest(run *model.AgentRun, emit Emitter) *WorkTurnRequest {
+// buildTurnRequest assembles the engine request: task row, the pinned agent
+// version (frozen spec plus the runner-visible skill intersection), and the
+// run owner's billing identity.
+func (s *Scheduler) buildTurnRequest(run *model.AgentRun, emit Emitter) (*WorkTurnRequest, error) {
 	task, err := model.GetWorkTask(run.TaskId, run.UserId)
 	if err != nil {
 		logger.SysLogf("work run %d task load failed: %s", run.Id, err.Error())
@@ -209,15 +214,54 @@ func (s *Scheduler) buildTurnRequest(run *model.AgentRun, emit Emitter) *WorkTur
 	}
 	executor := s.newExecutor(run.UserId)
 	if executor == nil {
-		return nil
+		return nil, nil
 	}
-	return &WorkTurnRequest{
+	req := &WorkTurnRequest{
 		Run:      run,
 		Fencing:  run.FencingToken,
 		Task:     task,
 		Executor: executor,
 		Emit:     emit,
 	}
+	if run.AgentVersionId > 0 {
+		// Re-resolve at claim time: archiving between queueing and claiming
+		// still blocks the start, and skill grants re-check current state.
+		_, _, spec, err := model.ResolveAgentVersionForRun(run.UserId, run.AgentVersionId, model.AgentModeWork)
+		if err != nil {
+			return nil, err
+		}
+		req.AgentSpec = spec
+		skills, err := agentScopedSkills(run.UserId, spec)
+		if err != nil {
+			return nil, err
+		}
+		req.Skills = skills
+	}
+	return req, nil
+}
+
+// agentScopedSkills intersects the runner's currently enabled skills with
+// the agent version's declared set — actual permissions are the
+// intersection, re-resolved at every execution so revocation is immediate.
+func agentScopedSkills(userId int, spec *model.AgentVersionSpec) ([]*model.ChatSkill, error) {
+	if len(spec.SkillIds) == 0 {
+		return nil, nil
+	}
+	allowed := make(map[int]bool, len(spec.SkillIds))
+	for _, id := range spec.SkillIds {
+		allowed[id] = true
+	}
+	enabled, err := model.ListEnabledSkills(userId)
+	if err != nil {
+		return nil, err
+	}
+	scoped := make([]*model.ChatSkill, 0, len(enabled))
+	for _, skill := range enabled {
+		if allowed[skill.Id] {
+			scoped = append(scoped, skill)
+		}
+	}
+	return scoped, nil
 }
 
 // finalize resolves the terminal state after the engine exits: a pending

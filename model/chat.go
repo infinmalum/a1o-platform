@@ -38,21 +38,25 @@ const (
 )
 
 type ChatSession struct {
-	Id               int      `json:"id"`
-	UserId           int      `json:"user_id" gorm:"index"`
-	Title            string   `json:"title" gorm:"type:varchar(255)"`
-	Model            string   `json:"model" gorm:"type:varchar(255)"`
-	SystemPrompt     string   `json:"system_prompt" gorm:"type:text"`
-	Temperature      *float64 `json:"temperature"`
-	TopP             *float64 `json:"top_p"`
-	MaxTokens        int      `json:"max_tokens"`
-	SandboxEnabled   bool     `json:"sandbox_enabled" gorm:"default:false"`
-	ContextBudget    int      `json:"context_budget"` // 0 means the global default
-	SkillIds         *string  `json:"skill_ids" gorm:"type:text"`
-	Summary          string   `json:"summary" gorm:"type:text"`
-	CompactedThrough int      `json:"compacted_through"`
-	CreatedTime      int64    `json:"created_time" gorm:"bigint"`
-	UpdatedTime      int64    `json:"updated_time" gorm:"bigint"`
+	Id             int      `json:"id"`
+	UserId         int      `json:"user_id" gorm:"index"`
+	Title          string   `json:"title" gorm:"type:varchar(255)"`
+	Model          string   `json:"model" gorm:"type:varchar(255)"`
+	SystemPrompt   string   `json:"system_prompt" gorm:"type:text"`
+	Temperature    *float64 `json:"temperature"`
+	TopP           *float64 `json:"top_p"`
+	MaxTokens      int      `json:"max_tokens"`
+	SandboxEnabled bool     `json:"sandbox_enabled" gorm:"default:false"`
+	ContextBudget  int      `json:"context_budget"` // 0 means the global default
+	SkillIds       *string  `json:"skill_ids" gorm:"type:text"`
+	// AgentVersionId pins the immutable agent version this session was
+	// created from; 0 for plain sessions. Editing the agent later never
+	// rewrites this binding — new sessions pick up the new version.
+	AgentVersionId   int    `json:"agent_version_id" gorm:"default:0"`
+	Summary          string `json:"summary" gorm:"type:text"`
+	CompactedThrough int    `json:"compacted_through"`
+	CreatedTime      int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime      int64  `json:"updated_time" gorm:"bigint"`
 }
 
 type ChatMessage struct {

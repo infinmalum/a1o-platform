@@ -10,6 +10,8 @@ import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Work from './pages/Work';
 import WorkTaskDetail from './pages/Work/WorkTaskDetail';
+import Agents from './pages/Agents';
+import Workspace from './pages/Workspace';
 import OAuthCallback from './pages/OAuthCallback';
 import { Button } from '@/components/ui/button';
 
@@ -127,6 +129,22 @@ const App: React.FC = () => {
             element={
               <PrivateRoute>
                 <WorkTaskDetail />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/agents'
+            element={
+              <PrivateRoute>
+                <Agents />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/workspace'
+            element={
+              <PrivateRoute>
+                <Workspace />
               </PrivateRoute>
             }
           />

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
 )
 
@@ -438,4 +440,136 @@ func TestSubscribeRunDeliversAndStops(t *testing.T) {
 	cancel()
 	// A closed subscription must not receive further publishes or panic.
 	PublishRun(42, EventEnvelope{RunID: 42, Type: "run.started"})
+}
+
+// migrateAgentDefs adds the R4 agent definition tables to a work test DB.
+func migrateAgentDefs(t *testing.T) {
+	t.Helper()
+	if err := model.DB.AutoMigrate(&model.AgentDefinition{}, &model.AgentVersion{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func toolSetHas(set *toolSet, name string) bool {
+	for _, def := range set.defs {
+		if def.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunWorkAppliesAgentSpec(t *testing.T) {
+	openWorkTestDB(t)
+	migrateAgentDefs(t)
+	task, run := newWorkFixture(t, 1)
+	def := &model.AgentDefinition{Name: "数据整理员"}
+	if err := model.CreateAgentDefinition(def, 1, &model.AgentVersionSpec{
+		Instructions:   "始终先核对数据来源。",
+		SandboxEnabled: false,
+		Modes:          []string{model.AgentModeWork},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	version, err := model.GetLatestAgentVersion(def.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.DB.Model(&model.AgentRun{}).Where("id = ?", run.Id).
+		Update("agent_version_id", version.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	fencing := claimFixture(t, run)
+
+	spec := &model.AgentVersionSpec{Instructions: "始终先核对数据来源。", Modes: []string{model.AgentModeWork}}
+	prevSandbox := config.ChatSandboxEnabled
+	config.ChatSandboxEnabled = true
+	t.Cleanup(func() { config.ChatSandboxEnabled = prevSandbox })
+	engine := &Engine{Sandbox: &Sandbox{}}
+	if engine.Sandbox.Available() {
+		tools := engine.resolveWorkTools(context.Background(), WorkTurnRequest{
+			Run: run, Fencing: fencing, Task: task, AgentSpec: spec})
+		if toolSetHas(tools, "sandbox") {
+			t.Fatal("agent spec denying sandbox must exclude the sandbox tool")
+		}
+	}
+
+	executor := &fakeExecutor{responses: []InvokeResult{{
+		Items: []Item{{Type: ItemFunctionCall, CallID: "c1", Name: CompleteTaskToolName,
+			Arguments: `{"summary":"完成"}`}},
+	}}}
+	err = engine.RunWork(context.Background(), WorkTurnRequest{
+		Run: run, Fencing: fencing, Task: task, AgentSpec: spec,
+		Executor: executor, Emit: func(EventEnvelope) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("RunWork failed: %v", err)
+	}
+	if len(executor.requests) == 0 {
+		t.Fatal("no model leg ran")
+	}
+	instructions := executor.requests[0].Instructions
+	if !strings.Contains(instructions, "始终先核对数据来源。") {
+		t.Fatalf("agent instructions missing from leg request: %q", instructions)
+	}
+	if !strings.Contains(instructions, "complete_task") {
+		t.Fatalf("work contract missing from leg request: %q", instructions)
+	}
+	fresh, err := model.GetAgentRunById(run.Id)
+	if err != nil || fresh.Status != model.RunStatusCompleted {
+		t.Fatalf("run must complete, got %+v err=%v", fresh, err)
+	}
+}
+
+func TestSchedulerBuildTurnRequestResolvesAgent(t *testing.T) {
+	openWorkTestDB(t)
+	migrateAgentDefs(t)
+	_, run := newWorkFixture(t, 1)
+	enabled := &model.ChatSkill{OwnerId: 1, Name: "表格规范", Instructions: "用表格输出。", Enabled: true}
+	if err := model.DB.Create(enabled).Error; err != nil {
+		t.Fatal(err)
+	}
+	def := &model.AgentDefinition{Name: "报告员"}
+	if err := model.CreateAgentDefinition(def, 1, &model.AgentVersionSpec{
+		Instructions: "写报告。", Modes: []string{model.AgentModeWork},
+		SkillIds:      []int{enabled.Id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	version, err := model.GetLatestAgentVersion(def.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.DB.Model(&model.AgentRun{}).Where("id = ?", run.Id).
+		Update("agent_version_id", version.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := model.ClaimNextWorkRun("test-instance", 60, 1)
+	if err != nil || claimed == nil {
+		t.Fatalf("claim failed: %v", err)
+	}
+
+	scheduler := NewScheduler(&Engine{})
+	scheduler.newExecutor = func(userId int) ModelInvoker {
+		return &fakeExecutor{}
+	}
+	req, err := scheduler.buildTurnRequest(claimed, func(EventEnvelope) error { return nil })
+	if err != nil {
+		t.Fatalf("buildTurnRequest failed: %v", err)
+	}
+	if req == nil || req.AgentSpec == nil || req.AgentSpec.Instructions != "写报告。" {
+		t.Fatalf("agent spec not resolved: %+v", req)
+	}
+	if len(req.Skills) != 1 || req.Skills[0].Id != enabled.Id {
+		t.Fatalf("skills intersection wrong: %+v", req.Skills)
+	}
+
+	// A definition archived between queueing and claiming fails the run
+	// start with the explainable cause.
+	if err := model.SetAgentDefinitionArchived(def.Id, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scheduler.buildTurnRequest(claimed, func(EventEnvelope) error { return nil }); err == nil {
+		t.Fatal("archived agent must fail the build")
+	}
 }

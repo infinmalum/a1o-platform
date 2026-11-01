@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, Image as ImageIcon, Languages, Bot, Wrench, ArrowRight } from 'lucide-react';
+import { MessageCircle, Image as ImageIcon, Languages, Bot, Wrench, FolderOpen, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -16,8 +16,9 @@ import {
 import { getSystemName } from '@/helpers/utils';
 
 // Entry point per docs/studio-transformation-proposal.md §布局: the overview
-// offers the four task kinds; only Chat is wired for this phase, the rest are
-// marked 未开放 so the IA is visible without faking entries.
+// offers the task kinds; Chat / Work / 智能体广场 / 工作区 are wired, the
+// dedicated image and translate workbenches remain 未开放 so the IA is
+// visible without faking entries.
 const Home: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -30,7 +31,8 @@ const Home: React.FC = () => {
       onClick: () => navigate('/chat'),
     },
     { key: 'work', icon: Wrench, open: true, onClick: () => navigate('/work') },
-    { key: 'agent', icon: Bot, open: false },
+    { key: 'agent', icon: Bot, open: true, onClick: () => navigate('/agents') },
+    { key: 'workspace', icon: FolderOpen, open: true, onClick: () => navigate('/workspace') },
     { key: 'image', icon: ImageIcon, open: false },
     { key: 'translate', icon: Languages, open: false },
   ];

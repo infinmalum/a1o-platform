@@ -60,6 +60,10 @@ type ChatTurnRequest struct {
 	Files map[int]*model.ChatFile
 	// Skills are the session's selected, enabled skills.
 	Skills []*model.ChatSkill
+	// AgentSpec is the frozen configuration of the agent version this run
+	// pinned, or nil for plain sessions. Its instructions prepend the run's
+	// system content; its sandbox flag caps the session's.
+	AgentSpec *model.AgentVersionSpec
 	// Executor performs the model legs; it carries the billing identity.
 	Executor ModelInvoker
 	// ContextBudget overrides the configured budget when positive.
@@ -69,10 +73,13 @@ type ChatTurnRequest struct {
 }
 
 // resolveTools builds the turn's tool set: the sandbox when enabled on both
-// levels, every visible MCP tool, then the skill filter.
+// levels (the agent version's flag caps the session's), every visible MCP
+// tool, then the skill filter.
 func (e *Engine) resolveTools(ctx context.Context, turn ChatTurnRequest) *toolSet {
 	set := newToolSet()
-	if turn.Session.SandboxEnabled && config.ChatSandboxEnabled && e.Sandbox != nil {
+	sandboxAllowed := turn.Session.SandboxEnabled &&
+		(turn.AgentSpec == nil || turn.AgentSpec.SandboxEnabled)
+	if sandboxAllowed && config.ChatSandboxEnabled && e.Sandbox != nil {
 		if languages := e.Sandbox.Languages(); len(languages) > 0 {
 			set.add(sandboxToolDef(languages), e.runSandbox)
 		}
@@ -261,7 +268,7 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 	result, legErr := turn.Executor.Invoke(ctx, InvokeRequest{
 		RunID:           turn.Run.Id,
 		Model:           turn.Session.Model,
-		Instructions:    systemContent(turn.Session, turn.Skills),
+		Instructions:    systemContent(turn.Session, turn.Skills, turn.AgentSpec),
 		Items:           items,
 		Tools:           tools.defs,
 		MaxOutputTokens: int64(maxTokens),

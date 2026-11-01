@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/common/random"
 )
 
 // Run lifecycle statuses. R1 exercises the queued/running/terminal subset;
@@ -78,7 +79,11 @@ type AgentRun struct {
 	// without a session.
 	SessionId int `json:"session_id" gorm:"index"`
 	// TaskId links a work-mode run to its WorkTask; 0 for chat runs.
-	TaskId         int    `json:"task_id" gorm:"index"`
+	TaskId int `json:"task_id" gorm:"index"`
+	// AgentVersionId pins the immutable agent configuration this run froze
+	// at creation; 0 for runs without an agent. The version row is
+	// append-only, so the id alone reproduces the run's exact configuration.
+	AgentVersionId int    `json:"agent_version_id" gorm:"index;default:0"`
 	IdempotencyKey string `json:"idempotency_key" gorm:"type:varchar(255);uniqueIndex:idx_agent_run_idempotency,priority:2"`
 	// Lease and fencing for work-mode queue claims: LeaseOwner identifies
 	// the claiming scheduler instance, LeaseExpireTime the heartbeat
@@ -155,7 +160,12 @@ var ErrAgentRunIdempotencyConflict = errors.New("agent run idempotency key alrea
 func CreateAgentRun(run *AgentRun) error {
 	now := helper.GetTimestamp()
 	run.CreatedTime, run.UpdatedTime = now, now
-	if run.IdempotencyKey != "" {
+	if run.IdempotencyKey == "" {
+		// Runs without a client key (chat turns) still need to satisfy the
+		// owner-scoped unique index; a generated key carries no replay
+		// semantics — every creation is a new run.
+		run.IdempotencyKey = "auto-" + random.GetUUID()
+	} else {
 		var existing AgentRun
 		err := DB.Where("user_id = ? AND idempotency_key = ?", run.UserId, run.IdempotencyKey).First(&existing).Error
 		if err == nil {
@@ -278,4 +288,48 @@ func GetRunInvocations(runId int) ([]ModelInvocation, error) {
 	var invocations []ModelInvocation
 	err := DB.Where("run_id = ?", runId).Order("sequence ASC").Find(&invocations).Error
 	return invocations, err
+}
+
+// GetRecentAgentRuns lists the owner's newest runs across both kinds for the
+// workspace history view.
+func GetRecentAgentRuns(userId int, limit int) ([]AgentRun, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var runs []AgentRun
+	err := DB.Where("user_id = ?", userId).Order("id desc").Limit(limit).Find(&runs).Error
+	return runs, err
+}
+
+// GetWorkTaskTitles resolves task titles for the workspace list in one query.
+func GetWorkTaskTitles(ids []int) (map[int]string, error) {
+	titles := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return titles, nil
+	}
+	var tasks []WorkTask
+	if err := DB.Select("id, title").Where("id IN ?", ids).Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	for _, task := range tasks {
+		titles[task.Id] = task.Title
+	}
+	return titles, nil
+}
+
+// GetChatSessionTitles resolves session titles for the workspace list.
+func GetChatSessionTitles(userId int, ids []int) (map[int]string, error) {
+	titles := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return titles, nil
+	}
+	var sessions []ChatSession
+	if err := DB.Select("id, title").Where("user_id = ? AND id IN ?", userId, ids).
+		Find(&sessions).Error; err != nil {
+		return nil, err
+	}
+	for _, session := range sessions {
+		titles[session.Id] = session.Title
+	}
+	return titles, nil
 }

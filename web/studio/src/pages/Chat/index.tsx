@@ -1,9 +1,11 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { MessageSquarePlus, Pencil, Settings2, Trash2, Wrench } from 'lucide-react';
+import { Bot, MessageSquarePlus, Pencil, Settings2, Trash2, Wrench } from 'lucide-react';
 
 import { API } from '@/helpers/api';
 import { renderQuota } from '@/helpers/render';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -30,6 +32,7 @@ import ChatMessageList, { type DisplayMessage } from './ChatMessageList';
 import ChatComposer from './ChatComposer';
 import ChatSettingsModal, { type ChatSettingsValue } from './ChatSettingsModal';
 import ChatToolsModal from './ChatToolsModal';
+import { agentsApi, type AgentView } from '@/pages/Agents/agentsApi';
 import {
   chatApi,
   runTurn,
@@ -42,8 +45,10 @@ import {
 
 const Chat = () => {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = React.useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = React.useState<ChatSession | null>(null);
+  const [agents, setAgents] = React.useState<AgentView[]>([]);
   const [messages, setMessages] = React.useState<DisplayMessage[]>([]);
   const [input, setInput] = React.useState('');
   const [files, setFiles] = React.useState<ChatFile[]>([]);
@@ -136,7 +141,55 @@ const Chat = () => {
       .listModels()
       .then(setModels)
       .catch(() => undefined);
+    agentsApi
+      .listPlaza()
+      .then((data) => setAgents([...(data.builtin || []), ...(data.mine || [])]))
+      .catch(() => undefined);
   }, [reloadSessions]);
+
+  // Deep link from the agent plaza: /chat?agent=<id> creates a session
+  // pinned to the agent's latest immutable version, then clears the query.
+  const agentParam = searchParams.get('agent');
+  React.useEffect(() => {
+    if (!agentParam) return;
+    let cancelled = false;
+    agentsApi
+      .getDetail(Number(agentParam))
+      .then(async (agent) => {
+        if (cancelled) return;
+        const fallback = defaultModel || models[0] || 'gpt-4o-mini';
+        const session = await chatApi.createSession({
+          model: agent.spec?.model || fallback,
+          agent_version_id: agent.latest.id,
+        });
+        if (cancelled) return;
+        setSearchParams({}, { replace: true });
+        await reloadSessions();
+        setActiveSession(session);
+        setMessages([]);
+        setSelectedSkillIds(session.skill_ids || []);
+        setSelectedFileIds([]);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchParams({}, { replace: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentParam]);
+
+  // Deep link from the workspace history: /chat?session=<id> opens it.
+  const sessionParam = searchParams.get('session');
+  React.useEffect(() => {
+    if (!sessionParam || sessions.length === 0) return;
+    const target = sessions.find((item) => item.id === Number(sessionParam));
+    if (target) {
+      setSearchParams({}, { replace: true });
+      openSession(target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionParam, sessions]);
 
   const createSession = async () => {
     const fallback = defaultModel || models[0] || 'gpt-4o-mini';
@@ -336,6 +389,14 @@ const Chat = () => {
     abortRef.current?.abort();
   };
 
+  // The pinned agent's frozen version id resolves through the plaza list;
+  // sessions bound to an older version simply show no badge.
+  const activeAgent = activeSession?.agent_version_id
+    ? agents.find((agent) => agent.latest?.id === activeSession.agent_version_id)
+    : undefined;
+  const emptyHint =
+    activeAgent?.spec?.opening_hint || t('chat.emptyHint');
+
   const rename = async () => {
     if (!renameTarget) return;
     try {
@@ -447,7 +508,15 @@ const Chat = () => {
         </div>
         <div className='flex flex-1 flex-col'>
           <div className='flex items-center justify-between border-b px-4 py-2'>
-            <strong className='text-sm'>{activeSession?.title || t('chat.title')}</strong>
+            <div className='flex items-center gap-2'>
+              <strong className='text-sm'>{activeSession?.title || t('chat.title')}</strong>
+              {activeAgent && (
+                <Badge variant='secondary' className='gap-1'>
+                  <Bot className='size-3' />
+                  {activeAgent.name}
+                </Badge>
+              )}
+            </div>
             <Select
               value={activeSession ? activeSession.model : defaultModel || models[0] || ''}
               onValueChange={changeModel}
@@ -465,7 +534,7 @@ const Chat = () => {
               </SelectContent>
             </Select>
           </div>
-          <ChatMessageList messages={messages} emptyHint={t('chat.emptyHint')} />
+          <ChatMessageList messages={messages} emptyHint={emptyHint} />
           {streamError && (
             <div className='text-destructive px-4 py-1 text-xs'>{streamError}</div>
           )}

@@ -178,15 +178,20 @@ func (c *streamCollector) event(eventType string, payload []byte) error {
 		}
 		c.replaceItem(item)
 	case "response.completed", "response.incomplete":
-		items := make([]Item, 0, len(envelope.Response.Output))
-		for _, raw := range envelope.Response.Output {
-			item, err := parseItem(raw)
-			if err != nil {
-				return err
+		// A terminal output snapshot replaces the stream-accumulated items —
+		// but only when the field is actually present: an upstream that omits
+		// output from the terminal event still means "keep what arrived".
+		if envelope.Response.Output != nil {
+			items := make([]Item, 0, len(envelope.Response.Output))
+			for _, raw := range envelope.Response.Output {
+				item, err := parseItem(raw)
+				if err != nil {
+					return err
+				}
+				items = append(items, item)
 			}
-			items = append(items, item)
+			c.items = items
 		}
-		c.items = items
 		c.status = envelope.Response.Status
 		c.responseID = envelope.Response.ID
 		if envelope.Response.Usage != nil {

@@ -44,6 +44,10 @@ type WorkTurnRequest struct {
 	Task *model.WorkTask
 	// Skills are the run's selected, enabled skills.
 	Skills []*model.ChatSkill
+	// AgentSpec is the frozen configuration of the agent version this run
+	// pinned, or nil for runs without an agent. Its instructions join the
+	// work contract and its sandbox flag gates code execution.
+	AgentSpec *model.AgentVersionSpec
 	// Executor performs the model legs with the run owner's billing identity.
 	Executor ModelInvoker
 	// Emit receives every envelope (persisted events and transient deltas);
@@ -162,7 +166,7 @@ func (e *Engine) workLeg(ctx context.Context, req WorkTurnRequest, items []Item,
 	result, err := req.Executor.Invoke(ctx, InvokeRequest{
 		RunID:           req.Run.Id,
 		Model:           req.Run.Model,
-		Instructions:    workInstructions(req.Task, req.Skills),
+		Instructions:    workInstructions(req.Task, req.Skills, req.AgentSpec),
 		Items:           items,
 		Tools:           tools.defs,
 		MaxOutputTokens: DefaultMaxOutputTokens,
@@ -332,14 +336,18 @@ func (e *Engine) workReconcile(req WorkTurnRequest, cause error) error {
 }
 
 // workInstructions renders the run-level system prompt: the work contract,
-// the task title, then the selected skills.
-func workInstructions(task *model.WorkTask, skills []*model.ChatSkill) string {
+// the frozen agent instructions when the run pins a version, the task title,
+// then the selected skills.
+func workInstructions(task *model.WorkTask, skills []*model.ChatSkill, spec *model.AgentVersionSpec) string {
 	parts := []string{
 		"你是 A1O 平台的持久任务执行助手，在后台独立运行，用户可能不在线。" +
 			"持续推进任务目标，把关键结论写进回复，让用户随时回来都能看到进展。",
 		"任务目标已完成后，必须调用 complete_task 工具并提交结果总结；" +
 			"需要用户补充信息或做出决策时，直接结束本轮回复并提出问题，" +
 			"运行会进入等待输入状态，用户回复后自动继续。",
+	}
+	if spec != nil && strings.TrimSpace(spec.Instructions) != "" {
+		parts = append(parts, strings.TrimSpace(spec.Instructions))
 	}
 	if task != nil && strings.TrimSpace(task.Title) != "" {
 		parts = append(parts, "## 任务\n"+strings.TrimSpace(task.Title))
@@ -366,12 +374,14 @@ func completeTaskToolDef() Tool {
 
 // resolveWorkTools builds the work run's tool set: on-demand code execution
 // (no pre-created environment — the tool only exists when sandboxing is
-// enabled), the run owner's visible MCP tools, then the skill filter. The
-// completion tool is added after the filter by RunWork: skill tool lists
-// narrow capability tools, never the run's completion mechanism.
+// enabled and the pinned agent version, if any, grants it), the run owner's
+// visible MCP tools, then the skill filter. The completion tool is added
+// after the filter by RunWork: skill tool lists narrow capability tools,
+// never the run's completion mechanism.
 func (e *Engine) resolveWorkTools(ctx context.Context, req WorkTurnRequest) *toolSet {
 	set := newToolSet()
-	if config.ChatSandboxEnabled && e.Sandbox != nil {
+	sandboxAllowed := req.AgentSpec == nil || req.AgentSpec.SandboxEnabled
+	if sandboxAllowed && config.ChatSandboxEnabled && e.Sandbox != nil {
 		if languages := e.Sandbox.Languages(); len(languages) > 0 {
 			set.add(sandboxToolDef(languages), e.runSandbox)
 		}

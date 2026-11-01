@@ -217,6 +217,12 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&RunInput{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&AgentDefinition{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&AgentVersion{}); err != nil {
+		return err
+	}
 	return nil
 }
 
