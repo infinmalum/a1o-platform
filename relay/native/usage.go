@@ -12,7 +12,14 @@ import (
 type Usage struct {
 	Input  int64
 	Output int64
-	Seen   bool
+	// CacheRead, CacheCreation, and Reasoning carry the provider's token
+	// breakdown. Input keeps including the cache tokens so billing math is
+	// unchanged; converters and writers use the detail fields only to render
+	// faithful per-protocol usage envelopes to clients.
+	CacheRead     int64
+	CacheCreation int64
+	Reasoning     int64
+	Seen          bool
 	// Complete marks a protocol-level end event where one exists.
 	Complete bool
 }
@@ -29,11 +36,19 @@ type geminiUsage struct {
 	CandidatesTokenCount int64 `json:"candidatesTokenCount"`
 	ThoughtsTokenCount   int64 `json:"thoughtsTokenCount"`
 	TotalTokenCount      int64 `json:"totalTokenCount"`
+	CachedTokenCount     int64 `json:"cachedContentTokenCount"`
 }
 
 type openAIUsage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
+	InputTokens   int64              `json:"input_tokens"`
+	OutputTokens  int64              `json:"output_tokens"`
+	InputDetails  *openAIUsageDetail `json:"input_tokens_details"`
+	OutputDetails *openAIUsageDetail `json:"output_tokens_details"`
+}
+
+type openAIUsageDetail struct {
+	CachedTokens    int64 `json:"cached_tokens"`
+	ReasoningTokens int64 `json:"reasoning_tokens"`
 }
 
 func (u *Usage) observe(protocol Protocol, data []byte) {
@@ -76,8 +91,10 @@ func (u *Usage) observe(protocol Protocol, data []byte) {
 			output = max(output, result.Usage.TotalTokenCount-result.Usage.PromptTokenCount)
 		}
 		u.Output = max(u.Output, output)
+		u.CacheRead = max(u.CacheRead, result.Usage.CachedTokenCount)
+		u.Reasoning = max(u.Reasoning, result.Usage.ThoughtsTokenCount)
 		u.Seen = true
-	case OpenAIResponses:
+	case OpenAIResponses, OpenResponses:
 		var result struct {
 			Type     string       `json:"type"`
 			Usage    *openAIUsage `json:"usage"`
@@ -99,6 +116,12 @@ func (u *Usage) observe(protocol Protocol, data []byte) {
 		if usage != nil {
 			u.Input = max(u.Input, usage.InputTokens)
 			u.Output = max(u.Output, usage.OutputTokens)
+			if usage.InputDetails != nil {
+				u.CacheRead = max(u.CacheRead, usage.InputDetails.CachedTokens)
+			}
+			if usage.OutputDetails != nil {
+				u.Reasoning = max(u.Reasoning, usage.OutputDetails.ReasoningTokens)
+			}
 			u.Seen = true
 		}
 	case SystemOne:
@@ -110,20 +133,28 @@ func (u *Usage) observe(protocol Protocol, data []byte) {
 			u.Output = max(u.Output, result.Usage.OutputTokens)
 			u.Seen = true
 		}
-	case OpenAIChat, OpenAICompletions:
+	case OpenAIChat:
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 			u.Complete = true
 			return
 		}
 		var result struct {
 			Usage *struct {
-				PromptTokens     int64 `json:"prompt_tokens"`
-				CompletionTokens int64 `json:"completion_tokens"`
+				PromptTokens      int64              `json:"prompt_tokens"`
+				CompletionTokens  int64              `json:"completion_tokens"`
+				PromptDetails     *openAIUsageDetail `json:"prompt_tokens_details"`
+				CompletionDetails *openAIUsageDetail `json:"completion_tokens_details"`
 			} `json:"usage"`
 		}
 		if json.Unmarshal(data, &result) == nil && result.Usage != nil {
 			u.Input = max(u.Input, result.Usage.PromptTokens)
 			u.Output = max(u.Output, result.Usage.CompletionTokens)
+			if result.Usage.PromptDetails != nil {
+				u.CacheRead = max(u.CacheRead, result.Usage.PromptDetails.CachedTokens)
+			}
+			if result.Usage.CompletionDetails != nil {
+				u.Reasoning = max(u.Reasoning, result.Usage.CompletionDetails.ReasoningTokens)
+			}
 			u.Seen = true
 		}
 	case OpenAIEmbeddings:

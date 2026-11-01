@@ -92,7 +92,7 @@ func GeminiToChatRequest(body []byte, model string) ([]byte, error) {
 			chatMessages = append(chatMessages, messages...)
 			continue
 		}
-		var text string
+		var text, reasoning string
 		var toolCalls []any
 		for _, rawPart := range rawParts {
 			part, err := parseGeminiRequestPart(rawPart)
@@ -102,7 +102,14 @@ func GeminiToChatRequest(body []byte, model string) ([]byte, error) {
 			switch part.kind {
 			case geminiRequestPartText:
 				text += part.text
+			case geminiRequestPartThought:
+				// Replayed model-turn thinking rides the Chat wire's
+				// reasoning_content slot; bare signatures have no content.
+				reasoning += part.text
 			case geminiRequestPartFunctionCall:
+				if part.signature != "" {
+					return nil, errors.New("Gemini function call carries a thought signature that Chat cannot represent; use the Gemini or Responses endpoint")
+				}
 				callCounter++
 				callID := part.callID
 				if callID == "" {
@@ -113,15 +120,20 @@ func GeminiToChatRequest(body []byte, model string) ([]byte, error) {
 				}
 				toolIDs[part.name] = callID
 				toolCalls = append(toolCalls, map[string]any{"id": callID, "type": "function", "function": map[string]string{"name": part.name, "arguments": string(part.args)}})
+			default:
+				return nil, fmt.Errorf("Gemini model-turn part %T cannot be converted to Chat", part.kind)
 			}
 		}
-		if text == "" && len(toolCalls) == 0 {
-			// Thought-only model turns carry no content Chat can send.
+		if text == "" && len(toolCalls) == 0 && reasoning == "" {
+			// A turn carrying only a bare thought signature has no content.
 			continue
 		}
 		message := map[string]any{"role": "assistant", "content": nil}
 		if text != "" {
 			message["content"] = text
+		}
+		if reasoning != "" {
+			message["reasoning_content"] = reasoning
 		}
 		if len(toolCalls) > 0 {
 			message["tool_calls"] = toolCalls
@@ -172,15 +184,16 @@ func geminiGenerationConfig(raw json.RawMessage) (map[string]any, error) {
 
 // geminiRequestPart is the converted view of one request content part.
 type geminiRequestPart struct {
-	kind     geminiRequestPartKind
-	text     string
-	mimeType string
-	data     string
-	name     string
-	args     json.RawMessage
-	callID   string
-	response json.RawMessage
-	resultID string
+	kind      geminiRequestPartKind
+	text      string
+	signature string
+	mimeType  string
+	data      string
+	name      string
+	args      json.RawMessage
+	callID    string
+	response  json.RawMessage
+	resultID  string
 }
 
 type geminiRequestPartKind int
@@ -221,7 +234,7 @@ func parseGeminiRequestPart(raw json.RawMessage) (geminiRequestPart, error) {
 			}
 			args = call["args"]
 		}
-		return geminiRequestPart{kind: geminiRequestPartFunctionCall, name: name, args: args, callID: rawString(call["id"])}, nil
+		return geminiRequestPart{kind: geminiRequestPartFunctionCall, name: name, args: args, callID: rawString(call["id"]), signature: rawString(fields["thoughtSignature"])}, nil
 	}
 	if len(fields["functionResponse"]) != 0 {
 		if len(fields["text"]) != 0 || len(fields["inlineData"]) != 0 {
@@ -255,12 +268,16 @@ func parseGeminiRequestPart(raw json.RawMessage) (geminiRequestPart, error) {
 		}
 	}
 	if thought || rawString(fields["text"]) == "" {
-		// Thought parts and bare thought signatures replay no conversation
-		// content; Chat has no input slot for them, so they are skipped.
+		// Thought parts and bare thought signatures replay no display
+		// content; the thought text is preserved on the part so the model
+		// turn can carry it as reasoning history instead of dropping it.
 		if thought || rawString(fields["thoughtSignature"]) != "" {
-			return geminiRequestPart{kind: geminiRequestPartThought}, nil
+			return geminiRequestPart{kind: geminiRequestPartThought, text: rawString(fields["text"]), signature: rawString(fields["thoughtSignature"])}, nil
 		}
 		return geminiRequestPart{}, errors.New("Gemini part cannot be represented")
+	}
+	if rawString(fields["thoughtSignature"]) != "" {
+		return geminiRequestPart{}, errors.New("Gemini display text carries a thought signature that Chat cannot represent; use the Gemini or Responses endpoint")
 	}
 	return geminiRequestPart{kind: geminiRequestPartText, text: rawString(fields["text"])}, nil
 }
@@ -336,17 +353,25 @@ func geminiSystemInstruction(raw json.RawMessage) (string, error) {
 		return "", errors.New("systemInstruction parts must be an array")
 	}
 	var text string
+	sawParts := false
 	for _, rawPart := range rawParts {
-		part, err := object(rawPart, "text", "thought")
+		part, err := object(rawPart, "text", "thought", "thoughtSignature")
 		if err != nil {
 			return "", fmt.Errorf("systemInstruction part: %w", err)
 		}
+		sawParts = true
 		var thought bool
 		_ = json.Unmarshal(part["thought"], &thought)
 		if thought {
+			if rawString(part["text"]) != "" {
+				return "", errors.New("systemInstruction thought part carries text that Chat cannot represent")
+			}
 			continue
 		}
 		text += rawString(part["text"])
+	}
+	if text == "" && sawParts {
+		return "", errors.New("systemInstruction carries no convertible text")
 	}
 	return text, nil
 }
@@ -442,24 +467,25 @@ func geminiToolConfigToChat(raw json.RawMessage) (any, error) {
 }
 
 // ChatToGeminiResponse converts one Chat completion into a GenerateContent
-// response. Reasoning content becomes a thought part, function calls become
-// functionCall parts, and additive provider envelope fields are dropped by
-// the tolerant response parser.
+// response. Reasoning content becomes a thought part, refusals become their
+// own text part, and additive provider envelope fields ride provider_metadata.
 func ChatToGeminiResponse(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := responseObject(body, "id", "object", "created", "model", "choices", "usage")
+	fields, extras, err := responseObject(body, "id", "object", "created", "model", "choices", "usage", "provider_metadata")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata := newProviderMetadata(extras)
 	var objectType string
 	_ = json.Unmarshal(fields["object"], &objectType)
 	var choices []json.RawMessage
 	if objectType != "chat.completion" || json.Unmarshal(fields["choices"], &choices) != nil || len(choices) != 1 {
 		return nil, native.Usage{}, errors.New("Chat response requires a chat.completion object and one choice")
 	}
-	choice, err := responseObject(choices[0], "index", "message", "finish_reason")
+	choice, choiceExtras, err := responseObject(choices[0], "index", "message", "finish_reason")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(choiceExtras)
 	var index int
 	if json.Unmarshal(choice["index"], &index) != nil || index != 0 {
 		return nil, native.Usage{}, errors.New("Chat response choice index must be zero")
@@ -468,10 +494,11 @@ func ChatToGeminiResponse(body []byte, requestedModel string) ([]byte, native.Us
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	message, err := responseObject(choice["message"], "role", "content", "tool_calls", "reasoning_content")
+	message, messageExtras, err := responseObject(choice["message"], "role", "content", "tool_calls", "reasoning_content", "refusal")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(messageExtras)
 	var role string
 	_ = json.Unmarshal(message["role"], &role)
 	if role != "assistant" {
@@ -488,7 +515,12 @@ func ChatToGeminiResponse(body []byte, requestedModel string) ([]byte, native.Us
 	for _, block := range blocks {
 		if text, ok := block.(map[string]string); ok {
 			parts = append(parts, map[string]string{"text": text["text"]})
+		} else {
+			return nil, native.Usage{}, errors.New("Chat content block cannot be converted to Gemini")
 		}
+	}
+	if refusal := rawString(message["refusal"]); refusal != "" {
+		parts = append(parts, map[string]string{"text": refusal})
 	}
 	if len(message["tool_calls"]) != 0 {
 		calls, err := chatToolCalls(message["tool_calls"])
@@ -507,26 +539,33 @@ func ChatToGeminiResponse(body []byte, requestedModel string) ([]byte, native.Us
 			parts = append(parts, map[string]any{"functionCall": functionCall})
 		}
 	}
-	prompt, output, cached, seen := int64(0), int64(0), int64(0), false
+	usage := native.Usage{Seen: false}
 	if nonNull(fields["usage"]) {
-		_, err := responseObject(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
+		_, usageExtras, err := responseObject(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
 		if err != nil {
 			return nil, native.Usage{}, err
 		}
+		metadata.absorb(usageExtras)
 		var source struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
 			PromptDetails    struct {
 				CachedTokens int64 `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
-			PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
+			CompletionDetails struct {
+				ReasoningTokens int64 `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
+			PromptCacheHitTokens  int64 `json:"prompt_cache_hit_tokens"`
+			PromptCacheMissTokens int64 `json:"prompt_cache_miss_tokens"`
 		}
 		if json.Unmarshal(fields["usage"], &source) != nil || source.PromptTokens < 0 || source.CompletionTokens < 0 || source.PromptDetails.CachedTokens < 0 || source.PromptCacheHitTokens < 0 {
 			return nil, native.Usage{}, errors.New("invalid Chat usage")
 		}
-		prompt, output = source.PromptTokens, source.CompletionTokens
-		cached = max(source.PromptDetails.CachedTokens, source.PromptCacheHitTokens)
-		seen = true
+		usage.Input = source.PromptTokens
+		usage.Output = source.CompletionTokens
+		usage.CacheRead = max(source.PromptDetails.CachedTokens, source.PromptCacheHitTokens)
+		usage.Reasoning = source.CompletionDetails.ReasoningTokens
+		usage.Seen = true
 	}
 	candidate := map[string]any{"index": 0, "finishReason": finishReason}
 	if len(parts) > 0 {
@@ -539,15 +578,22 @@ func ChatToGeminiResponse(body []byte, requestedModel string) ([]byte, native.Us
 	if id := rawString(fields["id"]); id != "" {
 		result["responseId"] = id
 	}
-	if seen {
-		usageMetadata := map[string]any{"promptTokenCount": prompt, "candidatesTokenCount": output, "totalTokenCount": prompt + output}
-		if cached > 0 {
-			usageMetadata["cachedContentTokenCount"] = cached
+	if usage.Seen {
+		usageMetadata := map[string]any{"promptTokenCount": usage.Input, "candidatesTokenCount": usage.Output, "totalTokenCount": usage.Input + usage.Output}
+		if usage.CacheRead > 0 {
+			usageMetadata["cachedContentTokenCount"] = usage.CacheRead
+		}
+		if usage.Reasoning > 0 {
+			usageMetadata["thoughtsTokenCount"] = usage.Reasoning
 		}
 		result["usageMetadata"] = usageMetadata
 	}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
+	}
+	usage.Complete = true
 	converted, err := json.Marshal(result)
-	return converted, native.Usage{Input: prompt, Output: output, Seen: seen, Complete: true}, err
+	return converted, usage, err
 }
 
 // chatFinishReasonToGemini maps the Chat finish states onto Gemini finish

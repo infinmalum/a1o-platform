@@ -190,8 +190,6 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		if r.URL.Path != "/v1/chat/completions" {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.URL.Path {
-			case "/v1/completions":
-				_, _ = io.WriteString(w, `{"choices":[{"text":"ok"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`)
 			case "/v1/embeddings":
 				_, _ = io.WriteString(w, `{"data":[{"embedding":[0.1],"index":0}],"usage":{"prompt_tokens":2,"total_tokens":2}}`)
 			case "/v1/moderations":
@@ -255,7 +253,6 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		path string
 		body string
 	}{
-		{"/v1/completions", `{"model":"legacy-completion","prompt":"hello"}`},
 		{"/v1/embeddings", `{"model":"legacy-embed","input":"hello"}`},
 		{"/v1/moderations", `{"model":"legacy-moderation","input":"hello"}`},
 	} {
@@ -269,7 +266,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		}
 	}
 	var textLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&textLogs).Error; err != nil || len(textLogs) != 9 {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&textLogs).Error; err != nil || len(textLogs) != 8 {
 		t.Fatalf("legacy text routes must each settle once: logs %+v error %v", textLogs, err)
 	}
 	for _, log := range textLogs[6:] {
@@ -292,7 +289,7 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}()
 	router.ServeHTTP(cancelResponse, cancelRequest)
 	var cancellationLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&cancellationLogs).Error; err != nil || len(cancellationLogs) != 10 || cancellationLogs[9].ChannelId != channel.Id || cancellationLogs[9].Quota <= 0 {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&cancellationLogs).Error; err != nil || len(cancellationLogs) != 9 || cancellationLogs[8].ChannelId != channel.Id || cancellationLogs[8].Quota <= 0 {
 		t.Fatalf("cancelled audio must settle once on selected channel: logs %+v error %v", cancellationLogs, err)
 	}
 	for _, path := range []string{"/v1/audio/transcriptions", "/v1/audio/translations"} {
@@ -321,11 +318,11 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 		}
 	}
 	var audioLogs []model.Log
-	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&audioLogs).Error; err != nil || len(audioLogs) != 12 || audioLogs[10].ChannelId != channel.Id || audioLogs[11].ChannelId != channel.Id {
+	if err := db.Where("type = ?", model.LogTypeConsume).Order("id").Find(&audioLogs).Error; err != nil || len(audioLogs) != 11 || audioLogs[9].ChannelId != channel.Id || audioLogs[10].ChannelId != channel.Id {
 		t.Fatalf("multipart audio must settle once per request: logs %+v error %v", audioLogs, err)
 	}
 	proxyUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" || r.Header.Get("Authorization") != "proxy-key" {
+		if r.URL.Path != "/health" || r.Header.Get("Authorization") != "Bearer proxy-key" {
 			t.Errorf("proxy selected wrong target or credential: %s %q", r.URL, r.Header.Get("Authorization"))
 		}
 		_, _ = io.WriteString(w, "healthy")
@@ -345,8 +342,38 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	if proxyResponse.Code != http.StatusOK || proxyResponse.Body.String() != "healthy" {
 		t.Fatalf("proxy response: status %d body %s", proxyResponse.Code, proxyResponse.Body.String())
 	}
+
+	// Native provider payloads must reach the actual registered proxy route,
+	// including Coze resume and model-specific Replicate schemas.
+	for _, kind := range []int{channeltype.Coze, channeltype.Replicate, channeltype.Vercel, channeltype.OpenRouter, channeltype.Cloudflare} {
+		payload := `{"tool_outputs":[{"tool_call_id":"call","output":"ok"}],"input":{"custom_model_parameter":true}}`
+		nativeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			raw, _ := io.ReadAll(r.Body)
+			if string(raw) != payload || r.URL.Query().Get("conversation_id") != "conversation" || r.Header.Get("Authorization") != "Bearer native-key" {
+				t.Errorf("native payload/auth/query lost: %s %s", r.URL, raw)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, "event: conversation.chat.requires_action\ndata: {\"required_action\":{\"tool_calls\":[]}}\n\n")
+			w.(http.Flusher).Flush()
+			io.WriteString(w, "event: conversation.chat.completed\ndata: {}\n\n")
+		}))
+		base := nativeServer.URL
+		channel := model.Channel{Type: kind, Key: "native-key", Name: "native", Status: model.ChannelStatusEnabled, Group: "default", BaseURL: &base}
+		if err := db.Create(&channel).Error; err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest("POST", "/v1/a1o/proxy/"+strconv.Itoa(channel.Id)+"/v3/chat/submit_tool_outputs?conversation_id=conversation&chat_id=chat", strings.NewReader(payload))
+		request.Header.Set("Authorization", "Bearer sk-phase2-key")
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		nativeServer.Close()
+		if recorder.Code != 200 || !recorder.Flushed || !strings.Contains(recorder.Body.String(), "requires_action") || !strings.Contains(recorder.Body.String(), "completed") {
+			t.Fatalf("native route failed: %d %s", recorder.Code, recorder.Body.String())
+		}
+	}
 	var logCount int64
-	if err := db.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&logCount).Error; err != nil || logCount != 12 {
+	if err := db.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&logCount).Error; err != nil || logCount != 11 {
 		t.Fatalf("unmetered proxy must not create a usage charge: count %d error %v", logCount, err)
 	}
 }

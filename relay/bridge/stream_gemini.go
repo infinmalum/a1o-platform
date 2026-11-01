@@ -21,6 +21,7 @@ type geminiStreamEvent struct {
 	prompt       int64
 	output       int64
 	cached       int64
+	thoughts     int64
 	hasUsage     bool
 }
 
@@ -40,11 +41,12 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 		}
 	}
 	if len(fields["usageMetadata"]) != 0 {
-		prompt, output, cached, err := geminiUsage(fields["usageMetadata"], false)
+		usage, err := geminiUsageTokens(fields["usageMetadata"], false)
 		if err != nil {
 			return nil, err
 		}
-		event.prompt, event.output, event.cached = prompt, output, cached
+		event.prompt, event.output = usage.Input, usage.Output
+		event.cached, event.thoughts = usage.CacheRead, usage.Reasoning
 		event.hasUsage = true
 		event.metadata["usageMetadata"] = fields["usageMetadata"]
 	}
@@ -86,7 +88,9 @@ func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid Gemini content: %w", err)
 	}
-	ignoreExtras(extra)
+	for key, value := range extra {
+		event.metadata[key] = value
+	}
 	if role := rawString(content["role"]); role != "" && role != "model" {
 		return nil, errors.New("Gemini response content role must be model")
 	}
@@ -156,6 +160,7 @@ type chatToGeminiStream struct {
 	tools      map[int]*chatToolAccumulator
 	toolList   []int
 	events     int
+	metadata   providerMetadata
 	finished   bool
 }
 
@@ -164,7 +169,7 @@ func (s *chatToGeminiStream) chunk(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat chunk: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	if id := rawString(fields["id"]); id != "" {
 		s.id = id
 	}
@@ -187,7 +192,7 @@ func (s *chatToGeminiStream) chunk(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat choice: %w", err)
 	}
-	ignoreExtras(choiceExtra)
+	s.metadata.absorb(choiceExtra)
 	if index, err := parseIntField(choice["index"], "choice index"); err != nil || index != 0 {
 		return errors.New("Chat response choice index must be zero")
 	}
@@ -206,18 +211,22 @@ func (s *chatToGeminiStream) chunk(data []byte) error {
 
 func (s *chatToGeminiStream) observeUsage(raw json.RawMessage) error {
 	// DeepSeek-compatible providers add dedicated cache-hit fields; they map
-	// onto cachedContentTokenCount in the terminal event.
+	// onto cachedContentTokenCount in the terminal event, and reasoning
+	// tokens onto thoughtsTokenCount.
 	usage, extra, err := rawObject(raw, "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
 	if err != nil {
 		return fmt.Errorf("invalid Chat usage: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	var fields struct {
 		PromptTokens     int64 `json:"prompt_tokens"`
 		CompletionTokens int64 `json:"completion_tokens"`
 		PromptDetails    struct {
 			CachedTokens int64 `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
+		CompletionDetails struct {
+			ReasoningTokens int64 `json:"reasoning_tokens"`
+		} `json:"completion_tokens_details"`
 		PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
 	}
 	if json.Unmarshal(raw, &fields) != nil || fields.PromptTokens < 0 || fields.CompletionTokens < 0 {
@@ -231,7 +240,9 @@ func (s *chatToGeminiStream) observeUsage(raw json.RawMessage) error {
 		s.usage.Output = max(s.usage.Output, fields.CompletionTokens)
 		s.usage.Seen = true
 	}
-	s.cached = max(s.cached, fields.PromptDetails.CachedTokens, fields.PromptCacheHitTokens)
+	s.usage.CacheRead = max(s.usage.CacheRead, fields.PromptDetails.CachedTokens, fields.PromptCacheHitTokens)
+	s.usage.Reasoning = max(s.usage.Reasoning, fields.CompletionDetails.ReasoningTokens)
+	s.cached = s.usage.CacheRead
 	return nil
 }
 
@@ -240,12 +251,22 @@ func (s *chatToGeminiStream) delta(raw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat delta: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	if role := rawString(delta["role"]); role != "" && role != "assistant" {
 		return errors.New("Chat response role must be assistant")
 	}
 	if nonNull(delta["refusal"]) {
-		return errors.New("Chat refusal cannot be converted")
+		// A refusal is display text to the recipient, so it streams as an
+		// ordinary text part.
+		var refusal string
+		if json.Unmarshal(delta["refusal"], &refusal) != nil {
+			return errors.New("Chat refusal must be text")
+		}
+		if refusal != "" {
+			if err := s.emitParts([]map[string]any{{"text": refusal}}); err != nil {
+				return err
+			}
+		}
 	}
 	if nonNull(delta["content"]) {
 		var text string
@@ -282,7 +303,7 @@ func (s *chatToGeminiStream) toolCall(callRaw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat tool call: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	index, err := parseIntField(call["index"], "tool call index")
 	if err != nil {
 		return err
@@ -355,10 +376,16 @@ func (s *chatToGeminiStream) finish() error {
 	}
 	if s.usage.Seen {
 		usageMetadata := map[string]any{"promptTokenCount": s.usage.Input, "candidatesTokenCount": s.usage.Output, "totalTokenCount": s.usage.Input + s.usage.Output}
-		if s.cached > 0 {
-			usageMetadata["cachedContentTokenCount"] = s.cached
+		if s.usage.CacheRead > 0 {
+			usageMetadata["cachedContentTokenCount"] = s.usage.CacheRead
+		}
+		if s.usage.Reasoning > 0 {
+			usageMetadata["thoughtsTokenCount"] = s.usage.Reasoning
 		}
 		event["usageMetadata"] = usageMetadata
+	}
+	if m := s.metadata.value(); m != nil {
+		event["provider_metadata"] = m
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -384,10 +411,10 @@ func writeGeminiStreamError(dst StreamWriter, message string) error {
 }
 
 // Stream converts Gemini GenerateContent events into Chat Completions chunks.
-// Function calls become tool call deltas; thought parts have no Chat
-// representation and fail the stream. The stream ends when the upstream
-// connection closes; Gemini has no terminal event, so a missing finish reason
-// fails the conversion.
+// Function calls become tool call deltas; thought parts stream as the Chat
+// wire's reasoning_content slot with the signature riding provider_metadata.
+// The stream ends when the upstream connection closes; Gemini has no terminal
+// event, so a missing finish reason fails the conversion.
 func (chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
 	state := &geminiToChatStream{dst: dst, model: requestedModel, created: streamTimestamp()}
 	reader := newSSEReader(src)
@@ -435,6 +462,8 @@ func (s *geminiToChatStream) event(data []byte) error {
 	if parsed.hasUsage {
 		s.usage.Input = max(s.usage.Input, parsed.prompt)
 		s.usage.Output = max(s.usage.Output, parsed.output)
+		s.usage.CacheRead = max(s.usage.CacheRead, parsed.cached)
+		s.usage.Reasoning = max(s.usage.Reasoning, parsed.thoughts)
 		s.usage.Seen = true
 	}
 	for key, value := range parsed.metadata {
@@ -446,24 +475,70 @@ func (s *geminiToChatStream) event(data []byte) error {
 	if parsed.finishReason != "" {
 		s.finishReason = parsed.finishReason
 	}
-	var text string
+	var text, reasoning string
 	for _, part := range parsed.parts {
 		switch part.kind {
 		case geminiPartText:
 			text += part.text
+			if part.signature != "" {
+				s.setMetadata("thought_signature", part.signature)
+			}
+		case geminiPartThought:
+			// Visible thinking streams as the Chat wire's reasoning_content
+			// slot; the signature rides provider_metadata because the Chat
+			// wire has no per-part signature position.
+			reasoning += part.text
+			if part.signature != "" {
+				s.setMetadata("thought_signature", part.signature)
+			}
+		case geminiPartSignature:
+			s.setMetadata("thought_signature", part.signature)
 		case geminiPartFunctionCall:
+			if part.signature != "" {
+				return errors.New("Gemini function call carries a thought signature that Chat cannot represent; use the Gemini or Responses endpoint")
+			}
 			if err := s.emitText(text); err != nil {
 				return err
 			}
 			text = ""
+			if err := s.emitReasoning(reasoning); err != nil {
+				return err
+			}
+			reasoning = ""
 			if err := s.emitToolCall(part); err != nil {
 				return err
 			}
-		default:
-			return errors.New("Gemini thought parts cannot be represented in Chat")
 		}
 	}
+	if err := s.emitReasoning(reasoning); err != nil {
+		return err
+	}
 	return s.emitText(text)
+}
+
+func (s *geminiToChatStream) setMetadata(key string, value string) {
+	if s.metadata == nil {
+		s.metadata = make(map[string]json.RawMessage)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	s.metadata[key] = encoded
+}
+
+func (s *geminiToChatStream) emitReasoning(reasoning string) error {
+	if reasoning == "" {
+		return nil
+	}
+	if s.id == "" {
+		generated, err := newStreamID(chatCompletionIDPrefix)
+		if err != nil {
+			return err
+		}
+		s.id = generated
+	}
+	return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"role": "assistant", "reasoning_content": reasoning}, "", nil)
 }
 
 func (s *geminiToChatStream) emitText(text string) error {
@@ -525,18 +600,7 @@ func (s *geminiToChatStream) complete() error {
 	}
 	extra := map[string]any{}
 	if s.usage.Seen {
-		usage := map[string]any{"prompt_tokens": s.usage.Input, "completion_tokens": s.usage.Output, "total_tokens": s.usage.Input + s.usage.Output}
-		if s.metadata != nil {
-			if cached, ok := s.metadata["usageMetadata"]; ok {
-				var fields struct {
-					Cached int64 `json:"cachedContentTokenCount"`
-				}
-				if json.Unmarshal(cached, &fields) == nil && fields.Cached > 0 {
-					usage["prompt_tokens_details"] = map[string]int64{"cached_tokens": fields.Cached}
-				}
-			}
-		}
-		extra["usage"] = usage
+		extra["usage"] = chatUsageEnvelope(s.usage)
 	}
 	if len(s.metadata) > 0 {
 		extra["provider_metadata"] = map[string]any{"gemini": s.metadata}
@@ -776,8 +840,21 @@ func (s *geminiToAnthropicStream) complete() error {
 	if err := s.closeText(); err != nil {
 		return err
 	}
-	if err := s.writer.finish(mapped, "gemini", s.metadata); err != nil {
+	if err := s.writer.finish(mapped, "gemini", rawMetadataValue(s.metadata)); err != nil {
 		return err
 	}
 	return nil
+}
+
+// rawMetadataValue converts raw upstream metadata into the terminal event's
+// provider_metadata value.
+func rawMetadataValue(m map[string]json.RawMessage) map[string]any {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for key, value := range m {
+		out[key] = value
+	}
+	return out
 }

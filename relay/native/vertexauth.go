@@ -1,0 +1,63 @@
+package native
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	credentials "cloud.google.com/go/iam/credentials/apiv1"
+	"cloud.google.com/go/iam/credentials/apiv1/credentialspb"
+	"github.com/patrickmn/go-cache"
+	"google.golang.org/api/option"
+)
+
+// VertexApplicationDefaultCredentials is the service-account JSON an operator
+// configures on a VertexAI channel.
+type VertexApplicationDefaultCredentials struct {
+	Type                    string `json:"type"`
+	ProjectID               string `json:"project_id"`
+	PrivateKeyID            string `json:"private_key_id"`
+	PrivateKey              string `json:"private_key"`
+	ClientEmail             string `json:"client_email"`
+	ClientID                string `json:"client_id"`
+	AuthURI                 string `json:"auth_uri"`
+	TokenURI                string `json:"token_uri"`
+	AuthProviderX509CertURL string `json:"auth_provider_x509_cert_url"`
+	ClientX509CertURL       string `json:"client_x509_cert_url"`
+	UniverseDomain          string `json:"universe_domain"`
+}
+
+var vertexTokenCache = cache.New(50*time.Minute, 55*time.Minute)
+
+const vertexDefaultScope = "https://www.googleapis.com/auth/cloud-platform"
+
+// VertexAccessToken returns a cached IAM access token for the channel's
+// service account, minting one through the IAM Credentials API when missing.
+// Tokens live 50 minutes; a revoked token surfaces as an upstream 401 and the
+// next attempt mints a fresh one.
+func VertexAccessToken(ctx context.Context, channelId int, adcJson string) (string, error) {
+	cacheKey := fmt.Sprintf("vertexai-token-%d", channelId)
+	if token, found := vertexTokenCache.Get(cacheKey); found {
+		return token.(string), nil
+	}
+	adc := &VertexApplicationDefaultCredentials{}
+	if err := json.Unmarshal([]byte(adcJson), adc); err != nil {
+		return "", fmt.Errorf("failed to decode credentials file: %w", err)
+	}
+	c, err := credentials.NewIamCredentialsClient(ctx, option.WithCredentialsJSON([]byte(adcJson)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create credentials client: %w", err)
+	}
+	defer c.Close()
+	req := &credentialspb.GenerateAccessTokenRequest{
+		Name:  fmt.Sprintf("projects/-/serviceAccounts/%s", adc.ClientEmail),
+		Scope: []string{vertexDefaultScope},
+	}
+	resp, err := c.GenerateAccessToken(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate access token: %w", err)
+	}
+	vertexTokenCache.Set(cacheKey, resp.AccessToken, cache.DefaultExpiration)
+	return resp.AccessToken, nil
+}

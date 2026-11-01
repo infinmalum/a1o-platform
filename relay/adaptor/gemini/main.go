@@ -3,6 +3,7 @@ package gemini
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -91,12 +92,6 @@ func ConvertRequest(textRequest model.TextRequest) *ChatRequest {
 				FunctionDeclarations: functions,
 			},
 		}
-	} else if textRequest.Functions != nil {
-		geminiRequest.Tools = []ChatTools{
-			{
-				FunctionDeclarations: textRequest.Functions,
-			},
-		}
 	}
 	shouldAddDummyModelMessage := false
 	for _, message := range textRequest.Messages {
@@ -167,14 +162,27 @@ func ConvertRequest(textRequest model.TextRequest) *ChatRequest {
 	return &geminiRequest
 }
 
-func ConvertEmbeddingRequest(request model.TextRequest) *BatchEmbeddingRequest {
+func ConvertEmbeddingRequest(request model.TextRequest) (*BatchEmbeddingRequest, error) {
 	inputs := request.ParseInput()
+	// A non-string input item would be silently dropped by ParseInput and
+	// change the embedded set, so non-string inputs fail loudly instead.
+	if items, ok := request.Input.([]any); ok {
+		for _, item := range items {
+			if _, isString := item.(string); !isString {
+				return nil, errors.New("embedding input must be a string or an array of strings")
+			}
+		}
+	}
+	if len(inputs) == 0 {
+		return nil, errors.New("embedding input is required")
+	}
 	requests := make([]EmbeddingRequest, len(inputs))
 	model := fmt.Sprintf("models/%s", request.Model)
 
 	for i, input := range inputs {
 		requests[i] = EmbeddingRequest{
-			Model: model,
+			Model:                model,
+			OutputDimensionality: request.Dimensions,
 			Content: ChatContent{
 				Parts: []Part{
 					{
@@ -187,7 +195,7 @@ func ConvertEmbeddingRequest(request model.TextRequest) *BatchEmbeddingRequest {
 
 	return &BatchEmbeddingRequest{
 		Requests: requests,
-	}
+	}, nil
 }
 
 type ChatResponse struct {
@@ -295,17 +303,17 @@ func streamResponseGeminiChat2OpenAI(geminiResponse *ChatResponse) *openai.ChatC
 	return &response
 }
 
-func embeddingResponseGemini2OpenAI(response *EmbeddingResponse) *openai.EmbeddingResponse {
+func embeddingResponseGemini2OpenAI(response *EmbeddingResponse, requestedModel string) *openai.EmbeddingResponse {
 	openAIEmbeddingResponse := openai.EmbeddingResponse{
 		Object: "list",
 		Data:   make([]openai.EmbeddingResponseItem, 0, len(response.Embeddings)),
-		Model:  "gemini-embedding",
+		Model:  requestedModel,
 		Usage:  model.Usage{TotalTokens: 0},
 	}
-	for _, item := range response.Embeddings {
+	for index, item := range response.Embeddings {
 		openAIEmbeddingResponse.Data = append(openAIEmbeddingResponse.Data, openai.EmbeddingResponseItem{
 			Object:    `embedding`,
-			Index:     0,
+			Index:     index,
 			Embedding: item.Values,
 		})
 	}
@@ -406,7 +414,7 @@ func Handler(c *adaptor.Context, resp *http.Response, promptTokens int, modelNam
 	return nil, &usage
 }
 
-func EmbeddingHandler(c *adaptor.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
+func EmbeddingHandler(c *adaptor.Context, resp *http.Response, requestedModel string) (*model.ErrorWithStatusCode, *model.Usage) {
 	var geminiEmbeddingResponse EmbeddingResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -431,7 +439,7 @@ func EmbeddingHandler(c *adaptor.Context, resp *http.Response) (*model.ErrorWith
 			StatusCode: resp.StatusCode,
 		}, nil
 	}
-	fullTextResponse := embeddingResponseGemini2OpenAI(&geminiEmbeddingResponse)
+	fullTextResponse := embeddingResponseGemini2OpenAI(&geminiEmbeddingResponse, requestedModel)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil

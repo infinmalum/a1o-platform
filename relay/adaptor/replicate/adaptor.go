@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
@@ -22,12 +21,21 @@ type Adaptor struct {
 
 // ConvertImageRequest implements adaptor.Adaptor.
 func (*Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) {
+	if request == nil {
+		return nil, errors.New("request is nil")
+	}
+	if request.ReplicateInput != nil {
+		return map[string]any{"input": request.ReplicateInput}, nil
+	}
+	if request.N > 1 {
+		return nil, errors.New("Replicate image conversion supports n=1 only")
+	}
 	return DrawImageRequest{
 		Input: ImageInput{
-			Steps:           25,
-			Prompt:          request.Prompt,
-			Guidance:        3,
-			Seed:            int(time.Now().UnixNano()),
+			Steps:    25,
+			Prompt:   request.Prompt,
+			Guidance: 3,
+
 			SafetyTolerance: 5,
 			NImages:         1, // replicate will always return 1 image
 			Width:           1440,
@@ -38,56 +46,7 @@ func (*Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) {
 }
 
 func (a *Adaptor) ConvertRequest(in *model.ConversionInput) (any, error) {
-	request := in.Request
-	if !request.Stream {
-		// TODO: support non-stream mode
-		return nil, errors.Errorf("replicate models only support stream mode now, please set stream=true")
-	}
-
-	// Build the prompt from OpenAI messages
-	var promptBuilder strings.Builder
-	for _, message := range request.Messages {
-		switch msgCnt := message.Content.(type) {
-		case string:
-			promptBuilder.WriteString(message.Role)
-			promptBuilder.WriteString(": ")
-			promptBuilder.WriteString(msgCnt)
-			promptBuilder.WriteString("\n")
-		default:
-		}
-	}
-
-	replicateRequest := ReplicateChatRequest{
-		Input: ChatInput{
-			Prompt:           promptBuilder.String(),
-			MaxTokens:        request.MaxTokens,
-			Temperature:      1.0,
-			TopP:             1.0,
-			PresencePenalty:  0.0,
-			FrequencyPenalty: 0.0,
-		},
-	}
-
-	// Map optional fields
-	if request.Temperature != nil {
-		replicateRequest.Input.Temperature = *request.Temperature
-	}
-	if request.TopP != nil {
-		replicateRequest.Input.TopP = *request.TopP
-	}
-	if request.PresencePenalty != nil {
-		replicateRequest.Input.PresencePenalty = *request.PresencePenalty
-	}
-	if request.FrequencyPenalty != nil {
-		replicateRequest.Input.FrequencyPenalty = *request.FrequencyPenalty
-	}
-	if request.MaxTokens > 0 {
-		replicateRequest.Input.MaxTokens = request.MaxTokens
-	} else if request.MaxTokens == 0 {
-		replicateRequest.Input.MaxTokens = 500
-	}
-
-	return replicateRequest, nil
+	return ConvertChatRequest(in)
 }
 
 func (a *Adaptor) Init(meta *meta.Meta) {
@@ -95,7 +54,17 @@ func (a *Adaptor) Init(meta *meta.Meta) {
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
-	return fmt.Sprintf("https://api.replicate.com/v1/models/%s/predictions", meta.OriginModelName), nil
+	// The prediction endpoint addresses the mapped model: the channel's model
+	// mapping is what turns a client-facing alias into the owner/name ID.
+	base := strings.TrimRight(meta.BaseURL, "/")
+	if base == "" {
+		base = "https://api.replicate.com"
+	}
+	parts := strings.Split(meta.ActualModelName, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.ContainsAny(meta.ActualModelName, "?#:%") || parts[0] == ".." || parts[1] == ".." {
+		return "", errors.New("Replicate model must be owner/name")
+	}
+	return fmt.Sprintf("%s/v1/models/%s/predictions", base, meta.ActualModelName), nil
 }
 
 func (a *Adaptor) SetupRequestHeader(c *adaptor.Context, req *http.Request, meta *meta.Meta) error {
@@ -114,18 +83,12 @@ func (a *Adaptor) DoResponse(c *adaptor.Context, resp *http.Response, meta *meta
 	case relaymode.ImagesGenerations:
 		err, usage = ImageHandler(c, resp, meta)
 	case relaymode.ChatCompletions:
+		// The chat response renders onto the client wire the request arrived
+		// on; the same handler serves Chat, Messages, and Responses clients.
 		err, usage = ChatHandler(c, resp, meta)
 	default:
 		err = openai.ErrorWrapper(errors.New("not implemented"), "not_implemented", http.StatusInternalServerError)
 	}
 
 	return
-}
-
-func (a *Adaptor) GetModelList() []string {
-	return nil
-}
-
-func (a *Adaptor) GetChannelName() string {
-	return "replicate"
 }

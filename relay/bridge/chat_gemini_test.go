@@ -209,10 +209,7 @@ func TestGeminiToChatGeneratesIDWhenUpstreamOmitsOne(t *testing.T) {
 
 func TestGeminiToChatRejectsUnrepresentableResponses(t *testing.T) {
 	for _, body := range []string{
-		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"text":"secret","thought":true}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1}}`,
-		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"text":"secret","thought":true}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
 		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"search","args":{}},"thoughtSignature":"c2ln"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
-		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"text":"ok","thoughtSignature":"c2ln"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
 		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"inlineData":{"data":"aGVsbG8=","mimeType":"image/png"}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
 		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"fileData":{"fileUri":"gs://bucket/a.png"}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
 		`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"functionResponse":{"name":"search","response":{}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
@@ -225,6 +222,18 @@ func TestGeminiToChatRejectsUnrepresentableResponses(t *testing.T) {
 		if _, _, err := GeminiToChat([]byte(body), "alias"); err == nil {
 			t.Fatalf("lossy Gemini response was accepted: %s", body)
 		}
+	}
+	// Thought parts and their signatures carry: text becomes reasoning_content
+	// and the signature rides provider_metadata.
+	converted, usage, err := GeminiToChat([]byte(`{"responseId":"r","candidates":[{"content":{"role":"model","parts":[{"text":"secret","thought":true,"thoughtSignature":"c2ln"},{"text":"answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"thoughtsTokenCount":2,"totalTokenCount":4}}`), "alias")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(converted), `"reasoning_content":"secret"`) || !strings.Contains(string(converted), "thought_signature") {
+		t.Fatalf("thought content was not carried: %s", converted)
+	}
+	if usage.Reasoning != 2 {
+		t.Fatalf("thought tokens were not carried: %+v", usage)
 	}
 }
 

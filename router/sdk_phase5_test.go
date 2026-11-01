@@ -156,25 +156,10 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	}))
 	defer transcriptionServer.Close()
 
-	completionsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/completions" {
-			if r.Header.Get("Authorization") != "Bearer phase5-completions-key" {
-				t.Errorf("Completions provider request: %s %v", r.URL, r.Header)
-			}
-			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), `"model":"phase5-gpt"`) || !strings.Contains(string(body), `phase5-system-instruction\nhi`) {
-				t.Errorf("Completions system prompt was not prepended: %s", body)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"id":"cmpl_phase5","choices":[{"text":"fixed"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
-			return
-		}
-		t.Errorf("unexpected provider path: %s", r.URL.Path)
-	}))
-	defer completionsServer.Close()
-
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" || r.Header.Get("Authorization") != "phase5-proxy-key" || r.Header.Get("X-Trace") != "keep" {
+		// Provider authentication normalizes the channel key onto the
+		// OpenAI-compatible Bearer scheme.
+		if r.URL.Path != "/health" || r.Header.Get("Authorization") != "Bearer phase5-proxy-key" || r.Header.Get("X-Trace") != "keep" {
 			t.Errorf("Proxy upstream request: %s %v", r.URL, r.Header)
 		}
 		_, _ = io.WriteString(w, "proxy ok")
@@ -183,16 +168,14 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 
 	responsesURL, imagesURL := responsesServer.URL + "/v1", imagesServer.URL + "/v1"
 	speechURL, transcriptionURL := speechServer.URL + "/v1", transcriptionServer.URL + "/v1"
-	completionsURL, proxyURL := completionsServer.URL + "/v1", proxyServer.URL
+	proxyURL := proxyServer.URL
 	responsesMapping, speechMapping := `{"responses-sdk":"responses-upstream"}`, `{"tts-1":"phase5-tts"}`
-	completionsPrompt := "phase5-system-instruction"
 	var responsesChannel *model.Channel
 	for _, channel := range []*model.Channel{
 		{Type: channeltype.OpenAI, Key: "phase5-responses-key", Name: "phase5-responses", Status: model.ChannelStatusEnabled, Group: "default", Models: "responses-sdk", ModelMapping: &responsesMapping, BaseURL: &responsesURL},
 		{Type: channeltype.OpenAI, Key: "phase5-images-key", Name: "phase5-images", Status: model.ChannelStatusEnabled, Group: "default", Models: "dall-e-3", BaseURL: &imagesURL},
 		{Type: channeltype.OpenAI, Key: "phase5-speech-key", Name: "phase5-speech", Status: model.ChannelStatusEnabled, Group: "default", Models: "tts-1", ModelMapping: &speechMapping, BaseURL: &speechURL},
 		{Type: channeltype.OpenAI, Key: "phase5-whisper-key", Name: "phase5-whisper", Status: model.ChannelStatusEnabled, Group: "default", Models: "whisper-1", BaseURL: &transcriptionURL},
-		{Type: channeltype.OpenAI, Key: "phase5-completions-key", Name: "phase5-completions", Status: model.ChannelStatusEnabled, Group: "default", Models: "phase5-gpt", SystemPrompt: &completionsPrompt, BaseURL: &completionsURL},
 		{Type: channeltype.OpenAI, Key: "phase5-proxy-key", Name: "phase5-proxy", Status: model.ChannelStatusEnabled, Group: "default", Models: "", BaseURL: &proxyURL},
 	} {
 		if err := channel.Insert(); err != nil {
@@ -379,17 +362,6 @@ func TestPhase5BackgroundResponsesAndOperations(t *testing.T) {
 	}
 	if whisperLog.Quota == 0 || whisperLog.PromptTokens != whisperLog.Quota {
 		t.Fatalf("transcription quota wrong: quota %d prompt %d", whisperLog.Quota, whisperLog.PromptTokens)
-	}
-
-	// A configured system prompt is prepended to Completions prompts.
-	completion, err := openaiClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model: openai.CompletionNewParamsModel("phase5-gpt"),
-		Prompt: openai.CompletionNewParamsPromptUnion{
-			OfString: openai.String("hi"),
-		},
-	})
-	if err != nil || len(completion.Choices) != 1 || completion.Choices[0].Text != "fixed" {
-		t.Fatalf("completions through the shared lifecycle: %+v, %v", completion, err)
 	}
 
 	// The proxy route stays unmetered and substitutes the channel key.

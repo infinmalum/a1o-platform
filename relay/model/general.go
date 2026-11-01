@@ -1,5 +1,11 @@
 package model
 
+import (
+	"encoding/json"
+
+	"github.com/infinmalum/a1o-platform/relay/native"
+)
+
 type ResponseFormat struct {
 	Type       string      `json:"type,omitempty"`
 	JsonSchema *JSONSchema `json:"json_schema,omitempty"`
@@ -10,11 +16,6 @@ type JSONSchema struct {
 	Name        string                 `json:"name"`
 	Schema      map[string]interface{} `json:"schema,omitempty"`
 	Strict      *bool                  `json:"strict,omitempty"`
-}
-
-type Audio struct {
-	Voice  string `json:"voice,omitempty"`
-	Format string `json:"format,omitempty"`
 }
 
 type StreamOptions struct {
@@ -37,13 +38,8 @@ type TextRequest struct {
 	MaxTokens           int             `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int            `json:"max_completion_tokens,omitempty"`
 	N                   int             `json:"n,omitempty"`
-	Modalities          []string        `json:"modalities,omitempty"`
-	Prediction          any             `json:"prediction,omitempty"`
-	Audio               *Audio          `json:"audio,omitempty"`
 	PresencePenalty     *float64        `json:"presence_penalty,omitempty"`
 	ResponseFormat      *ResponseFormat `json:"response_format,omitempty"`
-	Seed                float64         `json:"seed,omitempty"`
-	ServiceTier         *string         `json:"service_tier,omitempty"`
 	Stop                any             `json:"stop,omitempty"`
 	Stream              bool            `json:"stream,omitempty"`
 	StreamOptions       *StreamOptions  `json:"stream_options,omitempty"`
@@ -52,30 +48,25 @@ type TextRequest struct {
 	TopK                int             `json:"top_k,omitempty"`
 	Tools               []Tool          `json:"tools,omitempty"`
 	ToolChoice          any             `json:"tool_choice,omitempty"`
-	ParallelTooCalls    *bool           `json:"parallel_tool_calls,omitempty"`
 	User                string          `json:"user,omitempty"`
-	FunctionCall        any             `json:"function_call,omitempty"`
-	Functions           any             `json:"functions,omitempty"`
 	// https://platform.openai.com/docs/api-reference/embeddings/create
 	Input          any    `json:"input,omitempty"`
 	EncodingFormat string `json:"encoding_format,omitempty"`
 	Dimensions     int    `json:"dimensions,omitempty"`
-	// https://platform.openai.com/docs/api-reference/images/create
-	Prompt  any     `json:"prompt,omitempty"`
-	Quality *string `json:"quality,omitempty"`
-	Size    string  `json:"size,omitempty"`
-	Style   *string `json:"style,omitempty"`
-	// Others
-	Instruction string `json:"instruction,omitempty"`
-	NumCtx      int    `json:"num_ctx,omitempty"`
 }
 
 // ConversionInput contains only data a provider's request converter needs.
-// Values are returned to the transport after conversion.
+// Values are returned to the transport after conversion. Inbound names the
+// client wire the request arrived on: the zero value is the OpenAI Chat wire
+// (Request carries the parsed body), while the Anthropic and Responses wires
+// arrive as RawBody and converters must parse it themselves — a converter
+// must never route one client wire through another as an intermediate.
 type ConversionInput struct {
 	Mode    int
 	Request *TextRequest
 	APIKey  string
+	Inbound native.Protocol
+	RawBody json.RawMessage
 	Values  map[string]any
 }
 

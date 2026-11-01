@@ -91,8 +91,14 @@ func TestAnthropicToChatResponsePreservesUsageAndRejectsLossyFeatures(t *testing
 			t.Fatalf("lossy Messages request was accepted: %s", body)
 		}
 	}
-	if _, _, err := ChatToAnthropicResponse([]byte(strings.Replace(string(input), `"finish_reason":"tool_calls"`, `"finish_reason":"content_filter"`, 1)), "client-model"); err == nil {
-		t.Fatal("content filter was converted to a refusal")
+	// A content-filter finish maps onto the Messages wire's refusal stop
+	// reason, the closest faithful state the wire carries.
+	filtered, _, err := ChatToAnthropicResponse([]byte(strings.Replace(string(input), `"finish_reason":"tool_calls"`, `"finish_reason":"content_filter"`, 1)), "client-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(filtered), `"stop_reason":"refusal"`) {
+		t.Fatalf("content_filter did not map onto refusal: %s", filtered)
 	}
 	// A response without usage still converts; billing falls back to the
 	// reserved quota because the reported usage is marked unseen.

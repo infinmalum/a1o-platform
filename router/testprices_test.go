@@ -19,6 +19,7 @@ var fixtureInputPrices = map[string]float64{
 	"claude-upstream": 2, "gemini-upstream": 2, "future-model-id": 2,
 	"openai-only": 2, "blocked-model": 2, "chat-upstream": 2,
 	"bridge-upstream": 2, "gemini-bridge-upstream": 2, "reverse-upstream": 2,
+	"vercel-gateway": 2,
 	"completion-upstream": 2, "embedding-upstream": 2, "moderation-upstream": 2,
 	// official SDK fixtures
 	"upstream-openai": 2, "upstream-anthropic": 2, "upstream-ollama": 2,
@@ -38,6 +39,7 @@ var fixtureCompletionPrices = map[string]float64{
 	"claude-upstream": 3, "gemini-upstream": 3, "future-model-id": 3,
 	"openai-only": 3, "blocked-model": 3, "chat-upstream": 3,
 	"bridge-upstream": 3, "gemini-bridge-upstream": 3, "reverse-upstream": 3,
+	"vercel-gateway": 3,
 	"completion-upstream": 3, "embedding-upstream": 3, "moderation-upstream": 3,
 	"upstream-openai": 3, "upstream-anthropic": 3, "upstream-ollama": 3,
 	"gemini-tool-upstream": 3, "gemini-think-upstream": 3,

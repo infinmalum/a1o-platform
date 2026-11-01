@@ -15,10 +15,6 @@ func ValidateTextRequest(textRequest *model.TextRequest, relayMode int) error {
 		return errors.New("model is required")
 	}
 	switch relayMode {
-	case relaymode.Completions:
-		if textRequest.Prompt == "" {
-			return errors.New("field prompt is required")
-		}
 	case relaymode.ChatCompletions:
 		if textRequest.Messages == nil || len(textRequest.Messages) == 0 {
 			return errors.New("field messages is required")

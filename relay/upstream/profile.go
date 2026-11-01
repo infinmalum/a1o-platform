@@ -31,10 +31,10 @@ var (
 	mu       sync.RWMutex
 	profiles = map[string]Profile{
 		"api_key": {
-			ID:               "api_key",
-			CredentialKind:   "api_key",
+			ID:             "api_key",
+			CredentialKind: "api_key",
 			UpstreamProtocols: []native.Protocol{
-				native.Anthropic, native.Gemini, native.OpenAIChat, native.OpenAICompletions,
+				native.Anthropic, native.Gemini, native.OpenAIChat,
 				native.OpenAIEmbeddings, native.OpenAIModerations, native.OpenAIResponses,
 				native.OpenAIImages, native.OpenAIAudioSpeech,
 				native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations,

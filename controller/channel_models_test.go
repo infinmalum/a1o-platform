@@ -56,7 +56,7 @@ func TestFetchUpstreamModelsAnthropicHeaders(t *testing.T) {
 	models, err := fetchUpstreamModels(server.Client(), channeltype.Anthropic, server.URL, "ak-test")
 	require.NoError(t, err)
 	require.Equal(t, "ak-test", gotAPIKey)
-	require.Equal(t, "2023-06-01", gotVersion)
+	require.Equal(t, "2026-10-21", gotVersion)
 	require.Equal(t, []string{"claude-sonnet-4-5"}, models)
 }
 
@@ -110,8 +110,8 @@ func TestFetchUpstreamModelsOpenRouterAndDeepL(t *testing.T) {
 	require.Equal(t, []string{"EN-US", "ZH"}, models)
 }
 
-func TestFetchUpstreamModelsRefusesTypeSafeAndBadURLs(t *testing.T) {
-	_, err := fetchUpstreamModels(http.DefaultClient, channeltype.TypeSafe, "https://api.typesafe.ai", "k")
+func TestFetchUpstreamModelsRefusesMissingBaseAndBadURLs(t *testing.T) {
+	_, err := fetchUpstreamModels(http.DefaultClient, channeltype.Azure, "", "k")
 	require.Error(t, err)
 
 	_, err = fetchUpstreamModels(http.DefaultClient, channeltype.OpenAI, "ftp://example.com", "k")
@@ -151,6 +151,35 @@ func TestParseOpenRouterCatalog(t *testing.T) {
 	require.Len(t, prices, 2)
 	// $3 per million input tokens -> ratio 1.5; output is 5x input.
 	require.Equal(t, billingratio.FetchedModelPrice{Input: 1.5, Completion: 5}, prices["vendor/paid"])
+	// A free model bills exactly nothing.
+	require.Equal(t, billingratio.FetchedModelPrice{Input: 0, Completion: 0}, prices["vendor/free"])
+	// Free input with paid output cannot be expressed in the charge formula
+	// and stays unpriced instead of being guessed at.
+	_, ok := prices["vendor/backwards"]
+	require.False(t, ok)
+	_, ok = prices["vendor/broken"]
+	require.False(t, ok)
+}
+
+// TestParseVercelCatalog pins the Vercel AI Gateway conversion: the catalog
+// publishes USD per token, only the language entries serve the OpenResponses
+// wire the channel speaks, and the price math matches the OpenRouter rule.
+func TestParseVercelCatalog(t *testing.T) {
+	body := []byte(`{"data":[
+		{"id":"anthropic/claude-opus-5","type":"language","pricing":{"input":"0.000005","output":"0.000025"}},
+		{"id":"vendor/free","type":"language","pricing":{"input":"0","output":"0"}},
+		{"id":"vendor/backwards","type":"language","pricing":{"input":"0","output":"0.00001"}},
+		{"id":"vendor/broken","type":"language","pricing":{"input":"not-a-number","output":"0.00001"}},
+		{"id":"openai/text-embedding-3-small","type":"embedding","pricing":{"input":"0.00000002","output":"0"}},
+		{"id":"vendor/untyped","pricing":{"input":"0.000001","output":"0.000002"}},
+		{"id":"anthropic/claude-opus-5","type":"language","pricing":{"input":"0.000005","output":"0.000025"}}
+	]}`)
+	models, prices, err := parseVercelCatalog(body)
+	require.NoError(t, err)
+	require.Equal(t, []string{"anthropic/claude-opus-5", "vendor/backwards", "vendor/broken", "vendor/free"}, models)
+	require.Len(t, prices, 2)
+	// $5 per million input tokens -> ratio 2.5; output is 5x input.
+	require.Equal(t, billingratio.FetchedModelPrice{Input: 2.5, Completion: 5}, prices["anthropic/claude-opus-5"])
 	// A free model bills exactly nothing.
 	require.Equal(t, billingratio.FetchedModelPrice{Input: 0, Completion: 0}, prices["vendor/free"])
 	// Free input with paid output cannot be expressed in the charge formula

@@ -32,8 +32,14 @@ const (
 	// the kind forwards all four and needs no operator-supplied base URL.
 	OpenRouter = 54
 
+	// Vercel is the Vercel AI Gateway speaking the OpenResponses protocol
+	// (openresponses.org) on its /v1/responses endpoint. The base is fixed
+	// by the kind (https://ai-gateway.vercel.sh/v1) and the key is the AI
+	// Gateway API key; models carry the gateway's provider/model names.
+	Vercel = 55
+
 	// Dummy is the exclusive upper bound of valid kind IDs, not a kind.
-	Dummy = 55
+	Dummy = 56
 )
 
 // IsValid reports whether kind names a channel kind that actually exists.
@@ -44,7 +50,7 @@ func IsValid(kind int) bool {
 	switch kind {
 	case OpenAI, Azure, Anthropic, Gemini, AwsClaude, Coze,
 		Cloudflare, DeepL, VertextAI, Replicate,
-		TypeSafe, OpenAIResponses, OpenRouter:
+		TypeSafe, OpenAIResponses, OpenRouter, Vercel:
 		return true
 	}
 	return false

@@ -66,6 +66,26 @@ func TestOpenRouterMessagesPassThroughWithBearer(t *testing.T) {
 	}
 }
 
+// The Vercel gateway base carries /v1 itself, so the Responses path drops its
+// version prefix and lands on the bare /responses suffix with the gateway's
+// bearer key.
+func TestVercelResponsesRouteUsesBareSuffix(t *testing.T) {
+	for _, baseURL := range []string{"https://ai-gateway.vercel.sh/v1", "https://proxy.example.com/vercel"} {
+		request, err := BuildRequest(context.Background(), Request{Protocol: OpenAIResponses, ChannelType: channeltype.Vercel,
+			BaseURL: baseURL, Model: "openai/gpt-5", APIKey: "vercel-key",
+			Body: []byte(`{"model":"openai/gpt-5","input":"hello","stream":true}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := request.URL.String(); got != baseURL+"/responses" {
+			t.Fatalf("Vercel Responses request produced %s, want %s/responses", got, baseURL)
+		}
+		if request.Header.Get("Authorization") != "Bearer vercel-key" || request.Header.Get("Accept") != "text/event-stream" {
+			t.Fatalf("Vercel request must authenticate with the gateway bearer key: %v", request.Header)
+		}
+	}
+}
+
 func TestAnthropicRequestPreservesExtensionsAndReplacesCredential(t *testing.T) {
 	t.Setenv("NATIVE_TEST_UPSTREAM_IDENTITY", "upstream-fixture-value")
 	original := []byte(`{"model":"client-model","max_tokens":20,"stream":true,"thinking":{"type":"enabled","budget_tokens":100},"future_field":{"nested":true}}`)
@@ -327,24 +347,6 @@ func TestOpenAIEmbeddingsPreserveFieldsAndLargeUsage(t *testing.T) {
 	usage, err := CopyResponse(w, strings.NewReader(large), OpenAIEmbeddings, false)
 	if err != nil || w.Body.String() != large || !usage.Seen || usage.Input != 13 || usage.Output != 0 {
 		t.Fatalf("large embedding response lost usage: %+v len=%d err=%v", usage, w.Body.Len(), err)
-	}
-}
-
-func TestOpenAICompletionsPreserveBodyAndStream(t *testing.T) {
-	body := []byte("{\n  \"model\": \"same\", \"prompt\": \"hello\", \"stream\": true, \"logprobs\": 3, \"future\": true\n}")
-	request, err := BuildRequest(context.Background(), Request{Protocol: OpenAICompletions, BaseURL: "https://example.com", Model: "same", APIKey: "provider-key", Body: body})
-	if err != nil {
-		t.Fatal(err)
-	}
-	forwarded, _ := io.ReadAll(request.Body)
-	if !bytes.Equal(forwarded, body) || request.URL.Path != "/v1/completions" || request.Header.Get("Accept") != "text/event-stream" {
-		t.Fatalf("unmapped Completions request changed: %s %v", forwarded, request.Header)
-	}
-	events := "data: {\"choices\":[{\"text\":\"hello\"}]}\n\n" + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\n\n" + "data: [DONE]\n\n"
-	w := httptest.NewRecorder()
-	usage, err := CopyResponse(w, strings.NewReader(events), OpenAICompletions, true)
-	if err != nil || w.Body.String() != events || !usage.Seen || !usage.Complete || usage.Input != 2 || usage.Output != 3 {
-		t.Fatalf("Completions stream or usage changed: %+v %q %v", usage, w.Body.String(), err)
 	}
 }
 

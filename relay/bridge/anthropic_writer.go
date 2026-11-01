@@ -85,14 +85,15 @@ func (w *anthropicStreamWriter) delta(index int, payload map[string]any) error {
 	return writeAnthropicEvent(w.dst, "content_block_delta", body)
 }
 
-// finish writes message_delta with the stop reason and accumulated usage,
-// then message_stop carrying provider metadata. Complete is set on the usage
-// once the terminal events are on the wire.
-func (w *anthropicStreamWriter) finish(stopReason, providerKey string, metadata map[string]json.RawMessage) error {
+// finish writes message_delta with the stop reason and accumulated usage —
+// including the cache-token breakdown the provider reported — then message_stop
+// carrying provider metadata. Complete is set on the usage once the terminal
+// events are on the wire.
+func (w *anthropicStreamWriter) finish(stopReason, providerKey string, metadata map[string]any) error {
 	delta, err := json.Marshal(map[string]any{
 		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": stopReason, "stop_sequence": nil},
-		"usage": map[string]int64{"input_tokens": w.usage.Input, "output_tokens": w.usage.Output},
+		"usage": anthropicUsageEnvelope(w.usage),
 	})
 	if err != nil {
 		return err

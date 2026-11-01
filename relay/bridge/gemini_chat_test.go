@@ -88,8 +88,10 @@ func TestGeminiToChatRequestSkipsThoughtHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(converted), "secret") {
-		t.Fatalf("thought history leaked into the Chat request: %s", converted)
+	// Replayed thinking history rides the Chat wire's reasoning_content slot
+	// instead of vanishing.
+	if !strings.Contains(string(converted), `"reasoning_content":"secret"`) {
+		t.Fatalf("thought history was not carried as reasoning content: %s", converted)
 	}
 	var result struct {
 		Messages []struct {
@@ -99,8 +101,8 @@ func TestGeminiToChatRequestSkipsThoughtHistory(t *testing.T) {
 	if err := json.Unmarshal(converted, &result); err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Messages) != 2 {
-		t.Fatalf("thought-only turn was not skipped: %s", converted)
+	if len(result.Messages) != 3 {
+		t.Fatalf("thought history was dropped: %s", converted)
 	}
 }
 

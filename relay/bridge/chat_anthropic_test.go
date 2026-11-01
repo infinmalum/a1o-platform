@@ -85,16 +85,25 @@ func TestAnthropicToChatConvertsToolsUsageAndRejectsThinking(t *testing.T) {
 	if result.Model != "client-alias" || result.Choices[0].FinishReason != "tool_calls" || result.Choices[0].Message.Content != "Searching" || result.Choices[0].Message.ToolCalls[0].ID != "toolu_1" || result.Choices[0].Message.ToolCalls[0].Function.Name != "search" || !strings.Contains(result.Choices[0].Message.ToolCalls[0].Function.Arguments, `"q":"test"`) || !usage.Seen || usage.Input != 5 || usage.Output != 7 {
 		t.Fatalf("Anthropic response conversion lost fields: %s usage %+v", converted, usage)
 	}
-	if _, _, err := AnthropicToChat([]byte(`{"id":"msg_2","type":"message","stop_reason":"end_turn","content":[{"type":"thinking","thinking":"private"}]}`), "alias"); err == nil {
-		t.Fatal("thinking block was silently dropped")
+	// Visible thinking maps onto reasoning_content; redacted thinking cannot
+	// round-trip through the Chat wire and fails loudly.
+	withThinking, _, err := AnthropicToChat([]byte(`{"id":"msg_2","type":"message","stop_reason":"end_turn","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"ok"}]}`), "alias")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(withThinking), `"reasoning_content":"private"`) {
+		t.Fatalf("thinking block was not carried as reasoning_content: %s", withThinking)
+	}
+	if _, _, err := AnthropicToChat([]byte(`{"id":"msg_3","type":"message","stop_reason":"end_turn","content":[{"type":"redacted_thinking","data":"blob"}]}`), "alias"); err == nil {
+		t.Fatal("redacted thinking was accepted on the Chat wire")
 	}
 }
 
 func TestAnthropicToChatResponseFieldTolerance(t *testing.T) {
-	// Additive provider envelope fields (citations, tool accounting, sandbox
-	// containers) are dropped with a warning instead of failing the response.
+	// Additive provider envelope fields (tool accounting, sandbox containers)
+	// ride provider_metadata instead of failing or vanishing. Citations have
+	// no Chat slot and fail loudly so the client can pick the Anthropic wire.
 	for _, body := range []string{
-		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok","citations":[{"type":"web_search_result_location"}]}]}`,
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":2,"output_tokens":1,"server_tool_use":{"web_search_requests":1}}}`,
 		`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"container":{"id":"x"}}`,
 	} {
@@ -105,6 +114,9 @@ func TestAnthropicToChatResponseFieldTolerance(t *testing.T) {
 		if !strings.Contains(string(converted), `"content":"ok"`) {
 			t.Fatalf("tolerated response lost content: %s", converted)
 		}
+	}
+	if _, _, err := AnthropicToChat([]byte(`{"id":"msg_1","type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok","citations":[{"type":"web_search_result_location"}]}]}`), "alias"); err == nil {
+		t.Fatal("citations were silently dropped on the Chat wire")
 	}
 	// Content-shape problems still fail: the data would be lost or reordered.
 	for _, body := range []string{

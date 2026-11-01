@@ -11,8 +11,9 @@ import (
 )
 
 // Stream converts Anthropic Messages events into Chat Completions chunks.
-// Thinking, citations, and server tools cannot be represented and fail the
-// stream instead of being dropped.
+// Thinking text streams as the Chat wire's reasoning_content slot with the
+// signature riding provider_metadata; redacted thinking and citations cannot
+// round-trip and fail the stream instead of being dropped.
 func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
 	state := &anthropicToChatStream{dst: dst, model: requestedModel, created: streamTimestamp(), blockTools: map[int]int{}}
 	reader := newSSEReader(src)
@@ -38,15 +39,17 @@ func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 }
 
 type anthropicToChatStream struct {
-	dst        StreamWriter
-	model      string
-	created    int64
-	id         string
-	started    bool
-	stopSeen   bool
-	toolCount  int
-	blockTools map[int]int
-	usage      native.Usage
+	dst          StreamWriter
+	model        string
+	created      int64
+	id           string
+	started      bool
+	stopSeen     bool
+	toolCount    int
+	blockTools   map[int]int
+	thinkingOpen bool
+	usage        native.Usage
+	metadata     providerMetadata
 }
 
 func (s *anthropicToChatStream) event(data []byte) error {
@@ -67,19 +70,27 @@ func (s *anthropicToChatStream) event(data []byte) error {
 	case "content_block_delta":
 		return s.blockDelta(data)
 	case "content_block_stop":
-		if _, extra, err := rawObject(data, "type", "index"); err != nil {
+		fields, extra, err := rawObject(data, "type", "index")
+		if err != nil {
 			return err
-		} else if len(extra) > 0 {
-			return errors.New("Anthropic content_block_stop carries fields Chat cannot represent")
 		}
+		s.metadata.absorb(extra)
+		index, err := parseIntField(fields["index"], "block index")
+		if err != nil {
+			return err
+		}
+		if s.thinkingOpen {
+			s.thinkingOpen = false
+		}
+		_ = index
 		return nil
 	case "message_delta":
 		return s.messageDelta(data)
 	case "message_stop":
 		if _, extra, err := rawObject(data, "type"); err != nil {
 			return err
-		} else if len(extra) > 0 {
-			return errors.New("Anthropic message_stop carries fields Chat cannot represent")
+		} else {
+			s.metadata.absorb(extra)
 		}
 		if !s.started || !s.stopSeen {
 			return errors.New("Anthropic message_stop arrived before a finish reason")
@@ -93,9 +104,7 @@ func (s *anthropicToChatStream) event(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("invalid Anthropic error event: %w", err)
 		}
-		if len(extra) > 0 {
-			return errors.New("Anthropic error event carries fields Chat cannot represent")
-		}
+		s.metadata.absorb(extra)
 		failure, _, err := rawObject(fields["error"], "type", "message")
 		if err != nil {
 			return fmt.Errorf("invalid Anthropic error event: %w", err)
@@ -117,16 +126,12 @@ func (s *anthropicToChatStream) messageStart(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic message_start: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic message_start field %q cannot be converted", firstKey(extra))
-	}
-	message, extra, err := rawObject(fields["message"], "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
+	s.metadata.absorb(extra)
+	message, messageExtra, err := rawObject(fields["message"], "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic message_start: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic message_start field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(messageExtra)
 	s.id = rawString(message["id"])
 	if s.id == "" {
 		return errors.New("Anthropic message_start requires an id")
@@ -157,9 +162,7 @@ func (s *anthropicToChatStream) observeInputUsage(raw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic usage: %w", err)
 	}
-	if len(extra) > 0 {
-		return errors.New("Anthropic usage carries fields Chat cannot represent")
-	}
+	s.metadata.absorb(extra)
 	input, ok := decodeStreamNumber(usage["input_tokens"])
 	if !ok || !nonNull(usage["input_tokens"]) {
 		return errors.New("Anthropic usage requires input_tokens")
@@ -172,6 +175,8 @@ func (s *anthropicToChatStream) observeInputUsage(raw json.RawMessage) error {
 	if !ok {
 		return errors.New("invalid Anthropic usage")
 	}
+	s.usage.CacheCreation = max(s.usage.CacheCreation, cacheCreation)
+	s.usage.CacheRead = max(s.usage.CacheRead, cacheRead)
 	s.usage.Input = max(s.usage.Input, input+cacheCreation+cacheRead)
 	s.usage.Seen = true
 	return nil
@@ -185,23 +190,20 @@ func (s *anthropicToChatStream) blockStart(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic content_block_start: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic content_block_start field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(extra)
 	index, err := parseIntField(fields["index"], "block index")
 	if err != nil {
 		return err
 	}
-	block, extra, err := rawObject(fields["content_block"], "type", "text", "id", "name", "input")
+	block, blockExtra, err := rawObject(fields["content_block"], "type", "text", "id", "name", "input", "thinking", "signature", "data", "citations")
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic content block: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic content block field %q cannot be converted", firstKey(extra))
-	}
-	switch rawString(block["type"]) {
+	s.metadata.absorb(blockExtra)
+	kind := rawString(block["type"])
+	switch kind {
 	case "text":
-		if len(block) != 2 {
+		if len(block) > 2 {
 			return errors.New("invalid Anthropic text block")
 		}
 		var initial string
@@ -212,6 +214,14 @@ func (s *anthropicToChatStream) blockStart(data []byte) error {
 			return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"content": initial}, "", nil)
 		}
 		return nil
+	case "thinking":
+		s.thinkingOpen = true
+		if initial := rawString(block["thinking"]); initial != "" {
+			return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"reasoning_content": initial}, "", nil)
+		}
+		return nil
+	case "redacted_thinking":
+		return errors.New("Anthropic redacted thinking cannot round-trip through the Chat wire; use the Anthropic or Responses endpoint")
 	case "tool_use":
 		if len(block) != 4 {
 			return errors.New("invalid Anthropic tool_use block")
@@ -229,7 +239,7 @@ func (s *anthropicToChatStream) blockStart(data []byte) error {
 		}}}
 		return emitChatChunk(s.dst, s.id, s.created, s.model, delta, "", nil)
 	default:
-		return fmt.Errorf("Anthropic content block %q cannot be converted", rawString(block["type"]))
+		return fmt.Errorf("Anthropic content block %q cannot be converted", kind)
 	}
 }
 
@@ -241,26 +251,35 @@ func (s *anthropicToChatStream) blockDelta(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic content_block_delta: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic content_block_delta field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(extra)
 	index, err := parseIntField(fields["index"], "block index")
 	if err != nil {
 		return err
 	}
-	delta, extra, err := rawObject(fields["delta"], "type", "text", "partial_json")
+	delta, deltaExtra, err := rawObject(fields["delta"], "type", "text", "partial_json", "thinking", "signature")
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic content delta: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic delta field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(deltaExtra)
 	switch rawString(delta["type"]) {
 	case "text_delta":
 		if len(delta) != 2 {
 			return errors.New("invalid Anthropic text delta")
 		}
 		return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"content": rawString(delta["text"])}, "", nil)
+	case "thinking_delta":
+		if !s.thinkingOpen {
+			return errors.New("Anthropic thinking delta arrived outside a thinking block")
+		}
+		return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"reasoning_content": rawString(delta["thinking"])}, "", nil)
+	case "signature_delta":
+		if !s.thinkingOpen {
+			return errors.New("Anthropic signature delta arrived outside a thinking block")
+		}
+		// The Chat wire has no per-message signature slot; the signature
+		// rides provider_metadata so nothing is lost.
+		s.metadata.set("thinking_signature", rawString(delta["signature"]))
+		return nil
 	case "input_json_delta":
 		if len(delta) != 2 {
 			return errors.New("invalid Anthropic tool delta")
@@ -287,19 +306,15 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic message_delta: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic message_delta field %q cannot be converted", firstKey(extra))
-	}
-	delta, extra, err := rawObject(fields["delta"], "type", "stop_reason", "stop_sequence")
+	s.metadata.absorb(extra)
+	delta, deltaExtra, err := rawObject(fields["delta"], "type", "stop_reason", "stop_sequence")
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic message delta: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Anthropic message delta field %q cannot be converted", firstKey(extra))
+	s.metadata.absorb(deltaExtra)
+	if matched := rawString(delta["stop_sequence"]); matched != "" {
+		s.metadata.set("matched_stop_sequence", matched)
 	}
-	// stop_sequence names the configured stop word that fired. Chat has no
-	// field for it, but the same condition is reported through the finish
-	// reason below, so the value itself is safely ignored.
 	if len(fields["usage"]) != 0 {
 		if err := s.observeOutputUsage(fields["usage"]); err != nil {
 			return err
@@ -314,7 +329,27 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 		finish = mapped
 		s.stopSeen = true
 	}
-	return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, nil)
+	if err := emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, nil); err != nil {
+		return err
+	}
+	// The usage chunk closes the stream with the provider's counts and the
+	// cache breakdown, matching what include_usage produces on native Chat.
+	if s.usage.Seen {
+		envelope := map[string]any{
+			"id": s.id, "object": "chat.completion.chunk", "created": s.created, "model": s.model,
+			"choices": []any{},
+			"usage":   chatUsageEnvelope(s.usage),
+		}
+		if m := s.metadata.value(); m != nil {
+			envelope["provider_metadata"] = m
+		}
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			return err
+		}
+		return writeStreamEvent(s.dst, encoded)
+	}
+	return nil
 }
 
 func (s *anthropicToChatStream) observeOutputUsage(raw json.RawMessage) error {
@@ -322,9 +357,7 @@ func (s *anthropicToChatStream) observeOutputUsage(raw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Anthropic usage: %w", err)
 	}
-	if len(extra) > 0 {
-		return errors.New("Anthropic usage carries fields Chat cannot represent")
-	}
+	s.metadata.absorb(extra)
 	if nonNull(usage["input_tokens"]) {
 		input, ok := decodeStreamNumber(usage["input_tokens"])
 		if !ok {
@@ -338,6 +371,8 @@ func (s *anthropicToChatStream) observeOutputUsage(raw json.RawMessage) error {
 		if !ok {
 			return errors.New("invalid Anthropic usage")
 		}
+		s.usage.CacheCreation = max(s.usage.CacheCreation, cacheCreation)
+		s.usage.CacheRead = max(s.usage.CacheRead, cacheRead)
 		s.usage.Input = max(s.usage.Input, input+cacheCreation+cacheRead)
 		s.usage.Seen = true
 	}
@@ -387,16 +422,18 @@ func (anthropicChat) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 }
 
 type chatToAnthropicStream struct {
-	writer     anthropicStreamWriter
-	textOpen   bool
-	textBlock  int
-	toolBlocks map[int]int
-	toolOrder  []int
-	stopReason string
-	inputSeen  bool
-	outputSeen bool
-	metadata   map[string]json.RawMessage
-	finished   bool
+	writer        anthropicStreamWriter
+	textOpen      bool
+	textBlock     int
+	thinkingOpen  bool
+	thinkingBlock int
+	toolBlocks    map[int]int
+	toolOrder     []int
+	stopReason    string
+	inputSeen     bool
+	outputSeen    bool
+	metadata      providerMetadata
+	finished      bool
 }
 
 func (s *chatToAnthropicStream) chunk(data []byte) error {
@@ -404,12 +441,7 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat chunk: %w", err)
 	}
-	for key, value := range extra {
-		if s.metadata == nil {
-			s.metadata = make(map[string]json.RawMessage)
-		}
-		s.metadata[key] = value
-	}
+	s.metadata.absorb(extra)
 	if id := rawString(fields["id"]); id != "" {
 		s.writer.id = id
 	}
@@ -428,16 +460,13 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 	if len(choices) == 0 {
 		return nil
 	}
-	choice, choiceExtra, err := rawObject(choices[0], "index", "delta", "finish_reason", "logprobs")
+	choice, choiceExtra, err := rawObject(choices[0], "index", "delta", "finish_reason")
 	if err != nil {
 		return fmt.Errorf("invalid Chat choice: %w", err)
 	}
-	ignoreExtras(choiceExtra)
+	s.metadata.absorb(choiceExtra)
 	if index, err := parseIntField(choice["index"], "choice index"); err != nil || index != 0 {
 		return errors.New("Chat response choice index must be zero")
-	}
-	if nonNull(choice["logprobs"]) {
-		return errors.New("Chat logprobs cannot be converted")
 	}
 	if finish := rawString(choice["finish_reason"]); finish != "" {
 		mapped, err := mapChatFinishReason(finish)
@@ -453,14 +482,13 @@ func (s *chatToAnthropicStream) chunk(data []byte) error {
 }
 
 func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
-	// DeepSeek-compatible providers add dedicated cache-hit fields; the
-	// Messages stream carries only input and output totals, so they are
-	// tolerated and dropped here.
+	// Cache-hit and reasoning-token details ride the shared usage detail
+	// fields; the Anthropic client sees them in the terminal message_delta.
 	usage, extra, err := rawObject(raw, "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
 	if err != nil {
 		return fmt.Errorf("invalid Chat usage: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	if nonNull(usage["prompt_tokens"]) {
 		prompt, ok := decodeStreamNumber(usage["prompt_tokens"])
 		if !ok {
@@ -479,23 +507,76 @@ func (s *chatToAnthropicStream) observeUsage(raw json.RawMessage) error {
 		s.writer.usage.Seen = true
 		s.outputSeen = true
 	}
+	if nonNull(usage["prompt_tokens_details"]) {
+		details, _, err := rawObject(usage["prompt_tokens_details"], "cached_tokens")
+		if err != nil {
+			return fmt.Errorf("invalid Chat usage details: %w", err)
+		}
+		if cached, ok := decodeStreamNumber(details["cached_tokens"]); ok && cached >= 0 {
+			s.writer.usage.CacheRead = max(s.writer.usage.CacheRead, cached)
+		}
+	}
+	if nonNull(usage["completion_tokens_details"]) {
+		details, _, err := rawObject(usage["completion_tokens_details"], "reasoning_tokens")
+		if err != nil {
+			return fmt.Errorf("invalid Chat usage details: %w", err)
+		}
+		if reasoning, ok := decodeStreamNumber(details["reasoning_tokens"]); ok && reasoning >= 0 {
+			s.writer.usage.Reasoning = max(s.writer.usage.Reasoning, reasoning)
+		}
+	}
+	if hit, ok := decodeStreamNumber(usage["prompt_cache_hit_tokens"]); ok && hit > 0 {
+		s.writer.usage.CacheRead = max(s.writer.usage.CacheRead, hit)
+	}
 	return nil
 }
 
 func (s *chatToAnthropicStream) delta(raw json.RawMessage) error {
-	// reasoning_content deltas (DeepSeek reasoner) have no Anthropic slot
-	// without a thought signature; they are tolerated and dropped so a
-	// reasoning model still streams its display content.
+	// Reasoning_content deltas (DeepSeek reasoner) stream as thinking blocks;
+	// the Chat wire has no signature to carry, so the thinking block carries
+	// text only.
 	delta, extra, err := rawObject(raw, "role", "content", "tool_calls", "refusal", "reasoning_content")
 	if err != nil {
 		return fmt.Errorf("invalid Chat delta: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	if role := rawString(delta["role"]); role != "" && role != "assistant" {
 		return errors.New("Chat response role must be assistant")
 	}
 	if nonNull(delta["refusal"]) {
-		return errors.New("Chat refusal cannot be converted")
+		// A refusal is display text to the recipient, so it streams as an
+		// ordinary text block.
+		var refusal string
+		if json.Unmarshal(delta["refusal"], &refusal) != nil {
+			return errors.New("Chat refusal must be text")
+		}
+		if refusal != "" {
+			if err := s.openText(); err != nil {
+				return err
+			}
+			if err := s.emitTextDelta(refusal); err != nil {
+				return err
+			}
+		}
+	}
+	if reasoning := rawString(delta["reasoning_content"]); reasoning != "" {
+		if !s.thinkingOpen {
+			if s.textOpen {
+				if err := s.closeBlock(s.textBlock); err != nil {
+					return err
+				}
+				s.textOpen = false
+			}
+			index, err := s.writer.openBlock(map[string]any{"type": "thinking", "thinking": ""})
+			if err != nil {
+				return err
+			}
+			s.thinkingBlock = index
+			s.thinkingOpen = true
+		}
+		if err := s.writer.delta(s.thinkingBlock, map[string]any{"type": "thinking_delta", "thinking": reasoning}); err != nil {
+			return err
+		}
 	}
 	if nonNull(delta["content"]) {
 		var text string
@@ -503,6 +584,12 @@ func (s *chatToAnthropicStream) delta(raw json.RawMessage) error {
 			return errors.New("Chat content must be text")
 		}
 		if text != "" {
+			if s.thinkingOpen {
+				if err := s.closeBlock(s.thinkingBlock); err != nil {
+					return err
+				}
+				s.thinkingOpen = false
+			}
 			if err := s.openText(); err != nil {
 				return err
 			}
@@ -530,7 +617,7 @@ func (s *chatToAnthropicStream) toolCall(callRaw json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("invalid Chat tool call: %w", err)
 	}
-	ignoreExtras(extra)
+	s.metadata.absorb(extra)
 	index, err := parseIntField(call["index"], "tool call index")
 	if err != nil {
 		return err
@@ -550,6 +637,12 @@ func (s *chatToAnthropicStream) toolCall(callRaw json.RawMessage) error {
 				return err
 			}
 			s.textOpen = false
+		}
+		if s.thinkingOpen {
+			if err := s.closeBlock(s.thinkingBlock); err != nil {
+				return err
+			}
+			s.thinkingOpen = false
 		}
 		blockIndex, err = s.writer.openBlock(map[string]any{"type": "tool_use", "id": id, "name": name, "input": map[string]any{}})
 		if err != nil {
@@ -610,12 +703,25 @@ func (s *chatToAnthropicStream) finish() error {
 		}
 		s.textOpen = false
 	}
+	if s.thinkingOpen {
+		if err := s.closeBlock(s.thinkingBlock); err != nil {
+			return err
+		}
+		s.thinkingOpen = false
+	}
 	for _, blockIndex := range s.toolOrder {
 		if err := s.closeBlock(blockIndex); err != nil {
 			return err
 		}
 	}
-	if err := s.writer.finish(s.stopReason, "openai", s.metadata); err != nil {
+	// The Messages wire has no reasoning-token slot; the detail rides
+	// provider_metadata on message_stop.
+	if s.writer.usage.Reasoning > 0 {
+		if encoded, err := json.Marshal(s.writer.usage.Reasoning); err == nil {
+			s.metadata.set("reasoning_tokens", json.RawMessage(encoded))
+		}
+	}
+	if err := s.writer.finish(s.stopReason, "openai", s.metadata.fields); err != nil {
 		return err
 	}
 	s.finished = true

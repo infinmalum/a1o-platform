@@ -25,12 +25,12 @@ var (
 const globalWaiterKey = -1
 
 type Manager struct {
-	mu          sync.Mutex
-	held        map[int]int
-	waiters     map[int][]chan struct{}
-	totalHeld   int
+	mu           sync.Mutex
+	held         map[int]int
+	waiters      map[int][]chan struct{}
+	totalHeld    int
 	totalWaiters []chan struct{}
-	totalCap    int
+	totalCap     int
 }
 
 // NewManager creates a lease manager. totalCap <= 0 means the total

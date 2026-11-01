@@ -19,10 +19,10 @@ const (
 	Anthropic         Protocol = "anthropic"
 	Gemini            Protocol = "gemini"
 	OpenAIChat        Protocol = "openai_chat"
-	OpenAICompletions Protocol = "openai_completions"
 	OpenAIEmbeddings  Protocol = "openai_embeddings"
 	OpenAIModerations Protocol = "openai_moderations"
 	OpenAIResponses   Protocol = "openai_responses"
+	OpenResponses     Protocol = "openresponses"
 	OpenAIImages      Protocol = "openai_images"
 	OpenAIAudioSpeech Protocol = "openai_audio_speech"
 	// Audio transcription and translation bodies are multipart forms that the
@@ -51,8 +51,8 @@ func (p Protocol) azureKeyAuth(channelType int) bool {
 		return false
 	}
 	switch p {
-	case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
-		OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions:
+	case OpenAIChat, OpenAIEmbeddings, OpenAIModerations,
+		OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 		return true
 	}
 	return false
@@ -70,16 +70,39 @@ type Request struct {
 	Body         []byte
 	Headers      http.Header
 	Query        url.Values
+	// Stream mirrors the client's streaming intent for provider transports
+	// whose framing depends on it (Bedrock InvokeModel vs
+	// InvokeModelWithResponseStream); HTTP transports derive it from the body.
+	Stream bool
+	// ChannelID keys provider credential caches (VertexAI access tokens).
+	ChannelID int
+	// Provider transport settings resolved from the channel config: AWS
+	// Bedrock keys and region, VertexAI project and service account, and the
+	// Cloudflare account ID.
+	Region                 string
+	AccessKey              string
+	SecretKey              string
+	VertexProject          string
+	VertexADC              string
+	CloudflareGatewayID    string
+	CloudflareGatewayToken string
+	CloudflareAcct         string
 }
 
 // BuildRequest changes only the fields required to reach the selected upstream.
 // In particular, it never forwards the client's gateway token to the provider.
 func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
-	base, err := url.Parse(input.BaseURL)
+	if input.ChannelType == channeltype.Cloudflare && input.CloudflareGatewayID != "" && (input.BaseURL == "" || strings.TrimRight(input.BaseURL, "/") == channeltype.BaseURL(channeltype.Cloudflare)) {
+		if input.CloudflareAcct == "" || strings.ContainsAny(input.CloudflareAcct+input.CloudflareGatewayID, "/?#%\\") {
+			return nil, errors.New("valid Cloudflare Account ID and Gateway ID are required")
+		}
+		input.BaseURL = "https://gateway.ai.cloudflare.com/v1/" + url.PathEscape(input.CloudflareAcct) + "/" + url.PathEscape(input.CloudflareGatewayID) + "/workers-ai"
+	}
+	base, err := url.Parse(vertexAwareBaseURL(input))
 	if err != nil || base == nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.Fragment != "" || base.RawQuery != "" {
 		return nil, errors.New("invalid upstream base URL")
 	}
-	if input.APIKey == "" {
+	if input.APIKey == "" && input.ChannelType != channeltype.VertextAI {
 		return nil, errors.New("upstream API key is empty")
 	}
 	var path string
@@ -87,6 +110,17 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	stream := false
 	switch input.Protocol {
 	case Anthropic:
+		if input.ChannelType == channeltype.VertextAI {
+			body, stream, err = prepareVertexAnthropicBody(body, input.Model, input.SystemPrompt)
+			if err != nil {
+				return nil, err
+			}
+			path, err = vertexPredictPath(input.Model, "anthropic", input.VertexProject, input.Region, stream)
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
 		path = "/v1/messages"
 		body, stream, err = prepareAnthropicBody(body, input.Model, input.SystemPrompt)
 		if err != nil {
@@ -99,14 +133,22 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		if input.Action != "generateContent" && input.Action != "streamGenerateContent" {
 			return nil, errors.New("unsupported Gemini action")
 		}
-		version := input.Version
-		if version == "" {
-			version = "v1beta"
+		if input.ChannelType == channeltype.VertextAI {
+			if input.VertexProject == "" || input.Region == "" {
+				return nil, errors.New("VertexAI channel requires vertex_ai_project_id and region in its config")
+			}
+			path = fmt.Sprintf("/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
+				url.PathEscape(input.VertexProject), url.PathEscape(input.Region), url.PathEscape(input.Model), input.Action)
+		} else {
+			version := input.Version
+			if version == "" {
+				version = "v1beta"
+			}
+			if version != "v1" && version != "v1beta" {
+				return nil, errors.New("unsupported Gemini API version")
+			}
+			path = fmt.Sprintf("/%s/models/%s:%s", version, url.PathEscape(input.Model), input.Action)
 		}
-		if version != "v1" && version != "v1beta" {
-			return nil, errors.New("unsupported Gemini API version")
-		}
-		path = fmt.Sprintf("/%s/models/%s:%s", version, url.PathEscape(input.Model), input.Action)
 		stream = input.Action == "streamGenerateContent"
 		if input.SystemPrompt != "" {
 			body, err = prepareGeminiBody(body, input.SystemPrompt)
@@ -114,7 +156,7 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 				return nil, err
 			}
 		}
-	case OpenAIResponses:
+	case OpenAIResponses, OpenResponses:
 		path = "/v1/responses"
 		body, stream, err = prepareOpenAIResponsesBody(body, input.Model, input.SystemPrompt)
 		if err != nil {
@@ -144,12 +186,6 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		if err != nil {
 			return nil, err
 		}
-	case OpenAICompletions:
-		path = "/v1/completions"
-		body, stream, err = prepareOpenAICompletionsBody(body, input.Model, input.SystemPrompt)
-		if err != nil {
-			return nil, err
-		}
 	case OpenAIImages:
 		path = "/v1/images/generations"
 		body, err = prepareOpenAIImagesBody(body, input.Model)
@@ -172,19 +208,19 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	// Azure deployments are addressed in the URL rather than the model field.
 	switch input.Protocol {
 	case OpenAIChat:
-		if input.ChannelType == channeltype.Azure {
+		if input.ChannelType == channeltype.Azure && input.Version != "" && input.Version != "v1" {
 			if input.Model == "" || strings.ContainsAny(input.Model, "/?#") || input.Version == "" {
 				return nil, errors.New("Azure Chat requires a mapped deployment and API version")
 			}
-			path = "/openai/deployments/" + url.PathEscape(strings.ReplaceAll(input.Model, ".", "")) + "/chat/completions"
+			path = "/openai/deployments/" + url.PathEscape(input.Model) + "/chat/completions"
 		}
 	case OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
-		OpenAICompletions, OpenAIEmbeddings, OpenAIModerations:
-		if input.ChannelType == channeltype.Azure {
+		OpenAIEmbeddings, OpenAIModerations:
+		if input.ChannelType == channeltype.Azure && input.Version != "" && input.Version != "v1" {
 			if input.Model == "" || strings.ContainsAny(input.Model, "/?#") || input.Version == "" {
 				return nil, errors.New("Azure requires a mapped deployment and API version")
 			}
-			deployment := url.PathEscape(strings.ReplaceAll(input.Model, ".", ""))
+			deployment := url.PathEscape(input.Model)
 			switch input.Protocol {
 			case OpenAIImages:
 				path = "/openai/deployments/" + deployment + "/images/generations"
@@ -192,8 +228,8 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 				path = "/openai/deployments/" + deployment + "/audio/speech"
 			case OpenAIAudioTranscriptions:
 				path = "/openai/deployments/" + deployment + "/audio/transcriptions"
-			case OpenAICompletions:
-				path = "/openai/deployments/" + deployment + "/completions"
+			case OpenAIAudioTranslations:
+				path = "/openai/deployments/" + deployment + "/audio/translations"
 			case OpenAIEmbeddings:
 				path = "/openai/deployments/" + deployment + "/embeddings"
 			case OpenAIModerations:
@@ -202,13 +238,34 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			break
 		}
 	}
+	if input.ChannelType == channeltype.Azure && (input.Version == "" || input.Version == "v1") {
+		switch input.Protocol {
+		case OpenAIChat, OpenAIResponses, OpenAIEmbeddings, OpenAIModerations, OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
+			if strings.HasSuffix(strings.TrimRight(base.Path, "/"), "/openai/v1") {
+				path = strings.TrimPrefix(path, "/v1")
+			} else {
+				path = "/openai" + path
+			}
+		default:
+			return nil, errors.New("unsupported Azure v1 protocol")
+		}
+	}
+	// The Cloudflare kind always uses Workers AI Run, never its OpenAI compat endpoint.
+	if input.ChannelType == channeltype.Cloudflare {
+		path, body, err = prepareCloudflareRun(input, body, base)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// OpenRouter's fixed base carries /api/v1 itself, and its unified API
 	// serves the OpenAI family, Anthropic Messages, and SystemOne wires from
 	// that one base as bare operation suffixes, so each canonical path drops
-	// its version prefix outright.
-	if input.ChannelType == channeltype.OpenRouter {
+	// its version prefix outright. Vercel's AI Gateway base carries /v1 the
+	// same way for its OpenResponses operations, so the Responses path loses
+	// its version prefix too.
+	if input.ChannelType == channeltype.OpenRouter || input.ChannelType == channeltype.Vercel {
 		switch input.Protocol {
-		case OpenAIChat, OpenAIResponses, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+		case OpenAIChat, OpenAIResponses, OpenResponses, OpenAIEmbeddings, OpenAIModerations,
 			OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations,
 			Anthropic, SystemOne:
 			path = strings.TrimPrefix(path, "/v1")
@@ -218,11 +275,13 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	// (the filling rule mirrors relay/adaptor/openai.GetFullRequestURL), so the
 	// path's /v1 is dropped to avoid doubling it; the official default base
 	// keeps the versioned path. Azure is deployment-shaped and was handled
-	// above; Anthropic, Gemini, and SystemOne keep the version in the path.
+	// above, Cloudflare paths were assembled in full above, and Anthropic,
+	// Gemini, and SystemOne keep the version in the path.
 	if channeltype.IsValid(input.ChannelType) && input.ChannelType != channeltype.Azure &&
+		input.ChannelType != channeltype.Cloudflare &&
 		input.BaseURL != channeltype.BaseURL(input.ChannelType) {
 		switch input.Protocol {
-		case OpenAIChat, OpenAIResponses, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+		case OpenAIChat, OpenAIResponses, OpenResponses, OpenAIEmbeddings, OpenAIModerations,
 			OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 			path = strings.TrimPrefix(path, "/v1")
 		}
@@ -250,9 +309,9 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	if stream && input.Protocol == Gemini {
 		query.Set("alt", "sse")
 	}
-	if input.ChannelType == channeltype.Azure && input.Version != "" {
+	if input.ChannelType == channeltype.Azure && input.Version != "" && input.Version != "v1" {
 		switch input.Protocol {
-		case OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations, OpenAIImages,
+		case OpenAIChat, OpenAIEmbeddings, OpenAIModerations, OpenAIImages,
 			OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 			query.Set("api-version", input.Version)
 		}
@@ -268,20 +327,23 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
-	azureKey := input.Protocol.azureKeyAuth(input.ChannelType)
+	azureKey := input.Protocol.azureKeyAuth(input.ChannelType) && input.Version != "" && input.Version != "v1"
 	switch input.Protocol {
 	case Anthropic:
-		if input.ChannelType == channeltype.OpenRouter {
+		if input.ChannelType == channeltype.VertextAI {
+			token, err := VertexAccessToken(ctx, input.ChannelID, input.VertexADC)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+		} else if input.ChannelType == channeltype.OpenRouter {
 			// OpenRouter authenticates every wire, Messages included, with
 			// the same bearer key.
 			req.Header.Set("Authorization", "Bearer "+input.APIKey)
 		} else {
 			req.Header.Set("x-api-key", input.APIKey)
 		}
-		version := input.Headers.Get("anthropic-version")
-		if version == "" {
-			version = "2023-06-01"
-		}
+		version := anthropicAPIVersion(input)
 		req.Header.Set("anthropic-version", version)
 		for _, name := range []string{"anthropic-beta", "anthropic-workspace-id"} {
 			if value := input.Headers.Get(name); value != "" {
@@ -289,10 +351,18 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			}
 		}
 	case Gemini:
-		req.Header.Set("x-goog-api-key", input.APIKey)
+		if input.ChannelType == channeltype.VertextAI {
+			token, err := VertexAccessToken(ctx, input.ChannelID, input.VertexADC)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+		} else {
+			req.Header.Set("x-goog-api-key", input.APIKey)
+		}
 	case SystemOne:
 		req.Header.Set("Authorization", "Bearer "+input.APIKey)
-	case OpenAIResponses, OpenAIChat, OpenAICompletions, OpenAIEmbeddings, OpenAIModerations,
+	case OpenAIResponses, OpenResponses, OpenAIChat, OpenAIEmbeddings, OpenAIModerations,
 		OpenAIImages, OpenAIAudioSpeech, OpenAIAudioTranscriptions, OpenAIAudioTranslations:
 		if azureKey {
 			req.Header.Set("api-key", input.APIKey)
@@ -302,6 +372,12 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		if beta := input.Headers.Get("OpenAI-Beta"); beta != "" {
 			req.Header.Set("OpenAI-Beta", beta)
 		}
+	}
+	if input.CloudflareGatewayID != "" {
+		req.Header.Set("cf-aig-gateway-id", input.CloudflareGatewayID)
+	}
+	if input.CloudflareGatewayToken != "" {
+		req.Header.Set("cf-aig-authorization", "Bearer "+input.CloudflareGatewayToken)
 	}
 	return req, nil
 }
@@ -325,61 +401,6 @@ func prepareOpenAIModerationsBody(body []byte, model string) ([]byte, error) {
 	}
 	fields["model"], _ = json.Marshal(model)
 	return json.Marshal(fields)
-}
-
-func prepareOpenAICompletionsBody(body []byte, model, systemPrompt string) ([]byte, bool, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		return nil, false, errors.New("invalid OpenAI Completions JSON request")
-	}
-	var requestedModel string
-	if err := json.Unmarshal(fields["model"], &requestedModel); err != nil || requestedModel == "" {
-		return nil, false, errors.New("OpenAI Completions model is required")
-	}
-	var prompt any
-	if err := json.Unmarshal(fields["prompt"], &prompt); err != nil {
-		return nil, false, errors.New("OpenAI Completions prompt is required")
-	}
-	if prompt == nil {
-		return nil, false, errors.New("OpenAI Completions prompt is required")
-	}
-	var stream bool
-	if raw, ok := fields["stream"]; ok && json.Unmarshal(raw, &stream) != nil {
-		return nil, false, errors.New("OpenAI Completions stream must be boolean")
-	}
-	changed := false
-	if model != "" && model != requestedModel {
-		fields["model"], _ = json.Marshal(model)
-		changed = true
-	}
-	// A configured system instruction has no dedicated field in the
-	// Completions protocol, so it is prepended to every text prompt. Token
-	// arrays cannot carry text and fail explicitly.
-	if systemPrompt != "" {
-		switch value := prompt.(type) {
-		case string:
-			fields["prompt"], _ = json.Marshal(systemPrompt + "\n" + value)
-			changed = true
-		case []any:
-			texts := make([]any, 0, len(value))
-			for _, item := range value {
-				text, ok := item.(string)
-				if !ok {
-					return nil, false, errors.New("a configured system prompt cannot be applied to token prompts")
-				}
-				texts = append(texts, systemPrompt+"\n"+text)
-			}
-			fields["prompt"], _ = json.Marshal(texts)
-			changed = true
-		default:
-			return nil, false, errors.New("a configured system prompt cannot be applied to token prompts")
-		}
-	}
-	if !changed {
-		return body, stream, nil
-	}
-	updated, err := json.Marshal(fields)
-	return updated, stream, err
 }
 
 func prepareOpenAIEmbeddingsBody(body []byte, model string) ([]byte, error) {
@@ -600,4 +621,62 @@ func prepareOpenAIResponsesBody(body []byte, model, instructions string) ([]byte
 	}
 	updated, err := json.Marshal(fields)
 	return updated, stream, err
+}
+
+// vertexAwareBaseURL substitutes the regional VertexAI endpoint when the
+// operator left the base URL empty; every other kind keeps its configured base.
+func vertexAwareBaseURL(input Request) string {
+	if input.ChannelType == channeltype.VertextAI && input.BaseURL == "" {
+		if input.Region == "" {
+			return ""
+		}
+		if input.Region == "global" {
+			return "https://aiplatform.googleapis.com"
+		}
+		return "https://" + input.Region + "-aiplatform.googleapis.com"
+	}
+	return input.BaseURL
+}
+
+// vertexPredictPath builds the VertexAI rawPredict path for the publisher that
+// owns the model family: anthropic for the Messages wire, google for
+// GenerateContent. The publisher follows the protocol, so a model configured
+// under the wrong family fails on the provider instead of being silently
+// routed to the wrong wire.
+func vertexPredictPath(model, publisher, project, region string, stream bool) (string, error) {
+	if project == "" || region == "" {
+		return "", errors.New("VertexAI channel requires vertex_ai_project_id and region in its config")
+	}
+	if model == "" || strings.ContainsAny(model, "/?#") {
+		return "", errors.New("invalid VertexAI model name")
+	}
+	action := "rawPredict"
+	if stream {
+		action = "streamRawPredict"
+	}
+	return fmt.Sprintf("/v1/projects/%s/locations/%s/publishers/%s/models/%s:%s",
+		url.PathEscape(project), url.PathEscape(region), publisher, url.PathEscape(model), action), nil
+}
+
+// prepareVertexAnthropicBody adapts a bridge-produced Anthropic Messages body
+// onto VertexAI rawPredict: the model lives in the URL path, and the Vertex
+// Anthropic version replaces the api.anthropic.com one. The stream flag that
+// selects streamRawPredict is mirrored into the body the way the Vertex
+// Anthropic endpoint expects.
+func prepareVertexAnthropicBody(body []byte, model, systemPrompt string) ([]byte, bool, error) {
+	fields, stream, err := prepareAnthropicBody(body, model, systemPrompt)
+	if err != nil {
+		return nil, false, err
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(fields, &envelope); err != nil || envelope == nil {
+		return nil, false, errors.New("invalid VertexAI Anthropic JSON body")
+	}
+	delete(envelope, "model")
+	envelope["anthropic_version"], _ = json.Marshal("vertex-2023-10-16")
+	if stream {
+		envelope["stream"] = []byte("true")
+	}
+	encoded, err := json.Marshal(envelope)
+	return encoded, stream, err
 }

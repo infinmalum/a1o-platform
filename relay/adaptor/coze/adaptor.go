@@ -1,15 +1,16 @@
 package coze
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
 	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
 	"github.com/infinmalum/a1o-platform/relay/meta"
 	"github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/pkg/errors"
 )
 
 type Adaptor struct {
@@ -21,7 +22,7 @@ func (a *Adaptor) Init(meta *meta.Meta) {
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
-	return fmt.Sprintf("%s/open_api/v2/chat", meta.BaseURL), nil
+	return fmt.Sprintf("%s/v3/chat", strings.TrimRight(meta.BaseURL, "/")), nil
 }
 
 func (a *Adaptor) SetupRequestHeader(c *adaptor.Context, req *http.Request, meta *meta.Meta) error {
@@ -31,12 +32,7 @@ func (a *Adaptor) SetupRequestHeader(c *adaptor.Context, req *http.Request, meta
 }
 
 func (a *Adaptor) ConvertRequest(in *model.ConversionInput) (any, error) {
-	request := in.Request
-	if request == nil {
-		return nil, errors.New("request is nil")
-	}
-	request.User = a.meta.Config.UserID
-	return ConvertRequest(*request), nil
+	return ConvertRequest(in, strings.TrimPrefix(a.meta.ActualModelName, "bot-"), a.meta.Config.UserID)
 }
 
 func (a *Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) {
@@ -51,26 +47,13 @@ func (a *Adaptor) DoRequest(c *adaptor.Context, meta *meta.Meta, requestBody io.
 }
 
 func (a *Adaptor) DoResponse(c *adaptor.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
-	var responseText *string
-	if meta.IsStream {
-		err, responseText = StreamHandler(c, resp)
-	} else {
-		err, responseText = Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
+	promptTokens, completionTokens, handleErr := HandleResponse(c.Writer, resp, meta)
+	if handleErr != nil {
+		return &model.Usage{PromptTokens: int(promptTokens), CompletionTokens: int(completionTokens)}, openai.ErrorWrapper(handleErr, "coze_response_failed", http.StatusBadGateway)
 	}
-	if responseText != nil {
-		usage = openai.ResponseText2Usage(*responseText, meta.ActualModelName, meta.PromptTokens)
-	} else {
-		usage = &model.Usage{}
-	}
-	usage.PromptTokens = meta.PromptTokens
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	return
-}
-
-func (a *Adaptor) GetModelList() []string {
-	return nil
-}
-
-func (a *Adaptor) GetChannelName() string {
-	return "coze"
+	return &model.Usage{
+		PromptTokens:     int(promptTokens),
+		CompletionTokens: int(completionTokens),
+		TotalTokens:      int(promptTokens + completionTokens),
+	}, nil
 }

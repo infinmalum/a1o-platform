@@ -17,14 +17,23 @@ func NativeChatCompatible(kind int) bool {
 
 // OpenAIWireSupportsOperation reports whether the channel kind serves a relay
 // mode on the OpenAI JSON wire, so unsupported operations are refused before
-// a request is forwarded to an endpoint that does not exist.
+// a request is forwarded to an endpoint that does not exist. Cloudflare's
+// compat wire serves only chat completions and embeddings.
 func OpenAIWireSupportsOperation(kind int, mode int) bool {
+	if kind == Cloudflare {
+		switch mode {
+		case relaymode.ChatCompletions, relaymode.Embeddings:
+			return true
+		default:
+			return false
+		}
+	}
 	if !NativeChatCompatible(kind) {
 		return false
 	}
 	switch mode {
 	case relaymode.ChatCompletions, relaymode.Embeddings, relaymode.ImagesGenerations,
-		relaymode.Completions, relaymode.Moderations, relaymode.AudioSpeech,
+		relaymode.Moderations, relaymode.AudioSpeech,
 		relaymode.AudioTranscription, relaymode.AudioTranslation:
 		return true
 	default:

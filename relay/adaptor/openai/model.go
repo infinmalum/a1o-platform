@@ -76,12 +76,6 @@ type UsageOrResponseText struct {
 	ResponseText string
 }
 
-type SlimTextResponse struct {
-	Choices     []TextResponseChoice `json:"choices"`
-	model.Usage `json:"usage"`
-	Error       model.Error `json:"error"`
-}
-
 type TextResponseChoice struct {
 	Index         int `json:"index"`
 	model.Message `json:"message"`
@@ -135,11 +129,4 @@ type ChatCompletionsStreamResponse struct {
 	Model   string                                `json:"model"`
 	Choices []ChatCompletionsStreamResponseChoice `json:"choices"`
 	Usage   *model.Usage                          `json:"usage,omitempty"`
-}
-
-type CompletionsStreamResponse struct {
-	Choices []struct {
-		Text         string `json:"text"`
-		FinishReason string `json:"finish_reason"`
-	} `json:"choices"`
 }

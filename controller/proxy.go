@@ -2,15 +2,16 @@ package controller
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/a1o-platform/common/client"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/ginmeta"
 	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 // RelayProxy forwards an admin-only request to the target path on the
@@ -21,9 +22,20 @@ import (
 func RelayProxy(c *gin.Context) {
 	metadata := ginmeta.Get(c)
 	prefix := fmt.Sprintf("/v1/a1o/proxy/%d", metadata.ChannelId)
-	target := strings.TrimPrefix(c.Request.URL.Path, prefix)
+	target := strings.TrimPrefix(c.Request.URL.EscapedPath(), prefix)
 
-	base, err := url.Parse(metadata.BaseURL)
+	baseURL := metadata.BaseURL
+	if baseURL == "" && metadata.ChannelType == channeltype.AwsClaude && metadata.Config.Region != "" {
+		baseURL = "https://bedrock-runtime." + metadata.Config.Region + ".amazonaws.com"
+	}
+	if baseURL == "" && metadata.ChannelType == channeltype.VertextAI {
+		if metadata.Config.Region == "global" {
+			baseURL = "https://aiplatform.googleapis.com"
+		} else {
+			baseURL = "https://" + metadata.Config.Region + "-aiplatform.googleapis.com"
+		}
+	}
+	base, err := url.Parse(baseURL)
 	if err != nil || base == nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil {
 		writeProxyError(c, http.StatusBadRequest, "invalid upstream base URL")
 		return
@@ -60,9 +72,16 @@ func RelayProxy(c *gin.Context) {
 			req.Header.Add(name, value)
 		}
 	}
-	req.Header.Set("Authorization", metadata.APIKey)
+	if err := native.AuthenticateProviderRequest(c.Request.Context(), req, native.Request{ChannelType: metadata.ChannelType, ChannelID: metadata.ChannelId, APIKey: metadata.APIKey, Region: metadata.Config.Region, AccessKey: metadata.Config.AK, SecretKey: metadata.Config.SK, VertexADC: metadata.Config.VertexAIADC, CloudflareGatewayID: metadata.Config.CloudflareGatewayID, CloudflareGatewayToken: metadata.Config.CloudflareGatewayToken}); err != nil {
+		writeProxyError(c, http.StatusBadRequest, err.Error())
+		return
+	}
 
-	providerClient := *client.HTTPClient
+	httpClient := client.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	providerClient := *httpClient
 	providerClient.CheckRedirect = func(next *http.Request, previous []*http.Request) error {
 		if len(previous) >= 3 || next.URL.Scheme != previous[0].URL.Scheme || !strings.EqualFold(next.URL.Host, previous[0].URL.Host) {
 			return http.ErrUseLastResponse
@@ -81,7 +100,19 @@ func RelayProxy(c *gin.Context) {
 		}
 	}
 	c.Writer.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(c.Writer, resp.Body)
+	buffer := make([]byte, 32<<10)
+	for {
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, err := c.Writer.Write(buffer[:n]); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }
 
 func writeProxyError(c *gin.Context, status int, message string) {

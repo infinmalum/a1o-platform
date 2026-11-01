@@ -3,11 +3,10 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
-	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +19,6 @@ import (
 	"github.com/infinmalum/a1o-platform/relay"
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
 	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
-	"github.com/infinmalum/a1o-platform/relay/apitype"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/controller/validator"
@@ -32,8 +30,8 @@ import (
 	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
-// The provider controllers retain the provider-specific wire adapters for the
-// non-OpenAI-wire channel types (AWS, Coze, Cloudflare, DeepL, VertexAI,
+// The provider controllers retain the provider-specific wire adapters for
+// the channel types whose upstream wire has no native protocol (Coze, DeepL,
 // Replicate) while the shared lifecycle owns channel retries and quota
 // settlement. The adapters run against the framework-neutral adaptor.Context
 // built here, so no provider route depends on the legacy Gin relay controller.
@@ -119,20 +117,26 @@ func upstreamDetail(upstream *lifecycle.UpstreamError, err *lifecycle.HTTPError)
 }
 
 // providerTextAttempt runs one provider adapter attempt for a text-shaped
-// operation (chat, completions, embeddings): convert, send, and forward the
-// response through the adapter's own handlers.
-func providerTextAttempt(body []byte, relayMode int, modelParam string, principal lifecycle.Principal, transport *adaptor.Context) lifecycle.AdapterAttempt {
+// operation (chat, messages, responses): convert, send, and forward the
+// response through the adapter's own handlers. inbound names the client wire
+// the body arrived on; the Chat wire parses into TextRequest, the Anthropic
+// and Responses wires pass through as RawBody for the adapter's own native
+// conversion.
+func providerTextAttempt(body []byte, relayMode int, modelParam string, inbound native.Protocol, principal lifecycle.Principal, transport *adaptor.Context) lifecycle.AdapterAttempt {
 	return func(channel lifecycle.Channel, mappedModel string) lifecycle.AdapterResult {
-		request, err := parseTextRequest(body, relayMode, modelParam)
+		request, err := parseProviderRequest(body, relayMode, modelParam, inbound)
 		if err != nil {
 			return adapterFailure(http.StatusBadRequest, err.Error())
 		}
 		originModel := request.Model
 		request.Model = mappedModel
-		setSystemPrompt(transport.Request.Context(), request, channel.SystemPrompt)
+		if inbound == "" || inbound == native.OpenAIChat {
+			setSystemPrompt(transport.Request.Context(), request, channel.SystemPrompt)
+		}
 		promptTokens := getPromptTokens(request, relayMode)
 		requestMeta := providerMeta(channel, originModel, mappedModel, relayMode, request.Stream,
 			promptTokens, transport.Request.URL.String(), principal)
+		requestMeta.Inbound = inbound
 		provider := relay.GetAdaptor(requestMeta.APIType)
 		if provider == nil {
 			return adapterFailure(http.StatusUnprocessableEntity, "selected channel has no adapter for this operation")
@@ -140,7 +144,7 @@ func providerTextAttempt(body []byte, relayMode int, modelParam string, principa
 		provider.Init(requestMeta)
 		transport.Set(ctxkey.RequestModel, originModel)
 		transport.Set(ctxkey.OriginalModel, originModel)
-		requestBody, err := providerRequestBody(transport, body, requestMeta, request, provider)
+		requestBody, err := providerRequestBody(transport, requestMeta, request, body, provider)
 		if err != nil {
 			return adapterFailure(http.StatusUnprocessableEntity, err.Error())
 		}
@@ -179,6 +183,88 @@ func providerTextAttempt(body []byte, relayMode int, modelParam string, principa
 	}
 }
 
+// parseProviderRequest parses the client wire for the provider converters:
+// the Chat wire parses into the full TextRequest; the Anthropic and Responses
+// wires only need the model and stream flag, with the raw body converted
+// natively by the adapter.
+func parseProviderRequest(body []byte, relayMode int, modelParam string, inbound native.Protocol) (*relaymodel.TextRequest, error) {
+	if inbound == native.Anthropic || inbound == native.OpenAIResponses {
+		textRequest := &relaymodel.TextRequest{}
+		var fields struct {
+			Model     string `json:"model"`
+			Stream    bool   `json:"stream"`
+			MaxTokens *int64 `json:"max_tokens"`
+		}
+		if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" {
+			return nil, errors.New("model is required")
+		}
+		textRequest.Model = fields.Model
+		textRequest.Stream = fields.Stream
+		if fields.MaxTokens != nil {
+			limit := int(*fields.MaxTokens)
+			textRequest.MaxTokens = limit
+		}
+		return textRequest, nil
+	}
+	return parseTextRequest(body, relayMode, modelParam)
+}
+
+// RelayProviderMessages serves Anthropic Messages clients on the provider
+// channels that keep adapters (Coze, Replicate); the raw body converts
+// natively inside the adapter.
+func RelayProviderMessages(c *gin.Context) *lifecycle.HTTPError {
+	body, err := common.GetRequestBody(c)
+	if err != nil {
+		return &lifecycle.HTTPError{Status: http.StatusBadRequest, Message: err.Error()}
+	}
+	var fields struct {
+		Model     string `json:"model"`
+		Stream    bool   `json:"stream"`
+		MaxTokens *int64 `json:"max_tokens"`
+	}
+	if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" || fields.MaxTokens == nil || *fields.MaxTokens <= 0 {
+		return &lifecycle.HTTPError{Status: http.StatusBadRequest, Message: "model and positive max_tokens are required"}
+	}
+	return relayProviderNativeWire(c, body, native.Anthropic, fields.Model, fields.Stream, *fields.MaxTokens)
+}
+
+// RelayProviderResponses serves Responses clients on the provider channels
+// that keep adapters (Coze, Replicate); the raw body converts natively inside
+// the adapter.
+func RelayProviderResponses(c *gin.Context) *lifecycle.HTTPError {
+	body, err := common.GetRequestBody(c)
+	if err != nil {
+		return &lifecycle.HTTPError{Status: http.StatusBadRequest, Message: err.Error()}
+	}
+	var fields struct {
+		Model           string `json:"model"`
+		Stream          bool   `json:"stream"`
+		MaxOutputTokens *int64 `json:"max_output_tokens"`
+	}
+	if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" || fields.MaxOutputTokens == nil || *fields.MaxOutputTokens < 0 {
+		return &lifecycle.HTTPError{Status: http.StatusBadRequest, Message: "model and max_output_tokens are required"}
+	}
+	limit := max(*fields.MaxOutputTokens, int64(len(body)))
+	return relayProviderNativeWire(c, body, native.OpenAIResponses, fields.Model, fields.Stream, limit)
+}
+
+// relayProviderNativeWire forwards one native-wire client request onto the
+// provider adapter path with the shared lifecycle owning selection and retry.
+func relayProviderNativeWire(c *gin.Context, body []byte, inbound native.Protocol, model string, stream bool, limit int64) *lifecycle.HTTPError {
+	metadata := ginmeta.Get(c)
+	specificID, httpErr := pinnedChannelID(c)
+	if httpErr != nil {
+		return httpErr
+	}
+	input := lifecycle.Request{
+		Protocol: inbound, Model: model, Stream: stream,
+		MaxOutputTokens: limit, Body: body, RetryLimit: config.RetryTimes,
+		Channel:   providerChannel(metadata),
+		Principal: lifecycle.Principal{UserID: metadata.UserId, TokenID: metadata.TokenId, TokenName: metadata.TokenName, Group: metadata.Group, SpecificChannel: specificID > 0, SpecificChannelID: specificID},
+	}
+	return lifecycle.ForwardAdapter(c.Request.Context(), input, providerTextAttempt(body, relaymode.ChatCompletions, "", inbound, input.Principal, providerTransport(c)))
+}
+
 // RelayProviderText serves completions and embeddings on provider channels
 // through the shared lifecycle. Chat uses RelayProviderChat for its
 // output-limit estimate; embeddings reserve the configured allowance.
@@ -196,17 +282,13 @@ func RelayProviderText(c *gin.Context, relayMode int) *lifecycle.HTTPError {
 	if httpErr != nil {
 		return httpErr
 	}
-	maxOutputTokens := int64(0)
-	if relayMode == relaymode.Completions {
-		maxOutputTokens = int64(parsed.MaxTokens)
-	}
 	input := lifecycle.Request{
 		Protocol: native.OpenAIChat, Model: parsed.Model, Stream: parsed.Stream,
-		MaxOutputTokens: maxOutputTokens, Body: body, RetryLimit: config.RetryTimes,
+		MaxOutputTokens: 0, Body: body, RetryLimit: config.RetryTimes,
 		Channel:   providerChannel(metadata),
 		Principal: lifecycle.Principal{UserID: metadata.UserId, TokenID: metadata.TokenId, TokenName: metadata.TokenName, Group: metadata.Group, SpecificChannel: specificID > 0, SpecificChannelID: specificID},
 	}
-	return lifecycle.ForwardAdapter(c.Request.Context(), input, providerTextAttempt(body, relayMode, c.Param("model"), input.Principal, providerTransport(c)))
+	return lifecycle.ForwardAdapter(c.Request.Context(), input, providerTextAttempt(body, relayMode, c.Param("model"), native.OpenAIChat, input.Principal, providerTransport(c)))
 }
 
 // RelayProviderChat retains provider-specific chat adapters while routing
@@ -238,7 +320,7 @@ func RelayProviderChat(c *gin.Context) *lifecycle.HTTPError {
 		Channel:   providerChannel(metadata),
 		Principal: lifecycle.Principal{UserID: metadata.UserId, TokenID: metadata.TokenId, TokenName: metadata.TokenName, Group: metadata.Group, SpecificChannel: specificID > 0, SpecificChannelID: specificID},
 	}
-	return lifecycle.ForwardAdapter(c.Request.Context(), input, providerTextAttempt(body, relaymode.ChatCompletions, "", input.Principal, providerTransport(c)))
+	return lifecycle.ForwardAdapter(c.Request.Context(), input, providerTextAttempt(body, relaymode.ChatCompletions, "", native.OpenAIChat, input.Principal, providerTransport(c)))
 }
 
 // pinnedChannelID reports the dispatcher-pinned channel, if any.
@@ -444,18 +526,12 @@ func getImageCostRatio(imageRequest *relaymodel.ImageRequest) (float64, error) {
 	return imageCostRatio, nil
 }
 
-// providerRequestBody converts a text request into the upstream body. OpenAI
-// API types keep unknown request fields when the request must be serialized
-// again; other providers use their converter output only.
-func providerRequestBody(transport *adaptor.Context, body []byte, requestMeta *meta.Meta, request *relaymodel.TextRequest, provider adaptor.Adaptor) (io.Reader, error) {
-	if !config.EnforceIncludeUsage &&
-		requestMeta.APIType == apitype.OpenAI &&
-		requestMeta.OriginModelName == requestMeta.ActualModelName &&
-		requestMeta.ForcedSystemPrompt == "" {
-		// no need to convert request for openai
-		return bytes.NewReader(body), nil
-	}
-	conversion := &relaymodel.ConversionInput{Mode: requestMeta.Mode, Request: request, APIKey: requestMeta.APIKey}
+// providerRequestBody converts a request into the upstream body through the
+// provider's own converter. Native-wire inbounds (Anthropic, Responses) carry
+// their raw body so the adapter converts the client's actual wire directly.
+func providerRequestBody(transport *adaptor.Context, requestMeta *meta.Meta, request *relaymodel.TextRequest, rawBody []byte, provider adaptor.Adaptor) (io.Reader, error) {
+	conversion := &relaymodel.ConversionInput{Mode: requestMeta.Mode, Request: request, APIKey: requestMeta.APIKey,
+		Inbound: requestMeta.Inbound, RawBody: rawBody}
 	convertedRequest, err := provider.ConvertRequest(conversion)
 	if err != nil {
 		return nil, err
@@ -466,12 +542,6 @@ func providerRequestBody(transport *adaptor.Context, body []byte, requestMeta *m
 	jsonData, err := json.Marshal(convertedRequest)
 	if err != nil {
 		return nil, err
-	}
-	if requestMeta.APIType == apitype.OpenAI && strings.HasPrefix(transport.Request.Header.Get("Content-Type"), "application/json") {
-		jsonData, err = preserveExtraRequestFields(body, jsonData)
-		if err != nil {
-			return nil, err
-		}
 	}
 	return bytes.NewReader(jsonData), nil
 }
@@ -496,36 +566,6 @@ func providerImageRequestBody(transport *adaptor.Context, imageRequest *relaymod
 		}
 	}
 	return bytes.NewReader(jsonStr), nil
-}
-
-// OpenAI compatible providers may accept fields outside the common request
-// schema. Keep those fields when model mapping or stream conversion requires
-// the request to be serialized again.
-func preserveExtraRequestFields(original, converted []byte) ([]byte, error) {
-	var incoming map[string]json.RawMessage
-	if err := json.Unmarshal(original, &incoming); err != nil {
-		return nil, err
-	}
-	var outgoing map[string]json.RawMessage
-	if err := json.Unmarshal(converted, &outgoing); err != nil {
-		return nil, err
-	}
-	known := make(map[string]bool)
-	requestType := reflect.TypeOf(relaymodel.TextRequest{})
-	for i := 0; i < requestType.NumField(); i++ {
-		name := strings.Split(requestType.Field(i).Tag.Get("json"), ",")[0]
-		if name != "" && name != "-" {
-			known[name] = true
-		}
-	}
-	for name, value := range incoming {
-		if !known[name] {
-			if _, exists := outgoing[name]; !exists {
-				outgoing[name] = value
-			}
-		}
-	}
-	return json.Marshal(outgoing)
 }
 
 // adapterFailure wraps an attempt failure.

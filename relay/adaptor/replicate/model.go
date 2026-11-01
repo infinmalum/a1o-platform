@@ -1,6 +1,7 @@
 package replicate
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/pkg/errors"
@@ -111,7 +112,9 @@ type FluxURLs struct {
 }
 
 type ReplicateChatRequest struct {
-	Input ChatInput `json:"input" form:"input" binding:"required"`
+	NativeInput json.RawMessage `json:"-"`
+	Stream      bool            `json:"stream"`
+	Input       ChatInput       `json:"input" form:"input" binding:"required"`
 }
 
 // ChatInput is input of ChatByReplicateRequest
@@ -144,7 +147,7 @@ type ChatResponse struct {
 	Logs        string      `json:"logs"`
 	Metrics     FluxMetrics `json:"metrics"`
 	// Output could be `string` or `[]string`
-	Output    []string        `json:"output"`
+	Output    PredictionText  `json:"output"`
 	StartedAt time.Time       `json:"started_at"`
 	Status    string          `json:"status"`
 	URLs      ChatResponseUrl `json:"urls"`
@@ -156,4 +159,36 @@ type ChatResponseUrl struct {
 	Stream string `json:"stream"`
 	Get    string `json:"get"`
 	Cancel string `json:"cancel"`
+}
+
+func (r ReplicateChatRequest) MarshalJSON() ([]byte, error) {
+	type ordinary ReplicateChatRequest
+	if r.NativeInput == nil {
+		return json.Marshal(ordinary(r))
+	}
+	return json.Marshal(struct {
+		Input  json.RawMessage `json:"input"`
+		Stream bool            `json:"stream"`
+	}{r.NativeInput, r.Stream})
+}
+
+// Predictions may return a single text or a list of text chunks.
+type PredictionText []string
+
+func (p *PredictionText) UnmarshalJSON(raw []byte) error {
+	if string(raw) == "null" {
+		*p = nil
+		return nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		*p = []string{text}
+		return nil
+	}
+	var chunks []string
+	if err := json.Unmarshal(raw, &chunks); err != nil {
+		return err
+	}
+	*p = chunks
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
@@ -212,14 +213,15 @@ func messagesBlocksToGemini(raw json.RawMessage, assistant bool, toolNames map[s
 
 // GeminiToMessages converts one Gemini candidate into an Anthropic message.
 // Function calls become tool_use blocks and thought parts become thinking
-// blocks carrying the thought signature. Provider metadata is kept in a named
-// extension while response content and finish states Messages cannot
-// represent are rejected.
+// blocks carrying the thought signature. Unmapped envelope fields ride in
+// provider_metadata; response content the Messages wire cannot represent is
+// rejected.
 func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := responseObject(body, geminiResponseFields...)
+	fields, extras, err := responseObject(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata := newProviderMetadata(extras)
 	id := rawString(fields["responseId"])
 	if id == "" {
 		generated, err := newStreamID("msg_")
@@ -232,18 +234,20 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := responseObject(rawCandidates[0], geminiCandidateFields...)
+	candidate, candidateExtras, err := responseObject(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(candidateExtras)
 	if err := geminiCandidateIndex(candidate["index"]); err != nil {
 		return nil, native.Usage{}, err
 	}
 	finish := rawString(candidate["finishReason"])
-	content, err := responseObject(candidate["content"], "role", "parts")
+	content, contentExtras, err := responseObject(candidate["content"], "role", "parts")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(contentExtras)
 	if role := rawString(content["role"]); role != "" && role != "model" {
 		return nil, native.Usage{}, errors.New("Gemini response content role must be model")
 	}
@@ -264,6 +268,15 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 		}
 		switch part.kind {
 		case geminiPartText:
+			if part.signature != "" {
+				// A signature on display text validates the thought that
+				// preceded it; attach it to the open thinking block so the
+				// replay round-trips, and reject when there is none.
+				if openThinking < 0 {
+					return nil, native.Usage{}, errors.New("Gemini display text carries a thought signature with no preceding thinking block; use the Gemini or Responses endpoint")
+				}
+				blocks[openThinking].(map[string]any)["signature"] = part.signature
+			}
 			blocks = append(blocks, map[string]string{"type": "text", "text": part.text})
 			closeThinking()
 		case geminiPartThought:
@@ -279,6 +292,9 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 			}
 			blocks[openThinking].(map[string]any)["signature"] = part.signature
 		case geminiPartFunctionCall:
+			if part.signature != "" {
+				return nil, native.Usage{}, errors.New("Gemini function call carries a thought signature that Messages cannot represent; use the Gemini or Responses endpoint")
+			}
 			toolCalls = true
 			blockID := part.callID
 			if blockID == "" {
@@ -299,36 +315,46 @@ func GeminiToMessages(body []byte, requestedModel string) ([]byte, native.Usage,
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	prompt, output, cached, err := geminiUsage(fields["usageMetadata"], true)
+	usage, err := geminiUsageTokens(fields["usageMetadata"], true)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	usage := native.Usage{Input: prompt, Output: output, Seen: true, Complete: true}
+	usage.Complete = true
 	result := map[string]any{
 		"id": id, "type": "message", "role": "assistant", "model": requestedModel,
 		"content":     blocks,
 		"stop_reason": stop, "stop_sequence": nil,
-		"usage": map[string]int64{"input_tokens": prompt - cached, "cache_creation_input_tokens": 0, "cache_read_input_tokens": cached, "output_tokens": output},
+		"usage": anthropicUsageEnvelope(usage),
 	}
-	if metadata := geminiProviderMetadata(fields, candidate); len(metadata) > 0 {
-		result["provider_metadata"] = map[string]any{"gemini": metadata}
+	if gemini := geminiProviderMetadata(fields, candidate); len(gemini) > 0 {
+		if m := metadata.value(); m != nil {
+			m["gemini"] = gemini
+		} else {
+			metadata.set("gemini", gemini)
+		}
+	}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
 	}
 	converted, err := json.Marshal(result)
 	return converted, usage, err
 }
 
-// geminiUsage validates the usageMetadata object shared by the sync and
-// streaming Gemini converters and returns prompt, candidate, and cached token
-// counts. Output includes thinking tokens because Messages and Chat bill them
-// as completion output. Sync responses require an output count; streaming
-// events may report only what the provider has produced so far.
-func geminiUsage(raw json.RawMessage, requireOutput bool) (int64, int64, int64, error) {
+// geminiUsageTokens validates the usageMetadata object shared by the sync and
+// streaming Gemini converters and returns the mapped usage. Output includes
+// thinking tokens because Gemini bills them as completion output; the thinking
+// and cached counts ride the detail fields so clients can render the real
+// breakdown.
+func geminiUsageTokens(raw json.RawMessage, requireOutput bool) (native.Usage, error) {
 	if len(raw) == 0 {
-		return 0, 0, 0, errors.New("Gemini response usage is required")
+		return native.Usage{}, errors.New("Gemini response usage is required")
 	}
-	usageRaw, err := responseObject(raw, "promptTokenCount", "cachedContentTokenCount", "candidatesTokenCount", "toolUsePromptTokenCount", "thoughtsTokenCount", "totalTokenCount", "promptTokensDetails", "cacheTokensDetails", "candidatesTokensDetails", "toolUsePromptTokensDetails", "thoughtsTokensDetails", "trafficType")
+	usageRaw, extras, err := responseObject(raw, "promptTokenCount", "cachedContentTokenCount", "candidatesTokenCount", "toolUsePromptTokenCount", "thoughtsTokenCount", "totalTokenCount", "promptTokensDetails", "cacheTokensDetails", "candidatesTokensDetails", "toolUsePromptTokensDetails", "thoughtsTokensDetails", "trafficType")
 	if err != nil || len(usageRaw["promptTokenCount"]) == 0 || (requireOutput && len(usageRaw["candidatesTokenCount"]) == 0 && len(usageRaw["totalTokenCount"]) == 0) {
-		return 0, 0, 0, errors.New("Gemini response token counts are required")
+		return native.Usage{}, errors.New("Gemini response token counts are required")
+	}
+	if len(extras) > 0 {
+		logger.SysWarnf("Gemini usage extras are folded into provider_metadata: %s", sortExtrasNames(extras))
 	}
 	var usageFields struct {
 		Prompt     int64 `json:"promptTokenCount"`
@@ -338,8 +364,12 @@ func geminiUsage(raw json.RawMessage, requireOutput bool) (int64, int64, int64, 
 		Cached     int64 `json:"cachedContentTokenCount"`
 	}
 	if json.Unmarshal(raw, &usageFields) != nil || usageFields.Prompt < 0 || usageFields.Candidates < 0 || usageFields.Thoughts < 0 || usageFields.Total < 0 || usageFields.Cached < 0 || usageFields.Cached > usageFields.Prompt {
-		return 0, 0, 0, errors.New("invalid Gemini usage")
+		return native.Usage{}, errors.New("invalid Gemini usage")
 	}
 	output := max(usageFields.Candidates+usageFields.Thoughts, usageFields.Total-usageFields.Prompt)
-	return usageFields.Prompt, output, usageFields.Cached, nil
+	return native.Usage{
+		Input: usageFields.Prompt, Output: output,
+		CacheRead: usageFields.Cached, Reasoning: usageFields.Thoughts,
+		Seen: true,
+	}, nil
 }

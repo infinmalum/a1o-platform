@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 type geminiPartKind int
@@ -15,8 +16,9 @@ const (
 )
 
 // geminiPart is the converted view of one Gemini candidate content part.
-// Only parts with a representation in Chat Completions or Anthropic Messages
-// parse; everything else fails so no content is silently dropped.
+// Parts parse with their thought signature intact; each consuming converter
+// decides whether the target wire can represent the kind plus signature and
+// rejects or carries accordingly, so nothing is silently stripped.
 type geminiPart struct {
 	kind      geminiPartKind
 	text      string
@@ -26,24 +28,26 @@ type geminiPart struct {
 	args      json.RawMessage
 }
 
-// parseGeminiResponsePart parses one candidate content part. Thought parts
-// may carry the thought signature that must be echoed back on later requests.
-// A bare signature part attaches to the preceding thinking block. Function
-// calls and display text carrying a thought signature have no Chat or
-// Messages slot and are rejected.
+// parseGeminiResponsePart parses one candidate content part. Thought parts may
+// carry the thought signature that must be echoed back on later requests; a
+// bare signature part attaches to the preceding thinking content; display text
+// and function calls may also carry signatures, which thinking-model function
+// calling requires for multi-turn replay. Parts mixing mapped keys with
+// unmapped media keys (inlineData, fileData, ...) fail loudly instead of
+// losing the media.
 func parseGeminiResponsePart(raw json.RawMessage) (geminiPart, error) {
-	fields, err := responseObject(raw, "text", "thought", "thoughtSignature", "functionCall")
+	fields, extras, err := rawObject(raw, "text", "thought", "thoughtSignature", "functionCall")
 	if err != nil {
 		return geminiPart{}, err
+	}
+	if len(extras) > 0 {
+		return geminiPart{}, fmt.Errorf("Gemini content part carries fields the target wire cannot represent: %s", sortExtrasNames(extras))
 	}
 	if len(fields["functionCall"]) != 0 {
 		if len(fields["text"]) != 0 || len(fields["thought"]) != 0 {
 			return geminiPart{}, errors.New("Gemini part combines a function call with other content")
 		}
-		if len(fields["thoughtSignature"]) != 0 {
-			return geminiPart{}, errors.New("Gemini function call carries a thought signature that Chat and Messages cannot represent")
-		}
-		call, err := responseObject(fields["functionCall"], "name", "args", "id")
+		call, err := object(fields["functionCall"], "name", "args", "id")
 		if err != nil {
 			return geminiPart{}, err
 		}
@@ -59,7 +63,7 @@ func parseGeminiResponsePart(raw json.RawMessage) (geminiPart, error) {
 			}
 			args = call["args"]
 		}
-		return geminiPart{kind: geminiPartFunctionCall, name: name, args: args, callID: rawString(call["id"])}, nil
+		return geminiPart{kind: geminiPartFunctionCall, name: name, args: args, callID: rawString(call["id"]), signature: rawString(fields["thoughtSignature"])}, nil
 	}
 	var thought bool
 	if len(fields["thought"]) != 0 {
@@ -75,10 +79,7 @@ func parseGeminiResponsePart(raw json.RawMessage) (geminiPart, error) {
 		return geminiPart{kind: geminiPartThought, text: rawString(fields["text"]), signature: signature}, nil
 	}
 	if len(fields["text"]) != 0 {
-		if signature != "" {
-			return geminiPart{}, errors.New("Gemini display text carries a thought signature that Chat and Messages cannot represent")
-		}
-		return geminiPart{kind: geminiPartText, text: rawString(fields["text"])}, nil
+		return geminiPart{kind: geminiPartText, text: rawString(fields["text"]), signature: signature}, nil
 	}
 	if signature != "" {
 		return geminiPart{kind: geminiPartSignature, signature: signature}, nil

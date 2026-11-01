@@ -66,6 +66,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 		}
 		var textParts []any
 		var toolCalls []any
+		var thinking []string
 		flushUserText := func() {
 			if len(textParts) > 0 {
 				chatMessages = append(chatMessages, map[string]any{"role": "user", "content": textParts})
@@ -73,7 +74,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 			}
 		}
 		for _, blockRaw := range blocks {
-			block, err := object(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error")
+			block, err := object(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error", "thinking", "signature")
 			if err != nil {
 				return nil, err
 			}
@@ -89,6 +90,22 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 					return nil, errors.New("text block text must be a string")
 				}
 				textParts = append(textParts, map[string]string{"type": "text", "text": text})
+			case "thinking":
+				// Visible thinking text rides the Chat wire's
+				// reasoning_content slot. The signature has no Chat slot and
+				// no meaning for a Chat upstream, so it is not carried here;
+				// signature-faithful replay requires the Anthropic or
+				// Responses endpoint.
+				if role != "assistant" {
+					return nil, errors.New("thinking blocks must be assistant content")
+				}
+				var thought string
+				if json.Unmarshal(block["thinking"], &thought) != nil || thought == "" {
+					return nil, errors.New("thinking block requires text")
+				}
+				thinking = append(thinking, thought)
+			case "redacted_thinking":
+				return nil, errors.New("redacted thinking is an opaque Anthropic blob and cannot cross to a Chat upstream; use the Anthropic or Responses endpoint")
 			case "image":
 				if role != "user" || len(block) != 2 {
 					return nil, errors.New("image must be a user block with only a source")
@@ -135,7 +152,10 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 			if len(toolCalls) > 0 {
 				message["tool_calls"] = toolCalls
 			}
-			if len(textParts) == 0 && len(toolCalls) == 0 {
+			if len(thinking) > 0 {
+				message["reasoning_content"] = strings.Join(thinking, "\n")
+			}
+			if len(textParts) == 0 && len(toolCalls) == 0 && len(thinking) == 0 {
 				return nil, errors.New("assistant content is empty")
 			}
 			chatMessages = append(chatMessages, message)
@@ -214,10 +234,11 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 }
 
 func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := responseObject(body, "id", "object", "created", "model", "choices", "usage")
+	fields, extras, err := responseObject(body, "id", "object", "created", "model", "choices", "usage")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata := newProviderMetadata(extras)
 	var id string
 	_ = json.Unmarshal(fields["id"], &id)
 	var objectType string
@@ -226,10 +247,11 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	if id == "" || objectType != "chat.completion" || json.Unmarshal(fields["choices"], &choices) != nil || len(choices) != 1 {
 		return nil, native.Usage{}, errors.New("Chat response requires an id, chat.completion object, and one choice")
 	}
-	choice, err := responseObject(choices[0], "index", "message", "finish_reason")
+	choice, choiceExtras, err := responseObject(choices[0], "index", "message", "finish_reason")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(choiceExtras)
 	var index int
 	if json.Unmarshal(choice["index"], &index) != nil || index != 0 {
 		return nil, native.Usage{}, errors.New("Chat response choice index must be zero")
@@ -244,13 +266,16 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 		stop = "max_tokens"
 	case "tool_calls":
 		stop = "tool_use"
+	case "content_filter":
+		stop = "refusal"
 	default:
 		return nil, native.Usage{}, fmt.Errorf("Chat finish_reason %q cannot be converted", finish)
 	}
-	message, err := responseObject(choice["message"], "role", "content", "tool_calls")
+	message, messageExtras, err := responseObject(choice["message"], "role", "content", "tool_calls", "refusal", "reasoning_content")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(messageExtras)
 	var role string
 	_ = json.Unmarshal(message["role"], &role)
 	if role != "assistant" {
@@ -259,6 +284,17 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	blocks, err := chatTextBlocks(message["content"])
 	if err != nil {
 		return nil, native.Usage{}, err
+	}
+	// Visible thinking text maps onto a thinking block; the refusal string
+	// becomes its own text block so neither is silently lost.
+	if reasoning := rawString(message["reasoning_content"]); reasoning != "" {
+		blocks = append([]any{map[string]any{"type": "thinking", "thinking": reasoning}}, blocks...)
+	}
+	if refusal := rawString(message["refusal"]); refusal != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": refusal})
+		if stop == "end_turn" {
+			stop = "refusal"
+		}
 	}
 	if len(message["tool_calls"]) != 0 {
 		calls, err := chatToolCalls(message["tool_calls"])
@@ -283,37 +319,45 @@ func ChatToAnthropicResponse(body []byte, requestedModel string) ([]byte, native
 	// fields instead of prompt_tokens_details. A response without usage still
 	// converts: billing falls back to the reserved quota when usage is unseen.
 	usage := native.Usage{Complete: true}
-	cached := int64(0)
-	messageUsage := map[string]int64{"input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 0}
+	messageUsage := map[string]any{"input_tokens": 0, "output_tokens": 0}
 	if nonNull(fields["usage"]) {
-		usageFields, err := responseObject(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
+		usageFields, usageExtras, err := responseObject(fields["usage"], "prompt_tokens", "completion_tokens", "total_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens")
 		if err != nil {
 			return nil, native.Usage{}, err
 		}
+		metadata.absorb(usageExtras)
 		var source struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
 			PromptDetails    struct {
 				CachedTokens int64 `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
+			CompletionDetails struct {
+				ReasoningTokens int64 `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
 			PromptCacheHitTokens  int64 `json:"prompt_cache_hit_tokens"`
 			PromptCacheMissTokens int64 `json:"prompt_cache_miss_tokens"`
 		}
 		if json.Unmarshal(fields["usage"], &source) != nil || len(usageFields["prompt_tokens"]) == 0 || len(usageFields["completion_tokens"]) == 0 || source.PromptDetails.CachedTokens < 0 || source.PromptCacheHitTokens < 0 || source.PromptCacheMissTokens < 0 || source.PromptTokens < 0 || source.CompletionTokens < 0 {
 			return nil, native.Usage{}, errors.New("invalid Chat usage")
 		}
-		cached = max(source.PromptDetails.CachedTokens, source.PromptCacheHitTokens)
+		cached := max(source.PromptDetails.CachedTokens, source.PromptCacheHitTokens)
 		if source.PromptTokens < cached {
 			return nil, native.Usage{}, errors.New("invalid Chat usage")
 		}
 		usage.Input = source.PromptTokens
 		usage.Output = source.CompletionTokens
+		usage.CacheRead = cached
+		usage.Reasoning = source.CompletionDetails.ReasoningTokens
 		usage.Seen = true
-		messageUsage = map[string]int64{"input_tokens": source.PromptTokens - cached, "cache_read_input_tokens": cached, "output_tokens": source.CompletionTokens}
+		messageUsage = anthropicUsageEnvelope(usage)
 	}
 	result := map[string]any{
 		"id": id, "type": "message", "role": "assistant", "model": requestedModel,
 		"content": blocks, "stop_reason": stop, "stop_sequence": nil, "usage": messageUsage,
+	}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
 	}
 	converted, err := json.Marshal(result)
 	return converted, usage, err

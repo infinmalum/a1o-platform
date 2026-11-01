@@ -4,11 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 
-	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
@@ -32,7 +29,7 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 	var system []string
 	var converted []any
 	for _, raw := range messages {
-		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id")
+		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id", "reasoning_content")
 		if err != nil {
 			return nil, fmt.Errorf("invalid Chat message: %w", err)
 		}
@@ -57,6 +54,15 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 			blocks, err := chatInputBlocks(message["content"], role == "user")
 			if err != nil {
 				return nil, err
+			}
+			if role == "assistant" {
+				// History reasoning_content is visible thinking text; it is
+				// carried as a signature-less thinking block so reasoning
+				// context survives the bridge. Signature-bearing replay
+				// requires the Anthropic or Responses endpoint.
+				if reasoning := rawString(message["reasoning_content"]); reasoning != "" {
+					blocks = append([]any{map[string]any{"type": "thinking", "thinking": reasoning}}, blocks...)
+				}
 			}
 			if len(message["tool_calls"]) != 0 {
 				if role != "assistant" {
@@ -179,54 +185,32 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 }
 
 func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := responseObject(body, "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
+	fields, extras, err := responseObject(body, "id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage")
 	if err != nil {
 		return nil, native.Usage{}, err
+	}
+	metadata := newProviderMetadata(extras)
+	if matched := rawString(fields["stop_sequence"]); matched != "" {
+		metadata.set("matched_stop_sequence", matched)
 	}
 	var rawBlocks []json.RawMessage
 	if json.Unmarshal(fields["content"], &rawBlocks) != nil {
 		return nil, native.Usage{}, errors.New("Anthropic content must be an array")
-	}
-	for _, raw := range rawBlocks {
-		block, err := responseObject(raw, "type", "text", "id", "name", "input")
-		if err != nil {
-			return nil, native.Usage{}, err
-		}
-		var kind string
-		_ = json.Unmarshal(block["type"], &kind)
-		switch kind {
-		case "text":
-			var value string
-			if len(block) != 2 || json.Unmarshal(block["text"], &value) != nil {
-				return nil, native.Usage{}, errors.New("invalid Anthropic text block")
-			}
-		case "tool_use":
-			if len(block) != 4 {
-				return nil, native.Usage{}, errors.New("invalid Anthropic tool_use block")
-			}
-			var input map[string]any
-			if json.Unmarshal(block["input"], &input) != nil || input == nil {
-				return nil, native.Usage{}, errors.New("Anthropic tool_use input must be an object")
-			}
-		default:
-			return nil, native.Usage{}, fmt.Errorf("Anthropic content block %q cannot be converted", kind)
-		}
-	}
-	if len(fields["usage"]) != 0 {
-		if _, err := responseObject(fields["usage"], "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"); err != nil {
-			return nil, native.Usage{}, err
-		}
 	}
 	var response struct {
 		ID         string `json:"id"`
 		Type       string `json:"type"`
 		StopReason string `json:"stop_reason"`
 		Content    []struct {
-			Type  string          `json:"type"`
-			Text  string          `json:"text"`
-			ID    string          `json:"id"`
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
+			Type      string            `json:"type"`
+			Text      string            `json:"text"`
+			ID        string            `json:"id"`
+			Name      string            `json:"name"`
+			Input     json.RawMessage   `json:"input"`
+			Thinking  string            `json:"thinking"`
+			Signature string            `json:"signature"`
+			Data      string            `json:"data"`
+			Citations []json.RawMessage `json:"citations"`
 		} `json:"content"`
 		Usage *struct {
 			InputTokens              int64 `json:"input_tokens"`
@@ -265,15 +249,32 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		return nil, native.Usage{}, fmt.Errorf("Anthropic stop reason %q cannot be converted", response.StopReason)
 	}
 	message := map[string]any{"role": "assistant", "content": nil}
-	var text string
+	var text, reasoning string
 	var toolCalls []any
 	for _, block := range response.Content {
 		switch block.Type {
 		case "text":
+			if len(block.Citations) > 0 {
+				return nil, native.Usage{}, errors.New("Anthropic citations cannot be represented in the Chat wire; use the Anthropic or Responses endpoint")
+			}
 			text += block.Text
+		case "thinking":
+			// Visible thinking text maps onto the Chat wire's
+			// reasoning_content slot; the signature rides in
+			// provider_metadata because the Chat wire has no slot for it.
+			reasoning += block.Thinking
+			if block.Signature != "" {
+				metadata.set("thinking_signature", block.Signature)
+			}
+		case "redacted_thinking":
+			return nil, native.Usage{}, errors.New("Anthropic redacted thinking cannot round-trip through the Chat wire; use the Anthropic or Responses endpoint")
 		case "tool_use":
 			if block.ID == "" || block.Name == "" || len(block.Input) == 0 {
 				return nil, native.Usage{}, errors.New("invalid Anthropic tool_use block")
+			}
+			var input map[string]any
+			if json.Unmarshal(block.Input, &input) != nil || input == nil {
+				return nil, native.Usage{}, errors.New("Anthropic tool_use input must be an object")
 			}
 			arguments, err := json.Marshal(json.RawMessage(block.Input))
 			if err != nil {
@@ -287,6 +288,9 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	if text != "" {
 		message["content"] = text
 	}
+	if reasoning != "" {
+		message["reasoning_content"] = reasoning
+	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
 	}
@@ -294,6 +298,8 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	if response.Usage != nil {
 		usage.Input = response.Usage.InputTokens + response.Usage.CacheCreationInputTokens + response.Usage.CacheReadInputTokens
 		usage.Output = response.Usage.OutputTokens
+		usage.CacheCreation = response.Usage.CacheCreationInputTokens
+		usage.CacheRead = response.Usage.CacheReadInputTokens
 		usage.Seen = true
 	}
 	result := map[string]any{
@@ -301,7 +307,10 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}},
 	}
 	if usage.Seen {
-		result["usage"] = map[string]int64{"prompt_tokens": usage.Input, "completion_tokens": usage.Output, "total_tokens": usage.Input + usage.Output}
+		result["usage"] = chatUsageEnvelope(usage)
+	}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
 	}
 	converted, err := json.Marshal(result)
 	return converted, usage, err
@@ -328,31 +337,14 @@ func object(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
 }
 
 // responseObject is the upstream-response counterpart of object: unknown
-// fields are dropped with a warning instead of failing the conversion, so an
-// additive provider envelope change never turns into a gateway outage.
-// Content-shape errors (missing required fields, unconvertible block kinds)
-// still fail their converters.
-func responseObject(raw []byte, allowed ...string) (map[string]json.RawMessage, error) {
-	var value map[string]json.RawMessage
-	if json.Unmarshal(raw, &value) != nil || value == nil {
-		return nil, errors.New("expected a JSON object")
+// fields are collected as extras so the converter can carry them opaquely in
+// provider_metadata, and content-shape errors still fail their converters.
+func responseObject(raw []byte, allowed ...string) (map[string]json.RawMessage, map[string]json.RawMessage, error) {
+	fields, extras, err := rawObject(raw, allowed...)
+	if err != nil {
+		return nil, nil, err
 	}
-	permitted := make(map[string]bool, len(allowed))
-	for _, key := range allowed {
-		permitted[key] = true
-	}
-	var dropped []string
-	for key := range value {
-		if !permitted[key] {
-			dropped = append(dropped, key)
-			delete(value, key)
-		}
-	}
-	if len(dropped) > 0 {
-		sort.Strings(dropped)
-		logger.SysWarnf("bridge dropped upstream fields it cannot represent: %s", strings.Join(dropped, ", "))
-	}
-	return value, nil
+	return fields, extras, nil
 }
 
 func decode(raw json.RawMessage, out any) error {

@@ -70,9 +70,9 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 		var role string
 		_ = json.Unmarshal(message["role"], &role)
 		switch role {
-		case "system":
+		case "system", "developer":
 			if len(contents) != 0 {
-				return nil, errors.New("system messages must precede conversation messages")
+				return nil, errors.New("system and developer messages must precede conversation messages")
 			}
 			parts, err := geminiTextParts(message["content"])
 			if err != nil {
@@ -258,12 +258,15 @@ func geminiTextParts(raw json.RawMessage) ([]map[string]any, error) {
 // GeminiToChat keeps provider metadata in a named response extension while
 // rejecting response content and finish states Chat cannot represent.
 // Function calls become tool calls with the upstream call ID when present;
-// thought parts have no Chat representation and fail.
+// thought parts map onto the Chat wire's reasoning_content slot, and thought
+// signatures ride provider_metadata because the Chat wire has no per-item
+// signature slot.
 func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
-	fields, err := responseObject(body, geminiResponseFields...)
+	fields, extras, err := responseObject(body, geminiResponseFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata := newProviderMetadata(extras)
 	var id string
 	_ = json.Unmarshal(fields["responseId"], &id)
 	if id == "" {
@@ -277,19 +280,21 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	if json.Unmarshal(fields["candidates"], &rawCandidates) != nil || len(rawCandidates) != 1 {
 		return nil, native.Usage{}, errors.New("Gemini response requires one candidate")
 	}
-	candidate, err := responseObject(rawCandidates[0], geminiCandidateFields...)
+	candidate, candidateExtras, err := responseObject(rawCandidates[0], geminiCandidateFields...)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(candidateExtras)
 	if err := geminiCandidateIndex(candidate["index"]); err != nil {
 		return nil, native.Usage{}, err
 	}
 	var finish string
 	_ = json.Unmarshal(candidate["finishReason"], &finish)
-	content, err := responseObject(candidate["content"], "role", "parts")
+	content, contentExtras, err := responseObject(candidate["content"], "role", "parts")
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
+	metadata.absorb(contentExtras)
 	var role string
 	_ = json.Unmarshal(content["role"], &role)
 	if role != "" && role != "model" {
@@ -299,7 +304,7 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	if json.Unmarshal(content["parts"], &rawParts) != nil || len(rawParts) == 0 {
 		return nil, native.Usage{}, errors.New("Gemini response requires content parts")
 	}
-	var text string
+	var text, reasoning string
 	var toolCalls []any
 	for _, raw := range rawParts {
 		part, err := parseGeminiResponsePart(raw)
@@ -308,8 +313,21 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 		}
 		switch part.kind {
 		case geminiPartText:
+			if part.signature != "" {
+				metadata.set("thought_signature", part.signature)
+			}
 			text += part.text
+		case geminiPartThought:
+			reasoning += part.text
+			if part.signature != "" {
+				metadata.set("thought_signature", part.signature)
+			}
+		case geminiPartSignature:
+			metadata.set("thought_signature", part.signature)
 		case geminiPartFunctionCall:
+			if part.signature != "" {
+				return nil, native.Usage{}, errors.New("Gemini function call carries a thought signature that Chat cannot represent; use the Gemini or Responses endpoint")
+			}
 			callID := part.callID
 			if callID == "" {
 				generated, err := newStreamID("call_")
@@ -322,25 +340,26 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 				"id": callID, "type": "function",
 				"function": map[string]string{"name": part.name, "arguments": string(part.args)},
 			})
-		default:
-			return nil, native.Usage{}, errors.New("Gemini response contains a part Chat cannot represent")
 		}
 	}
-	if text == "" && len(toolCalls) == 0 {
+	if text == "" && len(toolCalls) == 0 && reasoning == "" {
 		return nil, native.Usage{}, errors.New("Gemini response requires content")
 	}
 	chatFinish, err := mapGeminiFinishReason(finish, len(toolCalls) > 0)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	prompt, output, cached, err := geminiUsage(fields["usageMetadata"], true)
+	usage, err := geminiUsageTokens(fields["usageMetadata"], true)
 	if err != nil {
 		return nil, native.Usage{}, err
 	}
-	usage := native.Usage{Input: prompt, Output: output, Seen: true, Complete: true}
+	usage.Complete = true
 	message := map[string]any{"role": "assistant", "content": nil}
 	if text != "" {
 		message["content"] = text
+	}
+	if reasoning != "" {
+		message["reasoning_content"] = reasoning
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
@@ -348,12 +367,18 @@ func GeminiToChat(body []byte, requestedModel string) ([]byte, native.Usage, err
 	result := map[string]any{
 		"id": id, "object": "chat.completion", "created": time.Now().Unix(), "model": requestedModel,
 		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": chatFinish}},
-		"usage":   map[string]any{"prompt_tokens": usage.Input, "completion_tokens": usage.Output, "total_tokens": usage.Input + usage.Output},
+		"usage":   chatUsageEnvelope(usage),
 	}
-	if cached > 0 {
-		result["usage"].(map[string]any)["prompt_tokens_details"] = map[string]int64{"cached_tokens": cached}
+	if gemini := geminiProviderMetadata(fields, candidate); len(gemini) > 0 {
+		if m := metadata.value(); m != nil {
+			m["gemini"] = gemini
+		} else {
+			metadata.set("gemini", gemini)
+		}
 	}
-	result["provider_metadata"] = map[string]any{"gemini": geminiProviderMetadata(fields, candidate)}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
+	}
 	converted, err := json.Marshal(result)
 	return converted, usage, err
 }

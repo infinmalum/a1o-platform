@@ -11,10 +11,8 @@ import (
 
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/model"
-	relay "github.com/infinmalum/a1o-platform/relay"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
-	"github.com/infinmalum/a1o-platform/relay/meta"
 	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
 )
 
@@ -48,31 +46,13 @@ type OpenAIModels struct {
 var channelId2Models map[int][]string
 
 func init() {
+	// Kinds ship no preset model lists: the console model universe comes from
+	// the deployed channels' ability table and the per-channel 获取模型 sync.
+	// A nil slice marshals as JSON null, which crashes frontend consumers
+	// that index the listing and read .length; store real empty slices.
 	channelId2Models = make(map[int][]string)
 	for i := 1; i < channeltype.Dummy; i++ {
-		// A nil slice marshals as JSON null, which crashes frontend consumers
-		// that index the listing and read .length; store real empty slices.
-		if !channeltype.IsValid(i) {
-			// Unassigned IDs in the range are not kinds.
-			channelId2Models[i] = []string{}
-			continue
-		}
-		adaptor := relay.GetAdaptor(channeltype.ToAPIType(i))
-		if adaptor == nil {
-			channelId2Models[i] = []string{}
-			continue
-		}
-		meta := &meta.Meta{
-			ChannelType: i,
-		}
-		adaptor.Init(meta)
-		modelList := adaptor.GetModelList()
-		if modelList == nil {
-			// The compatible kind ships no presets (models are fetched from
-			// the upstream); keep a real empty slice so the JSON is [] not null.
-			modelList = []string{}
-		}
-		channelId2Models[i] = modelList
+		channelId2Models[i] = []string{}
 	}
 }
 

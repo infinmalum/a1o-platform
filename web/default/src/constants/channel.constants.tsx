@@ -2,12 +2,12 @@
 // generic Base URL input. The operator persona is a reseller who only pastes
 // what a vendor handed them (base URL + key), so a field exists only where a
 // vendor address is genuinely pasted: the OpenAI/Anthropic/Gemini wire kinds,
-// Cloudflare's account-specific gateway URL, and TypeSafe when pointed at a
+// TypeSafe when pointed at a
 // non-official SystemOne endpoint. Kinds with a fixed official endpoint
-// (OpenRouter), a preset choice (Coze's site, DeepL's account tier), or
-// dedicated credential fields (Azure, AWS, VertexAI) get no free-form URL to
-// misfill.
-export const BASE_URL_INPUT_KINDS = new Set([1, 14, 24, 37, 52, 53]);
+// (OpenRouter, Vercel), a preset choice (Coze's site, DeepL's account tier),
+// or dedicated credential fields (Azure, AWS, VertexAI) get no free-form URL
+// to misfill.
+export const BASE_URL_INPUT_KINDS = new Set([1, 14, 24, 52, 53]);
 
 // Filling rule, identical to the Anthropic kind: leave the Base URL empty to
 // hit the official endpoint, or paste the vendor's documented address as-is.
@@ -54,6 +54,15 @@ export const CHANNEL_OPTIONS = [
     tip:
       'OpenRouter 官方统一协议：一个地址（https://openrouter.ai/api/v1）同时服务 OpenAI Chat、OpenAI Responses、Anthropic Messages 和 SystemOne（Jev 决策）四种线，平台自动对接，只需填 OpenRouter 的 Key 并选择模型。「获取模型」按钮直接列出 OpenRouter 的全部模型，并把官方价格同步进价册（只补缺，不覆盖你改过的价）。',
   },
+  {
+    key: 55,
+    text: 'Vercel AI Gateway',
+    value: 55,
+    color: 'black',
+    description: 'OpenResponses，无需 Base URL',
+    tip:
+      'Vercel AI Gateway 官方渠道，走 OpenResponses 开放协议（openresponses.org，/v1/responses 线）。固定官方地址 https://ai-gateway.vercel.sh/v1，无需填写 Base URL；Key 填 AI Gateway 的 API Key（即 AI_GATEWAY_API_KEY）。模型名用「厂商/模型」格式（如 openai/gpt-5、anthropic/claude-sonnet-4.5），用户侧调用普通 chat 接口即可，平台自动桥接。「获取模型」按钮列出网关全部语言模型，并把官方价格同步进价册（只补缺，不覆盖你改过的价）。注意：本渠道只服务 Responses 线，embeddings / 画图 / 语音模型请建 OpenAI 兼容渠道。',
+  },
   { key: 33, text: 'AWS', value: 33, color: 'black' },
   {key: 3, text: 'Azure', value: 3, color: 'olive'},
   {key: 24, text: 'Gemini', value: 24, color: 'orange'},
@@ -85,6 +94,6 @@ export const CHANNEL_OPTIONS = [
     tip:
       'DeepL 翻译渠道：免费账号与 Pro 账号各有一个固定官方地址，按令牌所属账号选择即可，无需填写 Base URL。模型名填目标语言代码（如 EN-US、DE、ZH），「获取模型」按钮会列出全部可选语言。',
   },
-  { key: 42, text: 'VertexAI', value: 42, color: 'blue' },
+  { key: 42, text: 'Google Vertex', value: 42, color: 'blue' },
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
 ];

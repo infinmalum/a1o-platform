@@ -10,9 +10,10 @@ import (
 )
 
 // Stream converts Responses events into Chat Completions chunks. Reasoning
-// items and summaries carry no Chat representation and are skipped; server
-// tools cannot appear because the request conversion only forwards function
-// tools.
+// text streams as the Chat wire's reasoning_content slot; sealed reasoning
+// blobs and vendor signatures ride provider_metadata on the finish chunk.
+// Server tools cannot appear because the request conversion only forwards
+// function tools.
 func (r *chatResponses) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
 	state := &responsesToChatStream{
 		dst: dst, model: requestedModel, created: streamTimestamp(),
@@ -55,6 +56,7 @@ type responsesToChatStream struct {
 	toolIndexes   map[int]int
 	toolDeltaSeen map[int]bool
 	usage         native.Usage
+	metadata      providerMetadata
 }
 
 func (s *responsesToChatStream) event(data []byte) error {
@@ -80,6 +82,8 @@ func (s *responsesToChatStream) event(data []byte) error {
 		return s.refusalDelta(data)
 	case "response.function_call_arguments.delta":
 		return s.argumentsDelta(data)
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+		return s.reasoningDelta(data)
 	case "response.completed", "response.incomplete":
 		return s.finished(data)
 	case "response.failed":
@@ -93,11 +97,12 @@ func (s *responsesToChatStream) event(data []byte) error {
 			return errors.New(message)
 		}
 		return errors.New("upstream Responses stream failed")
-	// Reasoning summaries and completed-item echoes carry no Chat state.
+	// Completed-item and part echoes restate state the deltas already
+	// delivered; nothing is dropped.
 	case "response.output_text.done", "response.content_part.added", "response.content_part.done",
 		"response.function_call_arguments.done", "response.reasoning_summary_part.added",
-		"response.reasoning_summary_part.done", "response.reasoning_summary_text.delta",
-		"response.reasoning_summary_text.done", "response.reasoning_text.delta", "response.reasoning_text.done":
+		"response.reasoning_summary_part.done", "response.reasoning_summary_text.done",
+		"response.reasoning_text.done":
 		return nil
 	default:
 		return fmt.Errorf("Responses event %q cannot be converted", header.Type)
@@ -108,14 +113,16 @@ func (s *responsesToChatStream) responseCreated(data []byte) error {
 	if s.started {
 		return errors.New("Responses stream sent response.created twice")
 	}
-	fields, _, err := rawObject(data, "type", "sequence_number", "response")
+	fields, extra, err := rawObject(data, "type", "sequence_number", "response")
 	if err != nil {
 		return fmt.Errorf("invalid Responses response.created: %w", err)
 	}
-	created, _, err := rawObject(fields["response"], "id", "status")
+	s.metadata.absorb(extra)
+	created, createdExtra, err := rawObject(fields["response"], "id", "status")
 	if err != nil {
 		return fmt.Errorf("invalid Responses response.created: %w", err)
 	}
+	s.metadata.absorb(createdExtra)
 	if id := rawString(created["id"]); id != "" {
 		s.id = id
 	}
@@ -180,7 +187,17 @@ func (s *responsesToChatStream) itemDone(data []byte) error {
 		return err
 	}
 	switch rawString(item["type"]) {
-	case "message", "reasoning":
+	case "message":
+		return nil
+	case "reasoning":
+		// Sealed reasoning blobs and vendor signatures have no Chat slot;
+		// they ride provider_metadata so nothing is lost.
+		if blob := rawString(item["encrypted_content"]); blob != "" {
+			s.metadata.set("encrypted_reasoning", blob)
+		}
+		if signature := rawString(item["signature"]); signature != "" {
+			s.metadata.set("reasoning_signature", signature)
+		}
 		return nil
 	case "function_call":
 		// A provider that streams complete arguments without deltas still
@@ -202,28 +219,36 @@ func (s *responsesToChatStream) itemDone(data []byte) error {
 }
 
 // outputItem parses an output_item event and returns the item object with its
-// output index. Item fields beyond tool identity are envelope state and
-// ignored.
+// output index. Envelope fields beyond the item ride provider_metadata.
 func (s *responsesToChatStream) outputItem(data []byte) (map[string]json.RawMessage, int, error) {
 	fields, extra, err := rawObject(data, "type", "sequence_number", "output_index", "item")
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid Responses output_item event: %w", err)
 	}
-	if len(extra) > 0 {
-		return nil, 0, fmt.Errorf("Responses output_item field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(extra)
 	index, err := parseIntField(fields["output_index"], "output index")
 	if err != nil {
 		return nil, 0, err
 	}
-	item, extra, err := rawObject(fields["item"], "type", "id", "call_id", "name", "arguments", "status", "role", "content", "summary", "encrypted_content")
+	item, itemExtra, err := rawObject(fields["item"], "type", "id", "call_id", "name", "arguments", "status", "role", "content", "summary", "encrypted_content", "signature", "thought_signature")
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid Responses output item: %w", err)
 	}
-	if len(extra) > 0 {
-		return nil, 0, fmt.Errorf("Responses output item field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(itemExtra)
 	return item, index, nil
+}
+
+// reasoningDelta streams visible thinking text as the Chat wire's
+// reasoning_content slot.
+func (s *responsesToChatStream) reasoningDelta(data []byte) error {
+	delta, err := s.contentDelta(data, "type", "sequence_number", "item_id", "output_index", "summary_index", "content_index", "delta", "obfuscation")
+	if err != nil {
+		return err
+	}
+	if text := rawString(delta["delta"]); text != "" {
+		return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"reasoning_content": text}, "", nil)
+	}
+	return nil
 }
 
 func (s *responsesToChatStream) textDelta(data []byte) error {
@@ -272,7 +297,8 @@ func (s *responsesToChatStream) argumentsDelta(data []byte) error {
 }
 
 // contentDelta applies the shared event shape of delta events: strict
-// top-level fields plus the delta payload.
+// top-level fields plus the delta payload; unknown fields ride provider
+// metadata instead of failing the stream.
 func (s *responsesToChatStream) contentDelta(data []byte, permitted ...string) (map[string]json.RawMessage, error) {
 	if err := s.ensureStart(); err != nil {
 		return nil, err
@@ -281,9 +307,7 @@ func (s *responsesToChatStream) contentDelta(data []byte, permitted ...string) (
 	if err != nil {
 		return nil, fmt.Errorf("invalid Responses delta event: %w", err)
 	}
-	if len(extra) > 0 {
-		return nil, fmt.Errorf("Responses delta field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(extra)
 	return fields, nil
 }
 
@@ -300,9 +324,7 @@ func (s *responsesToChatStream) finished(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid Responses terminal event: %w", err)
 	}
-	if len(extra) > 0 {
-		return fmt.Errorf("Responses terminal event field %q cannot be converted", firstKey(extra))
-	}
+	s.metadata.absorb(extra)
 	var payload struct {
 		Status string `json:"status"`
 		Error  *struct {
@@ -314,6 +336,12 @@ func (s *responsesToChatStream) finished(data []byte) error {
 		Usage *struct {
 			InputTokens  int64 `json:"input_tokens"`
 			OutputTokens int64 `json:"output_tokens"`
+			InputDetails *struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputDetails *struct {
+				ReasoningTokens int64 `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
 		} `json:"usage"`
 	}
 	if json.Unmarshal(fields["response"], &payload) != nil {
@@ -353,16 +381,25 @@ func (s *responsesToChatStream) finished(data []byte) error {
 		}
 		s.usage.Input = max(s.usage.Input, payload.Usage.InputTokens)
 		s.usage.Output = max(s.usage.Output, payload.Usage.OutputTokens)
+		if payload.Usage.InputDetails != nil {
+			s.usage.CacheRead = max(s.usage.CacheRead, payload.Usage.InputDetails.CachedTokens)
+		}
+		if payload.Usage.OutputDetails != nil {
+			s.usage.Reasoning = max(s.usage.Reasoning, payload.Usage.OutputDetails.ReasoningTokens)
+		}
 		s.usage.Seen = true
 	}
-	if err := emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, nil); err != nil {
+	if err := emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, s.metadata.envelope()); err != nil {
 		return err
 	}
 	if s.includeUsage && s.usage.Seen {
 		envelope := map[string]any{
 			"id": s.id, "object": "chat.completion.chunk", "created": s.created, "model": s.model,
 			"choices": []any{},
-			"usage":   map[string]int64{"prompt_tokens": s.usage.Input, "completion_tokens": s.usage.Output, "total_tokens": s.usage.Input + s.usage.Output},
+			"usage":   chatUsageEnvelope(s.usage),
+		}
+		if m := s.metadata.value(); m != nil {
+			envelope["provider_metadata"] = m
 		}
 		encoded, err := json.Marshal(envelope)
 		if err != nil {

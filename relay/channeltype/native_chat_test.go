@@ -32,7 +32,7 @@ func TestOpenAIWireSupportsOperation(t *testing.T) {
 			continue
 		}
 		for _, mode := range []int{
-			relaymode.ChatCompletions, relaymode.Completions, relaymode.Embeddings,
+			relaymode.ChatCompletions, relaymode.Embeddings,
 			relaymode.Moderations, relaymode.ImagesGenerations,
 			relaymode.AudioSpeech, relaymode.AudioTranscription, relaymode.AudioTranslation,
 		} {

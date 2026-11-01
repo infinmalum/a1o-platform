@@ -52,6 +52,8 @@ const EditChannel = () => {
     api_version: '',
     vertex_ai_project_id: '',
     vertex_ai_adc: '',
+    cloudflare_gateway_id: '',
+    cloudflare_gateway_token: '',
   });
   const handleInputChange = (e, { name, value }) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
@@ -223,7 +225,7 @@ const EditChannel = () => {
     }
     const submitConfig = { ...config };
     if (localInputs.type === 3 && submitConfig.api_version === '') {
-      submitConfig.api_version = '2024-03-01-preview';
+      submitConfig.api_version = 'v1';
     }
     let res;
     const payload = {
@@ -399,9 +401,7 @@ const EditChannel = () => {
             {inputs.type === 3 && (
               <>
                 <Message>
-                  注意，<strong>模型部署名称必须和模型名称保持一致</strong>
-                  ，因为网关会把请求体中的 model
-                  参数替换为你的部署名称（模型名称中的点会被剔除）。
+                  模型映射的目标值填写实际部署名称，名称中的点会原样保留。API 版本留空或填写 v1 使用 Azure v1；填写日期版本使用部署式接口。
                 </Message>
                 <Form.Field>
                   <Form.Input
@@ -417,7 +417,7 @@ const EditChannel = () => {
                   <Form.Input
                     label='默认 API 版本'
                     name='api_version'
-                    placeholder='请输入默认 API 版本，例如：2024-03-01-preview，该配置可以被实际的请求查询参数所覆盖'
+                    placeholder='留空或 v1；旧部署可填写受支持的日期版本'
                     onChange={handleConfigChange}
                     value={config.api_version}
                     autoComplete='new-password'
@@ -621,6 +621,7 @@ const EditChannel = () => {
             </>
             {inputs.type === 33 && (
               <Form.Field>
+                <Form.Select label='Bedrock 推理接口' name='api_version' value={config.api_version || ''} onChange={handleConfigChange} options={[{key:'invoke',text:'Claude InvokeModel',value:''},{key:'converse',text:'Converse（跨模型）',value:'converse'},{key:'messages',text:'Claude Messages',value:'messages'}]} />
                 <Form.Input
                   label='Region'
                   name='region'
@@ -724,6 +725,7 @@ const EditChannel = () => {
                 </Form.Field>
               ))}
             {inputs.type === 37 && (
+              <>
               <Form.Field>
                 <Form.Input
                   label='Account ID'
@@ -737,6 +739,21 @@ const EditChannel = () => {
                   autoComplete=''
                 />
               </Form.Field>
+              <Form.Checkbox
+                label='使用 AI Gateway'
+                checked={Boolean(config.cloudflare_gateway_id || (inputs.base_url || '').includes('gateway.ai.cloudflare.com'))}
+                onChange={(_, {checked}) => {
+                  setConfig(current => ({...current, cloudflare_gateway_id: checked ? (current.cloudflare_gateway_id || 'default') : '', cloudflare_gateway_token: checked ? current.cloudflare_gateway_token : ''}));
+                  setInputs(current => ({...current, base_url: ''}));
+                }}
+              />
+              {Boolean(config.cloudflare_gateway_id || (inputs.base_url || '').includes('gateway.ai.cloudflare.com')) && <>
+                <Form.Input label='Gateway ID' name='cloudflare_gateway_id' required value={config.cloudflare_gateway_id || ''} onChange={handleConfigChange} placeholder='例如 default' />
+                <Form.Input label='Gateway Token（可选）' type='password' name='cloudflare_gateway_token' value={config.cloudflare_gateway_token || ''} onChange={handleConfigChange} autoComplete='new-password' />
+                <Message info>网关地址由 Account ID 和 Gateway ID 自动生成，无需填写。</Message>
+              </>}
+
+              </>
             )}
             {inputs.type !== 33 && !isEdit && (
               <Form.Checkbox
@@ -748,6 +765,7 @@ const EditChannel = () => {
             )}
             {inputs.type !== 3 &&
               inputs.type !== 33 &&
+              inputs.type !== 37 &&
               inputs.type !== 50 &&
               inputs.type !== 53 && (
                 <Form.Field>

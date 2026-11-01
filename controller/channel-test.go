@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infinmalum/a1o-platform/common/client"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/helper"
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -25,10 +27,12 @@ import (
 	"github.com/infinmalum/a1o-platform/relay"
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
 	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
+	"github.com/infinmalum/a1o-platform/relay/bridge"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
 	"github.com/infinmalum/a1o-platform/relay/meta"
 	relaymodel "github.com/infinmalum/a1o-platform/relay/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
 	"github.com/infinmalum/a1o-platform/relay/relaymode"
 )
 
@@ -65,6 +69,33 @@ func parseTestResponse(resp string) (*openai.TextResponse, string, error) {
 
 func testChannel(ctx context.Context, channel *model.Channel, request *relaymodel.TextRequest) (responseMessage string, err error, openaiErr *relaymodel.Error) {
 	startTime := time.Now()
+	switch channel.Type {
+	case channeltype.OpenAIResponses, channeltype.Vercel:
+		return testResponsesWireChannel(ctx, channel, request, startTime)
+	case channeltype.OpenAI, channeltype.Azure, channeltype.OpenRouter, channeltype.Cloudflare:
+		return testNativeChatChannel(ctx, channel, request, startTime, native.OpenAIChat)
+	case channeltype.Anthropic, channeltype.AwsClaude:
+		return testNativeChatChannel(ctx, channel, request, startTime, native.Anthropic)
+	case channeltype.Gemini:
+		return testNativeChatChannel(ctx, channel, request, startTime, native.Gemini)
+	case channeltype.VertextAI:
+		// The wire follows the model family the same way the relay dispatch
+		// does; a channel test names one model, so resolve it directly.
+		modelName := strings.SplitN(channel.Models+",", ",", 2)[0]
+		if request.Model != "" && strings.Contains(channel.Models, request.Model) {
+			modelName = request.Model
+		}
+		if replacement := channel.GetModelMapping()[modelName]; replacement != "" {
+			modelName = replacement
+		}
+		if strings.HasPrefix(modelName, "gemini") {
+			return testNativeChatChannel(ctx, channel, request, startTime, native.Gemini)
+		}
+		if strings.HasPrefix(modelName, "claude") {
+			return testNativeChatChannel(ctx, channel, request, startTime, native.Anthropic)
+		}
+		return "", fmt.Errorf("VertexAI model %q resolves to no supported family; configure gemini-* or claude-* models", modelName), nil
+	}
 	recorder := httptest.NewRecorder()
 	testRequest := &http.Request{
 		Method: "POST",
@@ -162,6 +193,230 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	_, responseMessage, err = parseTestResponse(rawResponse)
 	if err != nil {
 		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
+		return "", err, nil
+	}
+	return responseMessage, nil, nil
+}
+
+// testResponsesWireChannel drives the console test for the Responses-wire
+// kinds (OpenAI Responses and the Vercel OpenResponses gateway), which have
+// no provider adapter: the chat test request is bridged onto /v1/responses
+// and the reply converted back, mirroring the native relay path so the
+// operator's test button exercises the same route real traffic takes.
+func testResponsesWireChannel(ctx context.Context, channel *model.Channel, request *relaymodel.TextRequest, startTime time.Time) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = channeltype.BaseURL(channel.Type)
+	}
+	modelName := request.Model
+	modelMap := channel.GetModelMapping()
+	if modelName == "" || !strings.Contains(channel.Models, modelName) {
+		modelNames := strings.Split(channel.Models, ",")
+		if len(modelNames) > 0 {
+			modelName = modelNames[0]
+		}
+	}
+	if modelMap != nil && modelMap[modelName] != "" {
+		modelName = modelMap[modelName]
+	}
+	defer func() {
+		logContent := fmt.Sprintf("渠道 %s 测试成功，响应：%s", channel.Name, responseMessage)
+		if err != nil || openaiErr != nil {
+			errorMessage := ""
+			if err != nil {
+				errorMessage = err.Error()
+			} else {
+				errorMessage = openaiErr.Message
+			}
+			logContent = fmt.Sprintf("渠道 %s 测试失败，错误：%s", channel.Name, errorMessage)
+		}
+		go model.RecordTestLog(context.WithoutCancel(ctx), &model.Log{
+			ChannelId:   channel.Id,
+			ModelName:   modelName,
+			Content:     logContent,
+			ElapsedTime: helper.CalcElapsedTime(startTime),
+		})
+	}()
+	originModel := request.Model
+	request.Model = modelName
+	converter, err := bridge.For(native.OpenAIChat, native.OpenAIResponses)
+	if err != nil {
+		return "", err, nil
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return "", err, nil
+	}
+	upstreamBody, err := converter.Request(body, modelName)
+	if err != nil {
+		return "", err, nil
+	}
+	systemPrompt := ""
+	if channel.SystemPrompt != nil {
+		systemPrompt = *channel.SystemPrompt
+	}
+	req, err := native.BuildRequest(ctx, native.Request{
+		Protocol: native.OpenAIResponses, ChannelType: channel.Type, BaseURL: baseURL,
+		Model: modelName, APIKey: channel.Key, SystemPrompt: systemPrompt, Body: upstreamBody,
+	})
+	if err != nil {
+		return "", err, nil
+	}
+	httpClient := client.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return "", err, nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		handlerErr := relaycontroller.RelayErrorHandler(resp)
+		errorMessage := handlerErr.Error.Message
+		if errorMessage != "" {
+			errorMessage = ", error message: " + errorMessage
+		}
+		return "", fmt.Errorf("http status code: %d%s", resp.StatusCode, errorMessage), &handlerErr.Error
+	}
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return "", err, nil
+	}
+	converted, _, convertErr := converter.Response(responseBody, originModel)
+	if convertErr != nil {
+		return "", convertErr, nil
+	}
+	_, responseMessage, err = parseTestResponse(string(converted))
+	if err != nil {
+		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), string(converted)))
+		return "", err, nil
+	}
+	return responseMessage, nil, nil
+}
+
+// testNativeChatChannel drives the console test for kinds the native
+// lifecycle serves: the chat test request is converted (or passed through)
+// onto the channel's upstream protocol and the reply converted back,
+// mirroring the native relay path so the operator's test button exercises
+// the same route real traffic takes.
+func testNativeChatChannel(ctx context.Context, channel *model.Channel, request *relaymodel.TextRequest, startTime time.Time, upstream native.Protocol) (responseMessage string, err error, openaiErr *relaymodel.Error) {
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = channeltype.BaseURL(channel.Type)
+	}
+	modelName := request.Model
+	modelMap := channel.GetModelMapping()
+	if modelName == "" || !strings.Contains(channel.Models, modelName) {
+		modelNames := strings.Split(channel.Models, ",")
+		if len(modelNames) > 0 {
+			modelName = modelNames[0]
+		}
+	}
+	if modelMap != nil && modelMap[modelName] != "" {
+		modelName = modelMap[modelName]
+	}
+	defer func() {
+		logContent := fmt.Sprintf("渠道 %s 测试成功，响应：%s", channel.Name, responseMessage)
+		if err != nil || openaiErr != nil {
+			errorMessage := ""
+			if err != nil {
+				errorMessage = err.Error()
+			} else {
+				errorMessage = openaiErr.Message
+			}
+			logContent = fmt.Sprintf("渠道 %s 测试失败，错误：%s", channel.Name, errorMessage)
+		}
+		go model.RecordTestLog(context.WithoutCancel(ctx), &model.Log{
+			ChannelId:   channel.Id,
+			ModelName:   modelName,
+			Content:     logContent,
+			ElapsedTime: helper.CalcElapsedTime(startTime),
+		})
+	}()
+	originModel := request.Model
+	request.Model = modelName
+	converter, err := bridge.For(native.OpenAIChat, upstream)
+	if err != nil {
+		return "", err, nil
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return "", err, nil
+	}
+	upstreamBody := body
+	if converter != nil {
+		upstreamBody, err = converter.Request(body, modelName)
+		if err != nil {
+			return "", err, nil
+		}
+	}
+	systemPrompt := ""
+	if channel.SystemPrompt != nil {
+		systemPrompt = *channel.SystemPrompt
+	}
+	nativeRequest := native.Request{
+		Protocol: upstream, ChannelType: channel.Type, BaseURL: baseURL,
+		Model: modelName, APIKey: channel.Key, SystemPrompt: systemPrompt, Body: upstreamBody,
+		Stream: false, ChannelID: channel.Id,
+	}
+	if cfg, err := channel.LoadConfig(); err == nil {
+		nativeRequest.Version = cfg.APIVersion
+		nativeRequest.Region, nativeRequest.AccessKey, nativeRequest.SecretKey = cfg.Region, cfg.AK, cfg.SK
+		nativeRequest.VertexProject, nativeRequest.VertexADC = cfg.VertexAIProjectID, cfg.VertexAIADC
+		nativeRequest.CloudflareAcct = cfg.UserID
+		nativeRequest.CloudflareGatewayID = cfg.CloudflareGatewayID
+		nativeRequest.CloudflareGatewayToken = cfg.CloudflareGatewayToken
+	}
+	var resp *http.Response
+	if native.UsesProviderTransport(channel.Type) {
+		// Bedrock owns the wire; the transport returns the synthetic response
+		// (errors included) the shared handling below reads.
+		resp, err = native.BedrockInvoke(ctx, nativeRequest)
+		if err != nil {
+			return "", err, nil
+		}
+	} else {
+		var req *http.Request
+		req, err = native.BuildRequest(ctx, nativeRequest)
+		if err != nil {
+			return "", err, nil
+		}
+		httpClient := client.HTTPClient
+		if httpClient == nil {
+			httpClient = http.DefaultClient
+		}
+		resp, err = httpClient.Do(req.WithContext(ctx))
+		if err != nil {
+			return "", err, nil
+		}
+	}
+	defer resp.Body.Close()
+	if channel.Type == channeltype.Cloudflare {
+		resp = native.NormalizeCloudflareResponse(resp, nativeRequest)
+	}
+	if resp.StatusCode != http.StatusOK {
+		handlerErr := relaycontroller.RelayErrorHandler(resp)
+		errorMessage := handlerErr.Error.Message
+		if errorMessage != "" {
+			errorMessage = ", error message: " + errorMessage
+		}
+		return "", fmt.Errorf("http status code: %d%s", resp.StatusCode, errorMessage), &handlerErr.Error
+	}
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return "", err, nil
+	}
+	converted := responseBody
+	if converter != nil {
+		converted, _, err = converter.Response(responseBody, originModel)
+		if err != nil {
+			return "", err, nil
+		}
+	}
+	_, responseMessage, err = parseTestResponse(string(converted))
+	if err != nil {
+		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), string(converted)))
 		return "", err, nil
 	}
 	return responseMessage, nil, nil

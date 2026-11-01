@@ -165,13 +165,20 @@ func TestResponsesToChatRejectsUnrepresentableResponses(t *testing.T) {
 		`{"id":"r","status":"in_progress","output":[]}`,
 		`{"id":"r","status":"incomplete","incomplete_details":{"reason":"context_window"},"output":[]}`,
 		`{"id":"r","status":"failed","error":{"message":"policy"}}`,
-		`{"id":"r","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"x","annotations":[{"type":"url_citation","url":"https://x"}]}]}]}`,
 		`{"id":"r","status":"completed","output":[{"type":"web_search_call","id":"w"}]}`,
 		`{"id":"r","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"unknown_part"}]}]}`,
 	} {
 		if _, _, err := chatResponsesConverter().Response([]byte(body), "alias"); err == nil {
 			t.Fatalf("unrepresentable Responses object was accepted: %s", body)
 		}
+	}
+	// Annotations carry onto the Chat message instead of failing or dropping.
+	converted, _, err := chatResponsesConverter().Response([]byte(`{"id":"r","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"x","annotations":[{"type":"url_citation","url":"https://x"}]}]}]}`), "alias")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(converted), "url_citation") {
+		t.Fatalf("annotations were not carried: %s", converted)
 	}
 }
 
@@ -369,8 +376,8 @@ func TestChatResponsesBridgeRegistrationAndValidation(t *testing.T) {
 	if _, ok := converter.(StreamConverter); !ok {
 		t.Fatal("Chat to Responses conversion does not stream")
 	}
-	if _, err := For(native.OpenAIResponses, native.OpenAIChat); err == nil {
-		t.Fatal("reverse conversion should not exist")
+	if reverse, err := For(native.OpenAIResponses, native.OpenAIChat); err != nil || reverse == nil {
+		t.Fatal("reverse conversion is not registered")
 	}
 	// A converted Chat request must satisfy the subscription capability
 	// matrix, while profile-forbidden fields fail explicitly.

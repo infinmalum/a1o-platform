@@ -20,8 +20,8 @@ type Selection struct {
 	Model string
 	// Type pins the channel kind exactly; Types widens the candidate set to
 	// every kind that speaks the requested wire protocol. Types wins when set.
-	Type  int
-	Types []int
+	Type           int
+	Types          []int
 	SpecificID     int
 	IgnorePriority bool
 	Excluded       map[int]bool

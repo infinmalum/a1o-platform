@@ -23,6 +23,4 @@ type Adaptor interface {
 	SetupRequestHeader(c *Context, req *http.Request, meta *meta.Meta) error
 	DoRequest(c *Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error)
 	DoResponse(c *Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode)
-	GetModelList() []string
-	GetChannelName() string
 }

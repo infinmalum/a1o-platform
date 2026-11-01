@@ -15,6 +15,14 @@ type Converter interface {
 }
 
 func For(inbound, upstream native.Protocol) (Converter, error) {
+	// Share only the documented common items/events conversion; retain the
+	// separate protocol identity in routing and transport. Raw extensions remain intact.
+	if inbound == native.OpenResponses {
+		inbound = native.OpenAIResponses
+	}
+	if upstream == native.OpenResponses {
+		upstream = native.OpenAIResponses
+	}
 	if inbound == upstream {
 		return nil, nil
 	}
@@ -35,6 +43,18 @@ func For(inbound, upstream native.Protocol) (Converter, error) {
 	}
 	if inbound == native.OpenAIChat && upstream == native.OpenAIResponses {
 		return &chatResponses{}, nil
+	}
+	if inbound == native.OpenAIResponses && upstream == native.OpenAIChat {
+		return responsesChat{}, nil
+	}
+	if inbound == native.OpenAIResponses && upstream == native.Anthropic {
+		return responsesAnthropic{}, nil
+	}
+	if inbound == native.Anthropic && upstream == native.OpenAIResponses {
+		return anthropicResponses{}, nil
+	}
+	if inbound == native.OpenAIResponses && upstream == native.Gemini {
+		return responsesGemini{}, nil
 	}
 	return nil, errors.New("unsupported protocol conversion")
 }

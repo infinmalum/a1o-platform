@@ -11,9 +11,11 @@ import (
 	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/ginmeta"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
+	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
 )
 
 type nativeInput struct {
@@ -31,7 +33,37 @@ type nativeInput struct {
 	body                      []byte
 }
 
+// writeProviderErrorFor presents a provider-route failure in the client
+// protocol's error envelope, preserving upstream details when the adapter
+// reported them.
+func writeProviderErrorFor(c *gin.Context, protocol native.Protocol, result *lifecycle.HTTPError) {
+	if result == nil {
+		return
+	}
+	if c.Writer.Written() {
+		return
+	}
+	if result.Upstream != nil {
+		c.JSON(result.Status, native.ErrorBodyWithUpstream(protocol, result.Status, result.Message,
+			result.Upstream.Type, result.Upstream.Code, result.Upstream.Param))
+		return
+	}
+	c.JSON(result.Status, native.ErrorBody(protocol, result.Status, result.Message))
+}
+
 func NativeOpenAIResponses(c *gin.Context) {
+	// The dispatcher may land on a provider channel (Coze, Replicate) whose
+	// adapter converts the Responses wire natively; everything else rides the
+	// shared lifecycle with the protocol fallbacks below.
+	switch kind := c.GetInt(ctxkey.Channel); kind {
+	case channeltype.Coze, channeltype.Replicate:
+		writeProviderErrorFor(c, native.OpenAIResponses, relaycontroller.RelayProviderResponses(c))
+		return
+	case channeltype.DeepL, channeltype.TypeSafe:
+		writeNativeError(c, native.OpenAIResponses, http.StatusUnprocessableEntity,
+			errors.New("this channel type does not serve the Responses operation"))
+		return
+	}
 	body, err := common.GetRequestBody(c)
 	if err != nil {
 		writeNativeError(c, native.OpenAIResponses, http.StatusBadRequest, err)
@@ -55,7 +87,8 @@ func NativeOpenAIResponses(c *gin.Context) {
 		startBackgroundResponses(c, fields.Model, fields.MaxOutputTokens, body)
 		return
 	}
-	forwardNative(c, nativeInput{protocol: native.OpenAIResponses, model: fields.Model, stream: fields.Stream, maxOutputTokens: fields.MaxOutputTokens, body: body})
+	forwardNative(c, nativeInput{protocol: native.OpenAIResponses, model: fields.Model, stream: fields.Stream, maxOutputTokens: fields.MaxOutputTokens, body: body,
+		fallbackUpstreamProtocols: []native.Protocol{native.Anthropic, native.Gemini, native.OpenAIChat}})
 }
 
 // NativeOpenAIChat forwards channels that speak the OpenAI Chat wire format
@@ -171,27 +204,19 @@ func NativeOpenAIModerations(c *gin.Context) {
 		fallbackInputTokens: native.EstimateModerationInputTokens(fields.Input), body: body})
 }
 
-func NativeOpenAICompletions(c *gin.Context) {
-	body, err := common.GetRequestBody(c)
-	if err != nil {
-		writeNativeError(c, native.OpenAICompletions, http.StatusBadRequest, err)
-		return
-	}
-	var fields struct {
-		Model     string          `json:"model"`
-		Prompt    json.RawMessage `json:"prompt"`
-		Stream    bool            `json:"stream"`
-		MaxTokens int64           `json:"max_tokens"`
-	}
-	if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" || len(fields.Prompt) == 0 || string(fields.Prompt) == "null" || fields.MaxTokens < 0 {
-		writeNativeError(c, native.OpenAICompletions, http.StatusBadRequest, errors.New("model and prompt are required; max_tokens must not be negative"))
-		return
-	}
-	forwardNative(c, nativeInput{protocol: native.OpenAICompletions, model: fields.Model,
-		stream: fields.Stream, maxOutputTokens: fields.MaxTokens, body: body})
-}
-
 func NativeAnthropic(c *gin.Context) {
+	// The dispatcher may land on a provider channel (Coze, Replicate) whose
+	// adapter converts the Messages wire natively; everything else rides the
+	// shared lifecycle with the protocol fallbacks below.
+	switch kind := c.GetInt(ctxkey.Channel); kind {
+	case channeltype.Coze, channeltype.Replicate:
+		writeProviderErrorFor(c, native.Anthropic, relaycontroller.RelayProviderMessages(c))
+		return
+	case channeltype.DeepL, channeltype.TypeSafe:
+		writeNativeError(c, native.Anthropic, http.StatusUnprocessableEntity,
+			errors.New("this channel type does not serve the Messages operation"))
+		return
+	}
 	body, err := common.GetRequestBody(c)
 	if err != nil {
 		writeNativeError(c, native.Anthropic, http.StatusBadRequest, err)
@@ -209,7 +234,7 @@ func NativeAnthropic(c *gin.Context) {
 	}
 	input := nativeInput{protocol: native.Anthropic, model: fields.Model, stream: fields.Stream,
 		maxOutputTokens: fields.MaxTokens, body: body,
-		fallbackUpstreamProtocols: []native.Protocol{native.OpenAIChat, native.Gemini}}
+		fallbackUpstreamProtocols: []native.Protocol{native.OpenAIChat, native.OpenAIResponses, native.Gemini}}
 	forwardNative(c, input)
 }
 

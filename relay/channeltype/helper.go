@@ -29,6 +29,8 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.SystemOne
 	case OpenAIResponses:
 		apiType = apitype.OpenAIResponses
+	case Vercel:
+		apiType = apitype.OpenResponses
 	}
 
 	return apiType

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
 type Meta struct {
@@ -21,6 +22,9 @@ type Meta struct {
 	APIType  int
 	Config   model.ChannelConfig
 	IsStream bool
+	// Inbound names the client wire for adapters that convert the response
+	// back onto it; the zero value is the OpenAI Chat wire.
+	Inbound native.Protocol
 	// UpstreamAccountID is set when the selected channel is bound to an
 	// administrator-connected subscription account.
 	UpstreamAccountID int

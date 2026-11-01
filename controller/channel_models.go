@@ -82,6 +82,10 @@ func FetchChannelUpstreamModels(c *gin.Context) {
 		syncOpenRouterCatalog(c, baseURL, key)
 		return
 	}
+	if channelType == channeltype.Vercel {
+		syncVercelCatalog(c, baseURL, key)
+		return
+	}
 
 	models, err := fetchUpstreamModels(upstreamModelClient, channelType, baseURL, key)
 	if err != nil {
@@ -101,9 +105,7 @@ func FetchChannelUpstreamModels(c *gin.Context) {
 // fetchUpstreamModels queries the vendor listing endpoint for the channel's
 // wire protocol and returns sorted, de-duplicated model ids.
 func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key string) ([]string, error) {
-	if channelType == channeltype.TypeSafe {
-		return nil, errors.New("该渠道类型不支持自动获取模型列表，请手动填写")
-	}
+
 	if baseURL == "" {
 		baseURL = channeltype.BaseURL(channelType)
 	}
@@ -129,7 +131,11 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		// The fixed unified base carries /api/v1; the listing endpoint is
 		// the bare suffix.
 		listURL = baseURL + "/models"
-	case channeltype.OpenAI:
+	case channeltype.Vercel:
+		// The gateway base carries /v1; the listing endpoint is the bare
+		// suffix.
+		listURL = baseURL + "/models"
+	case channeltype.OpenAI, channeltype.OpenAIResponses:
 		// A vendor base URL carries its own version segment (the same filling
 		// rule as the request path); the official default keeps /v1 here.
 		if baseURL != channeltype.BaseURL(channelType) {
@@ -152,7 +158,7 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 	switch channelType {
 	case channeltype.Anthropic:
 		req.Header.Set("x-api-key", key)
-		req.Header.Set("anthropic-version", "2023-06-01")
+		req.Header.Set("anthropic-version", "2026-10-21")
 	case channeltype.Gemini:
 		req.Header.Set("x-goog-api-key", key)
 	case channeltype.DeepL:
@@ -169,6 +175,23 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 	switch channelType {
 	case channeltype.Gemini:
 		return parseGeminiModels(body)
+	case channeltype.TypeSafe:
+		var list struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(body, &list); err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(list.Models))
+		for _, m := range list.Models {
+			if m.Name != "" {
+				ids = append(ids, m.Name)
+			}
+		}
+		sort.Strings(ids)
+		return ids, nil
 	case channeltype.DeepL:
 		return parseDeepLLanguages(body)
 	default:
@@ -196,15 +219,20 @@ func fetchUpstreamBody(httpClient *http.Client, req *http.Request) ([]byte, erro
 	return body, nil
 }
 
-// syncOpenRouterCatalog serves the OpenRouter kind's fetch-models call: it
-// returns the public catalog's model ids like any other vendor and, because
-// that catalog publishes per-token prices, merges the prices into the price
-// book for models that do not have one yet. The operator's own prices are
-// never overwritten, so re-running a sync only prices newly introduced
-// models; the response reports how many models were priced.
-func syncOpenRouterCatalog(c *gin.Context, baseURL, key string) {
+// pricedCatalogParser turns a vendor catalog body into the model ids plus
+// their prices converted into ratio units.
+type pricedCatalogParser func(body []byte) ([]string, map[string]billingratio.FetchedModelPrice, error)
+
+// syncPricedUpstreamCatalog serves the fetch-models call for vendor kinds
+// whose listing publishes per-token prices (OpenRouter, Vercel): it returns
+// the catalog's model ids like any other vendor and, because the catalog
+// prices the models, merges the prices into the price book for models that
+// do not have one yet. The operator's own prices are never overwritten, so
+// re-running a sync only prices newly introduced models; the response
+// reports how many models were priced.
+func syncPricedUpstreamCatalog(c *gin.Context, kind int, baseURL, key string, parse pricedCatalogParser) {
 	if baseURL == "" {
-		baseURL = channeltype.BaseURL(channeltype.OpenRouter)
+		baseURL = channeltype.BaseURL(kind)
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
@@ -227,7 +255,7 @@ func syncOpenRouterCatalog(c *gin.Context, baseURL, key string) {
 		respondUpstreamModelError(c, err)
 		return
 	}
-	models, prices, err := parseOpenRouterCatalog(body)
+	models, prices, err := parse(body)
 	if err != nil {
 		respondUpstreamModelError(c, err)
 		return
@@ -245,6 +273,14 @@ func syncOpenRouterCatalog(c *gin.Context, baseURL, key string) {
 		"data":          models,
 		"synced_prices": synced,
 	})
+}
+
+func syncOpenRouterCatalog(c *gin.Context, baseURL, key string) {
+	syncPricedUpstreamCatalog(c, channeltype.OpenRouter, baseURL, key, parseOpenRouterCatalog)
+}
+
+func syncVercelCatalog(c *gin.Context, baseURL, key string) {
+	syncPricedUpstreamCatalog(c, channeltype.Vercel, baseURL, key, parseVercelCatalog)
 }
 
 func respondUpstreamModelError(c *gin.Context, err error) {
@@ -367,6 +403,71 @@ func parseOpenRouterCatalog(body []byte) ([]string, map[string]billingratio.Fetc
 		models = append(models, item.Id)
 		prompt, promptErr := strconv.ParseFloat(item.Pricing.Prompt, 64)
 		completion, completionErr := strconv.ParseFloat(item.Pricing.Completion, 64)
+		if promptErr != nil || completionErr != nil || prompt < 0 || completion < 0 {
+			continue
+		}
+		var completionRatio float64
+		switch {
+		case prompt > 0:
+			completionRatio = completion / prompt
+		case completion == 0:
+			// a free model bills nothing, which ratio zero expresses exactly
+		default:
+			continue
+		}
+		prices[item.Id] = billingratio.FetchedModelPrice{
+			Input:      prompt * 500000,
+			Completion: completionRatio,
+		}
+	}
+	sort.Strings(models)
+	return models, prices, nil
+}
+
+// vercelModelList parses the Vercel AI Gateway's /v1/models catalog. Every
+// entry carries a `type` discriminator and per-token USD prices; only the
+// language entries serve the OpenResponses wire the channel speaks, so the
+// parser lists those alone instead of creating abilities the channel cannot
+// answer (embeddings, image, speech, and the rest go through their own
+// OpenAI-compatible channels).
+type vercelModelList struct {
+	Data []struct {
+		Id      string `json:"id"`
+		Type    string `json:"type"`
+		Pricing struct {
+			Input  string `json:"input"`
+			Output string `json:"output"`
+		} `json:"pricing"`
+	} `json:"data"`
+}
+
+// parseVercelCatalog returns the catalog's language-model ids plus per-model
+// prices converted into ratio units. The gateway publishes USD per token
+// (spot-checked against vendor list prices), the ratio scale is $2 per
+// million, so the input ratio is input × 500000 and the completion ratio is
+// output over input. Entries with malformed or negative prices, and models
+// with free input but paid output (unexpressible in the charge formula,
+// which multiplies the whole bill by the input ratio), are returned unpriced
+// instead of guessed at — the same rule the OpenRouter catalog applies.
+func parseVercelCatalog(body []byte) ([]string, map[string]billingratio.FetchedModelPrice, error) {
+	var list vercelModelList
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, nil, fmt.Errorf("解析模型列表失败：%s", err.Error())
+	}
+	models := make([]string, 0, len(list.Data))
+	prices := make(map[string]billingratio.FetchedModelPrice, len(list.Data))
+	seen := make(map[string]bool, len(list.Data))
+	for _, item := range list.Data {
+		if item.Id == "" || seen[item.Id] {
+			continue
+		}
+		seen[item.Id] = true
+		if item.Type != "language" {
+			continue
+		}
+		models = append(models, item.Id)
+		prompt, promptErr := strconv.ParseFloat(item.Pricing.Input, 64)
+		completion, completionErr := strconv.ParseFloat(item.Pricing.Output, 64)
 		if promptErr != nil || completionErr != nil || prompt < 0 || completion < 0 {
 			continue
 		}

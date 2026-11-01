@@ -34,44 +34,50 @@ func unsupportedOperation(c *gin.Context, message string) {
 	c.JSON(http.StatusUnprocessableEntity, native.ErrorBody(native.OpenAIChat, http.StatusUnprocessableEntity, message))
 }
 
-// RelayChat dispatches Chat Completions onto the native lifecycle for OpenAI
-// wire, Anthropic, and Gemini channels, and onto the provider adapters for
-// their channel types.
+// RelayChat dispatches Chat Completions onto the native lifecycle for every
+// kind whose upstream wire the lifecycle serves: OpenAI-compatible channels
+// pass through, Anthropic, Gemini, AWS Bedrock, and Cloudflare channels are
+// bridged onto their native wire, VertexAI channels resolve their wire from
+// the model family, Responses-wire channels (which have no provider adapter)
+// are bridged onto /v1/responses, and the retained provider adapters (Coze,
+// Replicate) serve their channel types.
 func RelayChat(c *gin.Context) {
 	channelType := c.GetInt(ctxkey.Channel)
 	switch {
 	case channeltype.NativeChatCompatible(channelType):
 		NativeOpenAIChat(c)
-	case channelType == channeltype.Anthropic:
+	case channelType == channeltype.Anthropic, channelType == channeltype.AwsClaude:
 		NativeOpenAIChatViaAnthropic(c)
 	case channelType == channeltype.Gemini:
 		NativeOpenAIChatViaGemini(c)
+	case channelType == channeltype.Cloudflare:
+		NativeOpenAIChat(c)
+	case channelType == channeltype.VertextAI:
+		// The lifecycle aligns the wire with the model family after channel
+		// selection; Anthropic is the declared preference so claude-* models
+		// take the passthrough-style bridge.
+		NativeOpenAIChatViaAnthropic(c)
+	case channelType == channeltype.OpenAIResponses || channelType == channeltype.Vercel:
+		nativeOpenAIChat(c, native.OpenAIResponses)
 	default:
 		writeProviderError(c, relaycontroller.RelayProviderChat(c))
 	}
 }
 
-// RelayCompletions serves OpenAI wire channels through the native lifecycle;
-// provider channels keep their adapter conversions.
-func RelayCompletions(c *gin.Context) {
-	switch {
-	case openAIWireChannel(c, relaymode.Completions):
-		NativeOpenAICompletions(c)
-	case wireChannelWithoutOperation(c, relaymode.Completions):
-		unsupportedOperation(c, "this channel type does not serve the completions operation")
-	default:
-		writeProviderError(c, relaycontroller.RelayProviderText(c, relaymode.Completions))
-	}
-}
-
-// RelayEmbeddings serves OpenAI wire channels natively; provider channels with
-// their own embeddings formats keep their adapter conversions.
+// RelayEmbeddings serves OpenAI wire channels and Cloudflare's compat wire
+// natively; Gemini keeps its provider conversion, and every other provider
+// kind is rejected instead of forwarding to an endpoint that does not exist.
 func RelayEmbeddings(c *gin.Context) {
 	if openAIWireChannel(c, relaymode.Embeddings) {
 		NativeOpenAIEmbeddings(c)
 		return
 	}
-	writeProviderError(c, relaycontroller.RelayProviderText(c, relaymode.Embeddings))
+	kind := c.GetInt(ctxkey.Channel)
+	if kind == channeltype.Gemini {
+		writeProviderError(c, relaycontroller.RelayProviderText(c, relaymode.Embeddings))
+		return
+	}
+	unsupportedOperation(c, "this channel type does not serve the embeddings operation")
 }
 
 // RelayModerations serves OpenAI wire channels natively and rejects provider
@@ -138,18 +144,6 @@ func RelayAudio(c *gin.Context) {
 	default:
 		NativeOpenAIAudioTranslations(c)
 	}
-}
-
-func RelayNotImplemented(c *gin.Context) {
-	err := model.Error{
-		Message: "API not implemented",
-		Type:    model.ErrorTypeA1O,
-		Param:   "",
-		Code:    "api_not_implemented",
-	}
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": err,
-	})
 }
 
 func RelayNotFound(c *gin.Context) {

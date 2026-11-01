@@ -126,19 +126,30 @@ func TestAnthropicStreamToChatChunks(t *testing.T) {
 	}
 }
 
-func TestAnthropicStreamRejectsThinking(t *testing.T) {
+func TestAnthropicStreamCarriesThinkingAsReasoning(t *testing.T) {
 	fixture := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"usage\":{\"input_tokens\":1}}}\n\n" +
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"private\"}}\n\n"
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"private\"}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig\"}}\n\n" +
+		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"type\":\"stop_reason\",\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 	writer := &recordingWriter{}
 	usage, err := chatAnthropic{}.Stream(writer, strings.NewReader(fixture), "alias")
-	if err == nil || !strings.Contains(err.Error(), "cannot be converted") {
-		t.Fatalf("thinking delta was accepted: %v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(writer.buffer.String(), "gateway_stream_error") || strings.Contains(writer.buffer.String(), "[DONE]") {
-		t.Fatalf("conversion failure was not surfaced to the client: %s", writer.buffer.String())
+	body := writer.buffer.String()
+	if !strings.Contains(body, `"reasoning_content":"private"`) || !strings.Contains(body, `"content":"hi"`) {
+		t.Fatalf("thinking block was not carried as reasoning content: %s", body)
 	}
-	if usage.Complete {
-		t.Fatal("failed stream claimed completion")
+	if !strings.Contains(body, "provider_metadata") || !strings.Contains(body, "thinking_signature") {
+		t.Fatalf("thinking signature was not carried in provider_metadata: %s", body)
+	}
+	if !usage.Complete || !usage.Seen {
+		t.Fatalf("carried stream lost usage: %+v", usage)
 	}
 }
 
@@ -299,11 +310,11 @@ func TestGeminiStreamPreservesUnknownTopLevelFields(t *testing.T) {
 
 func TestChatStreamToleratesReasoningDeltas(t *testing.T) {
 	// DeepSeek reasoner streams reasoning_content deltas next to the display
-	// content. The Anthropic side has no slot for unsigned reasoning, so the
-	// deltas are dropped while the display text still converts.
+	// content; they map onto thinking deltas so the reasoning survives, and
+	// the usage detail rides the terminal message_delta.
 	fixture := "data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"thinking\"}}]}\n\n" +
 		"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n" +
-		"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}\n\n" +
+		"data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"completion_tokens_details\":{\"reasoning_tokens\":4}}}\n\n" +
 		"data: [DONE]\n\n"
 	writer := &recordingWriter{}
 	usage, err := (anthropicChat{}).Stream(writer, strings.NewReader(fixture), "alias")
@@ -311,11 +322,14 @@ func TestChatStreamToleratesReasoningDeltas(t *testing.T) {
 		t.Fatalf("reasoning delta was rejected: %v", err)
 	}
 	body := writer.buffer.String()
-	if !strings.Contains(body, `"text":"hi"`) || strings.Contains(body, "thinking") {
-		t.Fatalf("reasoning delta handling lost content or leaked reasoning: %s", body)
+	if !strings.Contains(body, `"text":"hi"`) || !strings.Contains(body, `thinking_delta`) || !strings.Contains(body, `"thinking":"thinking"`) {
+		t.Fatalf("reasoning delta handling lost reasoning or content: %s", body)
 	}
-	if !usage.Seen || !usage.Complete {
-		t.Fatalf("tolerated stream lost usage completion: %+v", usage)
+	if !usage.Seen || !usage.Complete || usage.Reasoning != 4 {
+		t.Fatalf("tolerated stream lost usage details: %+v", usage)
+	}
+	if !strings.Contains(body, `"reasoning_tokens":4`) {
+		t.Fatalf("reasoning token detail did not reach the terminal event: %s", body)
 	}
 }
 
@@ -403,18 +417,22 @@ func TestGeminiStreamToAnthropicEvents(t *testing.T) {
 	}
 }
 
-func TestGeminiStreamRejectsThoughtPartsForChat(t *testing.T) {
-	fixture := "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"secret\",\"thought\":true}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1}}\n\n"
+func TestGeminiStreamCarriesThoughtPartsForChat(t *testing.T) {
+	fixture := "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"secret\",\"thought\":true}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":2,\"totalTokenCount\":4}}\n\n"
 	writer := &recordingWriter{}
 	usage, err := (chatGemini{}).Stream(writer, strings.NewReader(fixture), "alias")
-	if err == nil || !strings.Contains(err.Error(), "cannot be represented") {
-		t.Fatalf("thought part was accepted: %v", err)
+	if err != nil {
+		t.Fatalf("thought part was rejected: %v", err)
 	}
-	if !strings.Contains(writer.buffer.String(), "gateway_stream_error") || strings.Contains(writer.buffer.String(), "[DONE]") {
-		t.Fatalf("conversion failure was not surfaced to the client: %s", writer.buffer.String())
+	body := writer.buffer.String()
+	if !strings.Contains(body, `"reasoning_content":"secret"`) {
+		t.Fatalf("thought part was not carried as reasoning content: %s", body)
 	}
-	if usage.Complete {
-		t.Fatal("failed stream claimed completion")
+	if !strings.Contains(body, `"reasoning_tokens":2`) {
+		t.Fatalf("thought token detail did not reach the finish chunk: %s", body)
+	}
+	if !usage.Complete || usage.Reasoning != 2 {
+		t.Fatalf("carried stream lost usage details: %+v", usage)
 	}
 }
 

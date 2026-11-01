@@ -23,6 +23,8 @@ func BaseURL(kind int) string {
 		return "https://api.typesafe.ai"
 	case OpenRouter:
 		return "https://openrouter.ai/api/v1"
+	case Vercel:
+		return "https://ai-gateway.vercel.sh/v1"
 	}
 	return ""
 }

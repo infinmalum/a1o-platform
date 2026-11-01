@@ -1,138 +1,72 @@
 package deepl
 
 import (
-	"encoding/json"
-	"io"
-	"net/http"
+	"errors"
+	"strings"
 
-	"github.com/infinmalum/a1o-platform/common"
-	"github.com/infinmalum/a1o-platform/common/helper"
-	"github.com/infinmalum/a1o-platform/relay/adaptor"
-	"github.com/infinmalum/a1o-platform/relay/adaptor/openai"
-	"github.com/infinmalum/a1o-platform/relay/constant"
-	"github.com/infinmalum/a1o-platform/relay/constant/finishreason"
-	"github.com/infinmalum/a1o-platform/relay/constant/role"
 	"github.com/infinmalum/a1o-platform/relay/model"
 )
 
 // https://developers.deepl.com/docs/getting-started/your-first-api-request
 
-func ConvertRequest(textRequest model.TextRequest) (*Request, string) {
-	var text string
-	if len(textRequest.Messages) != 0 {
-		text = textRequest.Messages[len(textRequest.Messages)-1].StringContent()
+// ConvertRequest maps a single user message onto the /v2/translate request.
+// DeepL is a text-to-text translation RPC, not a conversation model: system
+// prompts and multi-turn history have no translation semantics, so anything
+// beyond one user message fails loudly instead of being silently dropped.
+func ConvertRequest(textRequest model.TextRequest) (*Request, string, error) {
+	if len(textRequest.Messages) == 0 {
+		return nil, "", errors.New("conversation messages are required")
 	}
-	deeplRequest := Request{
-		TargetLang: parseLangFromModelName(textRequest.Model),
-		Text:       []string{text},
-	}
-	return &deeplRequest, text
-}
-
-func StreamResponseDeepL2OpenAI(deeplResponse *Response) *openai.ChatCompletionsStreamResponse {
-	var choice openai.ChatCompletionsStreamResponseChoice
-	if len(deeplResponse.Translations) != 0 {
-		choice.Delta.Content = deeplResponse.Translations[0].Text
-	}
-	choice.Delta.Role = role.Assistant
-	choice.FinishReason = &constant.StopFinishReason
-	openaiResponse := openai.ChatCompletionsStreamResponse{
-		Object:  constant.StreamObject,
-		Created: helper.GetTimestamp(),
-		Choices: []openai.ChatCompletionsStreamResponseChoice{choice},
-	}
-	return &openaiResponse
-}
-
-func ResponseDeepL2OpenAI(deeplResponse *Response) *openai.TextResponse {
-	var responseText string
-	if len(deeplResponse.Translations) != 0 {
-		responseText = deeplResponse.Translations[0].Text
-	}
-	choice := openai.TextResponseChoice{
-		Index: 0,
-		Message: model.Message{
-			Role:    role.Assistant,
-			Content: responseText,
-			Name:    nil,
-		},
-		FinishReason: finishreason.Stop,
-	}
-	fullTextResponse := openai.TextResponse{
-		Object:  constant.NonStreamObject,
-		Created: helper.GetTimestamp(),
-		Choices: []openai.TextResponseChoice{choice},
-	}
-	return &fullTextResponse
-}
-
-func StreamHandler(c *adaptor.Context, resp *http.Response, modelName string) *model.ErrorWithStatusCode {
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
-	}
-	err = resp.Body.Close()
-	if err != nil {
-		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
-	}
-	var deeplResponse Response
-	err = json.Unmarshal(responseBody, &deeplResponse)
-	if err != nil {
-		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
-	}
-	fullTextResponse := StreamResponseDeepL2OpenAI(&deeplResponse)
-	fullTextResponse.Model = modelName
-	fullTextResponse.Id = helper.GetResponseID(c.GetString(helper.RequestIdKey))
-	jsonData, err := json.Marshal(fullTextResponse)
-	if err != nil {
-		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError)
-	}
-	common.SetEventStreamHeaders(c.Writer)
-	c.Stream(func(w io.Writer) bool {
-		if jsonData != nil {
-			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
-			jsonData = nil
-			return true
+	for _, message := range textRequest.Messages {
+		if message.Role == "system" || message.Role == "developer" {
+			return nil, "", errors.New("DeepL translates a single user message; system prompts have no translation semantics")
 		}
-		c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
-		return false
-	})
-	_ = resp.Body.Close()
-	return nil
-}
-
-func Handler(c *adaptor.Context, resp *http.Response, modelName string) *model.ErrorWithStatusCode {
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
-	}
-	err = resp.Body.Close()
-	if err != nil {
-		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
-	}
-	var deeplResponse Response
-	err = json.Unmarshal(responseBody, &deeplResponse)
-	if err != nil {
-		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
-	}
-	if deeplResponse.Message != "" {
-		return &model.ErrorWithStatusCode{
-			Error: model.Error{
-				Message: deeplResponse.Message,
-				Code:    "deepl_error",
-			},
-			StatusCode: resp.StatusCode,
+		if message.Role != "user" {
+			return nil, "", errors.New("DeepL translates a single user message; conversation history has no translation semantics")
 		}
 	}
-	fullTextResponse := ResponseDeepL2OpenAI(&deeplResponse)
-	fullTextResponse.Model = modelName
-	fullTextResponse.Id = helper.GetResponseID(c.GetString(helper.RequestIdKey))
-	jsonResponse, err := json.Marshal(fullTextResponse)
-	if err != nil {
-		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError)
+	if len(textRequest.Messages) > 1 {
+		return nil, "", errors.New("DeepL translates a single user message; conversation history has no translation semantics")
 	}
-	c.Writer.Header().Set("Content-Type", "application/json")
-	c.Writer.WriteHeader(resp.StatusCode)
-	_, err = c.Writer.Write(jsonResponse)
-	return nil
+	text, err := messageText(textRequest.Messages[0].Content)
+	if err != nil {
+		return nil, "", err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, "", errors.New("user message requires text content")
+	}
+	targetLang, err := parseLangFromModelName(textRequest.Model)
+	if err != nil {
+		return nil, "", err
+	}
+	return &Request{
+		ShowBilledCharacters: true,
+		Text:                 []string{text},
+		TargetLang:           targetLang,
+	}, text, nil
+}
+
+// messageText extracts text-only content, rejecting the parts a translation
+// request cannot carry.
+func messageText(raw any) (string, error) {
+	switch content := raw.(type) {
+	case string:
+		return content, nil
+	case []any:
+		var text strings.Builder
+		for _, item := range content {
+			part, ok := item.(map[string]any)
+			if !ok || part["type"] != "text" {
+				return "", errors.New("DeepL translation requires text content")
+			}
+			value, ok := part["text"].(string)
+			if !ok {
+				return "", errors.New("Chat text part requires text")
+			}
+			text.WriteString(value)
+		}
+		return text.String(), nil
+	default:
+		return "", errors.New("DeepL translation requires text content")
+	}
 }

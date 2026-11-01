@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -136,6 +137,22 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			return &HTTPError{Status: http.StatusBadRequest, Message: "selected channel does not support this protocol"}
 		}
 	}
+	// VertexAI serves two model families on two wires and the publisher
+	// segment follows the family, so a protocol that disagrees with the model
+	// name would fail on the provider with an opaque 404. Align the protocol
+	// once, after the channel is known, and reject names that resolve to no
+	// family. A channel mapping must not cross families.
+	if input.Channel.Type == channeltype.VertextAI &&
+		(upstreamProtocol == native.Anthropic || upstreamProtocol == native.Gemini) {
+		aligned, err := vertexFamilyProtocol(input.Model, input.Channel.ModelMapping, upstreamProtocol)
+		if err != nil {
+			return &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}
+		}
+		upstreamProtocol = aligned
+	}
+	if input.Channel.Type == channeltype.Vercel {
+		upstreamProtocol = native.OpenResponses
+	}
 	converter, err := bridge.For(input.Protocol, upstreamProtocol)
 	if err != nil {
 		return &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}
@@ -245,27 +262,56 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				}
 				apiKey = subscription.APIKey
 			}
-			req, err := native.BuildRequest(ctx, native.Request{
+			nativeRequest := native.Request{
 				Protocol: upstreamProtocol, ChannelType: attempt.Type, BaseURL: attempt.BaseURL, Version: version,
 				Model: mappedModel, Action: action, APIKey: apiKey,
 				SystemPrompt: attempt.SystemPrompt, Body: body,
 				Headers: input.Headers, Query: input.Query,
-			})
-			if err != nil {
-				return attemptOutcome{err: &HTTPError{Status: http.StatusBadRequest, Message: err.Error()}}
+				Stream: input.Stream, ChannelID: attempt.ID,
+				Region: attempt.Config.Region, AccessKey: attempt.Config.AK, SecretKey: attempt.Config.SK,
+				VertexProject: attempt.Config.VertexAIProjectID, VertexADC: attempt.Config.VertexAIADC,
+				CloudflareAcct:      attempt.Config.UserID,
+				CloudflareGatewayID: attempt.Config.CloudflareGatewayID, CloudflareGatewayToken: attempt.Config.CloudflareGatewayToken,
 			}
-			reservation, err := reserve(ctx, input, attempt, mappedModel, upstreamProtocol)
-			if err != nil {
-				return attemptOutcome{err: &HTTPError{Status: http.StatusForbidden, Message: err.Error()}}
-			}
-			response, err := providerClient.Do(req)
-			if err != nil {
-				reservation.Refund(settlementContext)
-				logger.Errorf(settlementContext, "upstream request failed on channel %d: %v", attempt.ID, err)
-				if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
-					return attemptOutcome{retry: true, retryWith: next}
+			var response *http.Response
+			var reservation *billing.NativeReservation
+			var sendErr *HTTPError
+			if native.UsesProviderTransport(attempt.Type) {
+				// The Bedrock runtime SDK owns the wire: its streaming frames
+				// are not SSE, so the transport returns a synthetic response
+				// (error failures included) that the shared handling below
+				// reads like any upstream.
+				reservation, sendErr = reserveAttempt(ctx, input, attempt, mappedModel, upstreamProtocol)
+				if sendErr == nil {
+					var invokeErr error
+					if response, invokeErr = native.BedrockInvoke(ctx, nativeRequest); invokeErr != nil {
+						reservation.Refund(settlementContext)
+						sendErr = &HTTPError{Status: http.StatusUnprocessableEntity, Message: invokeErr.Error()}
+					}
 				}
-				return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream request failed"}}
+			} else {
+				var req *http.Request
+				req, sendErr = buildAttempt(ctx, nativeRequest)
+				if sendErr == nil {
+					reservation, sendErr = reserveAttempt(ctx, input, attempt, mappedModel, upstreamProtocol)
+				}
+				if sendErr == nil {
+					var doErr error
+					if response, doErr = providerClient.Do(req); doErr != nil {
+						reservation.Refund(settlementContext)
+						logger.Errorf(settlementContext, "upstream request failed on channel %d: %v", attempt.ID, doErr)
+						if next, ok := selectRetry(ctx, input, attempt, tried, &retries); ok {
+							return attemptOutcome{retry: true, retryWith: next}
+						}
+						sendErr = &HTTPError{Status: http.StatusBadGateway, Message: "upstream request failed"}
+					}
+				}
+			}
+			if sendErr != nil {
+				return attemptOutcome{err: sendErr}
+			}
+			if attempt.Type == channeltype.Cloudflare {
+				response = native.NormalizeCloudflareResponse(response, nativeRequest)
 			}
 			if response.StatusCode < 200 || response.StatusCode >= 300 {
 				reservation.Refund(settlementContext)
@@ -387,10 +433,50 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 
 func supportsSystemPrompt(protocol native.Protocol) bool {
 	switch protocol {
-	case native.Anthropic, native.Gemini, native.OpenAIChat, native.OpenAIResponses, native.OpenAICompletions:
+	case native.Anthropic, native.Gemini, native.OpenAIChat, native.OpenAIResponses, native.OpenResponses:
 		return true
 	default:
 		return false
+	}
+}
+
+// buildAttempt wraps the transport build so the attempt loop keeps its
+// flat error flow: a request that never reaches the URL stage carries no
+// reservation and fails with the transport's own message.
+func buildAttempt(ctx context.Context, request native.Request) (*http.Request, *HTTPError) {
+	req, err := native.BuildRequest(ctx, request)
+	if err != nil {
+		return nil, &HTTPError{Status: http.StatusBadRequest, Message: err.Error()}
+	}
+	return req, nil
+}
+
+// reserveAttempt wraps the per-attempt quota reservation.
+func reserveAttempt(ctx context.Context, input Request, channel Channel, mappedModel string, upstreamProtocol native.Protocol) (*billing.NativeReservation, *HTTPError) {
+	reservation, err := reserve(ctx, input, channel, mappedModel, upstreamProtocol)
+	if err != nil {
+		return nil, &HTTPError{Status: http.StatusForbidden, Message: err.Error()}
+	}
+	return reservation, nil
+}
+
+// vertexFamilyProtocol aligns the negotiated protocol with the VertexAI model
+// family the request names. Gemini-family models speak GenerateContent and
+// Claude-family models speak Anthropic Messages; anything else resolves to no
+// family and fails, so a model on the wrong wire can never be silently routed
+// to the wrong publisher.
+func vertexFamilyProtocol(model string, mapping map[string]string, requested native.Protocol) (native.Protocol, error) {
+	resolved := model
+	if replacement := mapping[model]; replacement != "" {
+		resolved = replacement
+	}
+	switch {
+	case strings.HasPrefix(resolved, "gemini"):
+		return native.Gemini, nil
+	case strings.HasPrefix(resolved, "claude"):
+		return native.Anthropic, nil
+	default:
+		return "", fmt.Errorf("VertexAI model %q resolves to no supported family; configure gemini-* or claude-* models", model)
 	}
 }
 
@@ -580,26 +666,30 @@ func requiredChannelType(protocol native.Protocol) int {
 
 // candidateChannelTypes lists every channel kind that can serve a native
 // protocol, most specific first. Chat-family protocols accept the whole
-// OpenAI-compatible whitelist plus the Responses channel kind (the chat
+// OpenAI-compatible whitelist plus the Responses channel kinds (the chat
 // request is bridged onto /v1/responses); Responses requests land on a
-// dedicated Responses channel, a plain OpenAI channel, or OpenRouter, whose
-// unified base passes the wire through. Anthropic Messages and SystemOne
-// likewise pass through on OpenRouter. Vendors expose Completions and
-// Responses under different base URLs, so a channel holding a Completions
-// URL stays out of the Responses candidates.
+// dedicated Responses channel, a plain OpenAI channel, the Vercel gateway,
+// or OpenRouter, whose unified bases pass the wire through. Anthropic
+// Messages and SystemOne likewise pass through on OpenRouter. Vendors expose
+// Completions and Responses under different base URLs, so a channel holding
+// a Completions URL stays out of the Responses candidates.
 func candidateChannelTypes(protocol native.Protocol) []int {
 	switch protocol {
 	case native.Anthropic:
-		return []int{channeltype.Anthropic, channeltype.OpenRouter}
+		return []int{channeltype.Anthropic, channeltype.AwsClaude, channeltype.VertextAI, channeltype.OpenRouter}
 	case native.Gemini:
-		return []int{channeltype.Gemini}
+		return []int{channeltype.Gemini, channeltype.VertextAI}
 	case native.OpenAIChat:
-		return append(chatCompatibleChannelTypes, channeltype.OpenAIResponses)
-	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
+		return append(chatCompatibleChannelTypes, channeltype.OpenAIResponses, channeltype.Vercel, channeltype.Cloudflare)
+	case native.OpenAIEmbeddings:
+		return append(chatCompatibleChannelTypes, channeltype.Cloudflare)
+	case native.OpenAIModerations,
 		native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return chatCompatibleChannelTypes
+	case native.OpenResponses:
+		return []int{channeltype.Vercel}
 	case native.OpenAIResponses:
-		return []int{channeltype.OpenAI, channeltype.OpenAIResponses, channeltype.OpenRouter}
+		return []int{channeltype.OpenAI, channeltype.OpenAIResponses, channeltype.Vercel, channeltype.OpenRouter, channeltype.Azure}
 	case native.SystemOne:
 		return []int{channeltype.TypeSafe, channeltype.OpenRouter}
 	default:
@@ -627,17 +717,25 @@ var chatCompatibleChannelTypes = func() []int {
 func channelSupportsProtocol(kind int, protocol native.Protocol) bool {
 	switch protocol {
 	// The OpenAI wire protocols run on every channel type that speaks the
-	// OpenAI JSON format, including Azure deployment URLs; a Chat request may
-	// additionally land on a Responses channel through the chat bridge.
+	// OpenAI JSON format, including Azure deployment URLs and Cloudflare's
+	// compat wire. The Responses kinds serve Chat clients only through the
+	// chat-to-Responses bridge (their own wire is Responses), so a negotiated
+	// Chat upstream never lands on them.
 	case native.OpenAIChat:
-		return channeltype.NativeChatCompatible(kind) || kind == channeltype.OpenAIResponses
-	case native.OpenAICompletions, native.OpenAIEmbeddings, native.OpenAIModerations,
+		return channeltype.NativeChatCompatible(kind) || kind == channeltype.Cloudflare
+	case native.OpenAIEmbeddings:
+		return channeltype.NativeChatCompatible(kind) || kind == channeltype.Cloudflare
+	case native.OpenAIModerations,
 		native.OpenAIImages, native.OpenAIAudioSpeech, native.OpenAIAudioTranscriptions, native.OpenAIAudioTranslations:
 		return channeltype.NativeChatCompatible(kind)
+	case native.OpenResponses:
+		return kind == channeltype.Vercel
 	case native.OpenAIResponses:
-		return kind == channeltype.OpenAI || kind == channeltype.OpenAIResponses || kind == channeltype.OpenRouter
+		return kind == channeltype.OpenAI || kind == channeltype.OpenAIResponses || kind == channeltype.Vercel || kind == channeltype.OpenRouter || kind == channeltype.Azure
 	case native.Anthropic:
-		return kind == channeltype.Anthropic || kind == channeltype.OpenRouter
+		return kind == channeltype.Anthropic || kind == channeltype.AwsClaude || kind == channeltype.VertextAI || kind == channeltype.OpenRouter
+	case native.Gemini:
+		return kind == channeltype.Gemini || kind == channeltype.VertextAI
 	case native.SystemOne:
 		return kind == channeltype.TypeSafe || kind == channeltype.OpenRouter
 	}

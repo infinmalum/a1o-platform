@@ -45,7 +45,7 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 	var instructions []string
 	var input []any
 	for _, raw := range head.messages {
-		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id")
+		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id", "reasoning_content")
 		if err != nil {
 			return nil, fmt.Errorf("invalid Chat message: %w", err)
 		}
@@ -75,6 +75,13 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 		case "assistant":
 			if len(message["tool_call_id"]) != 0 {
 				return nil, errors.New("tool_call_id is only valid on tool messages")
+			}
+			// History reasoning_content is visible thinking text; it becomes
+			// a reasoning input item preceding the assistant message so
+			// reasoning context survives the bridge.
+			if reasoning := rawString(message["reasoning_content"]); reasoning != "" {
+				input = append(input, map[string]any{"type": "reasoning",
+					"summary": []any{map[string]string{"type": "summary_text", "text": reasoning}}})
 			}
 			if nonNull(message["content"]) {
 				text, err := chatTextContent(message["content"])
@@ -427,8 +434,10 @@ func responsesFailureMessage(raw json.RawMessage) string {
 }
 
 // responsesToChat converts a final Responses object. The envelope is parsed
-// tolerantly because provider metadata carries no conversation content;
-// output items and content parts are strict because they do.
+// tolerantly because provider metadata carries no conversation content; output
+// items and content parts are strict because they do. Reasoning items map onto
+// the Chat wire's reasoning_content slot; encrypted reasoning blobs ride
+// provider_metadata because the Chat wire has no opaque slot for them.
 func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, error) {
 	var response struct {
 		ID        string `json:"id"`
@@ -446,16 +455,23 @@ func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 			CallID    string `json:"call_id"`
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
-			Content   []struct {
-				Type        string            `json:"type"`
-				Text        string            `json:"text"`
-				Refusal     string            `json:"refusal"`
-				Annotations []json.RawMessage `json:"annotations"`
-			} `json:"content"`
+			Summary   []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"summary"`
+			Content          []json.RawMessage `json:"content"`
+			EncryptedContent string            `json:"encrypted_content"`
+			Signature        string            `json:"signature"`
 		} `json:"output"`
 		Usage *struct {
 			InputTokens  int64 `json:"input_tokens"`
 			OutputTokens int64 `json:"output_tokens"`
+			InputDetails *struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputDetails *struct {
+				ReasoningTokens int64 `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
 		} `json:"usage"`
 	}
 	if json.Unmarshal(body, &response) != nil || response.ID == "" {
@@ -484,28 +500,58 @@ func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	default:
 		return nil, native.Usage{}, fmt.Errorf("Responses status %q cannot be converted", response.Status)
 	}
+	metadata := &providerMetadata{}
 	message := map[string]any{"role": "assistant", "content": nil}
-	var text, refusal string
+	var text, refusal, reasoning string
 	var toolCalls []any
+	var annotations []any
 	for _, item := range response.Output {
 		switch item.Type {
 		case "reasoning":
-			continue
+			for _, entry := range item.Summary {
+				reasoning += entry.Text
+			}
+			for _, raw := range item.Content {
+				var entry struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				}
+				if json.Unmarshal(raw, &entry) != nil {
+					return nil, native.Usage{}, errors.New("invalid reasoning content entry")
+				}
+				reasoning += entry.Text
+			}
+			if item.EncryptedContent != "" {
+				metadata.set("encrypted_reasoning", item.EncryptedContent)
+			}
+			if item.Signature != "" {
+				metadata.set("reasoning_signature", item.Signature)
+			}
 		case "message":
 			if item.Role != "" && item.Role != "assistant" {
 				return nil, native.Usage{}, errors.New("Responses response role must be assistant")
 			}
-			for _, part := range item.Content {
-				switch part.Type {
+			for _, partRaw := range item.Content {
+				part, err := object(partRaw, "type", "text", "refusal", "annotations")
+				if err != nil {
+					return nil, native.Usage{}, err
+				}
+				switch rawString(part["type"]) {
 				case "output_text":
-					if len(part.Annotations) > 0 {
-						return nil, native.Usage{}, errors.New("Responses output annotations cannot be converted")
+					if len(part["annotations"]) != 0 {
+						var items []json.RawMessage
+						if json.Unmarshal(part["annotations"], &items) != nil {
+							return nil, native.Usage{}, errors.New("invalid output_text annotations")
+						}
+						for _, entry := range items {
+							annotations = append(annotations, json.RawMessage(entry))
+						}
 					}
-					text += part.Text
+					text += rawString(part["text"])
 				case "refusal":
-					refusal += part.Refusal
+					refusal += rawString(part["refusal"])
 				default:
-					return nil, native.Usage{}, fmt.Errorf("Responses content part %q cannot be converted", part.Type)
+					return nil, native.Usage{}, fmt.Errorf("Responses content part %q cannot be converted", rawString(part["type"]))
 				}
 			}
 		case "function_call":
@@ -524,6 +570,12 @@ func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	if refusal != "" {
 		message["refusal"] = refusal
 	}
+	if reasoning != "" {
+		message["reasoning_content"] = reasoning
+	}
+	if len(annotations) > 0 {
+		message["annotations"] = annotations
+	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
 		// Chat clients dispatch on the tool_calls finish reason.
@@ -537,6 +589,12 @@ func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 			return nil, native.Usage{}, errors.New("invalid Responses usage")
 		}
 		usage.Input, usage.Output, usage.Seen = response.Usage.InputTokens, response.Usage.OutputTokens, true
+		if response.Usage.InputDetails != nil {
+			usage.CacheRead = response.Usage.InputDetails.CachedTokens
+		}
+		if response.Usage.OutputDetails != nil {
+			usage.Reasoning = response.Usage.OutputDetails.ReasoningTokens
+		}
 	}
 	result := map[string]any{
 		"id": response.ID, "object": "chat.completion", "model": requestedModel,
@@ -548,7 +606,10 @@ func responsesToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		result["created"] = time.Now().Unix()
 	}
 	if usage.Seen {
-		result["usage"] = map[string]int64{"prompt_tokens": usage.Input, "completion_tokens": usage.Output, "total_tokens": usage.Input + usage.Output}
+		result["usage"] = chatUsageEnvelope(usage)
+	}
+	if m := metadata.value(); m != nil {
+		result["provider_metadata"] = m
 	}
 	converted, err := json.Marshal(result)
 	return converted, usage, err

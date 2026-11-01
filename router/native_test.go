@@ -124,16 +124,20 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	}))
 	defer geminiServer.Close()
 	for _, item := range []struct {
-		kind  int
-		key   string
-		url   string
-		mapTo string
+		kind     int
+		key      string
+		url      string
+		mapTo    string
+		priority int64
 	}{
-		{channeltype.Anthropic, "anthropic-provider-key", anthropicServer.URL, "claude-upstream"},
-		{channeltype.Gemini, "gemini-provider-key", geminiServer.URL, "gemini-upstream"},
+		// The dispatcher selects across kinds by model, so the Anthropic
+		// channel carries a higher priority and the Messages-route requests
+		// below land deterministically on their own wire.
+		{channeltype.Anthropic, "anthropic-provider-key", anthropicServer.URL, "claude-upstream", 10},
+		{channeltype.Gemini, "gemini-provider-key", geminiServer.URL, "gemini-upstream", 0},
 	} {
 		baseURL, mapping := item.url, `{"alias":"`+item.mapTo+`"}`
-		channel := model.Channel{Type: item.kind, Key: item.key, Name: item.mapTo, Status: model.ChannelStatusEnabled, Group: "default", Models: "alias", BaseURL: &baseURL, ModelMapping: &mapping}
+		channel := model.Channel{Type: item.kind, Key: item.key, Name: item.mapTo, Status: model.ChannelStatusEnabled, Group: "default", Models: "alias", BaseURL: &baseURL, ModelMapping: &mapping, Priority: &item.priority}
 		if err := channel.Insert(); err != nil {
 			t.Fatal(err)
 		}
@@ -257,7 +261,8 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	unsupportedRequest.Header.Set("x-api-key", "sk-gateway-key")
 	unsupportedResponse := httptest.NewRecorder()
 	r.ServeHTTP(unsupportedResponse, unsupportedRequest)
-	if unsupportedResponse.Code != http.StatusServiceUnavailable || !strings.Contains(unsupportedResponse.Body.String(), `"type":"error"`) || !strings.Contains(unsupportedResponse.Body.String(), "Anthropic") {
+	// The dispatcher owns the no-channel refusal for the Messages route.
+	if unsupportedResponse.Code != http.StatusServiceUnavailable || !strings.Contains(unsupportedResponse.Body.String(), "无可用渠道") {
 		t.Fatalf("unsupported native channel: status %d body %s", unsupportedResponse.Code, unsupportedResponse.Body.String())
 	}
 	// A model no channel carries is refused by both the primary Gemini
@@ -269,8 +274,10 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	if unsupportedGeminiResponse.Code != http.StatusServiceUnavailable || !strings.Contains(unsupportedGeminiResponse.Body.String(), `"status":"UNAVAILABLE"`) || !strings.Contains(unsupportedGeminiResponse.Body.String(), "Gemini") {
 		t.Fatalf("unsupported Gemini channel: status %d body %s", unsupportedGeminiResponse.Code, unsupportedGeminiResponse.Body.String())
 	}
+	// A pinned channel whose kind never serves the Messages wire is refused
+	// loudly; TypeSafe channels answer only the SystemOne route.
 	blockedBaseURL := anthropicServer.URL
-	blockedChannel := model.Channel{Type: channeltype.Coze, Key: "blocked-key", Name: "blocked", Status: model.ChannelStatusEnabled, Group: "default", Models: "blocked-model", BaseURL: &blockedBaseURL}
+	blockedChannel := model.Channel{Type: channeltype.TypeSafe, Key: "blocked-key", Name: "blocked", Status: model.ChannelStatusEnabled, Group: "default", Models: "blocked-model", BaseURL: &blockedBaseURL}
 	if err := blockedChannel.Insert(); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +285,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	specificMismatch.Header.Set("Authorization", "Bearer sk-gateway-key-"+strconv.Itoa(blockedChannel.Id))
 	specificResponse := httptest.NewRecorder()
 	r.ServeHTTP(specificResponse, specificMismatch)
-	if specificResponse.Code != http.StatusBadRequest || !strings.Contains(specificResponse.Body.String(), "does not support this protocol") {
+	if specificResponse.Code != http.StatusUnprocessableEntity || !strings.Contains(specificResponse.Body.String(), "does not serve the Messages operation") {
 		t.Fatalf("specific channel bypassed protocol restriction: status %d body %s", specificResponse.Code, specificResponse.Body.String())
 	}
 
@@ -325,7 +332,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"api_error","message":"retry me"}}`)
 	}))
 	defer failingServer.Close()
-	failingURL, highPriority := failingServer.URL, int64(10)
+	failingURL, highPriority := failingServer.URL, int64(100)
 	failingChannel := model.Channel{Type: channeltype.Anthropic, Key: "failing-key", Name: "failing", Status: model.ChannelStatusEnabled, Group: "default", Models: "alias", BaseURL: &failingURL, Priority: &highPriority}
 	if err := failingChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -513,8 +520,8 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	bridgeThinkingResponse := httptest.NewRecorder()
 	r.ServeHTTP(bridgeThinkingResponse, bridgeThinkingRequest)
 	var thinkingLog model.Log
-	if err := db.Where("channel_id = ? AND type = ?", bridgeChannel.Id, model.LogTypeConsume).Order("id desc").First(&thinkingLog).Error; err != nil || bridgeThinkingResponse.Code != http.StatusBadGateway || strings.Contains(bridgeThinkingResponse.Body.String(), "private") || !strings.Contains(thinkingLog.Content, "interrupted") {
-		t.Fatalf("unrepresentable Anthropic thinking was exposed or unbilled: status %d body %s log %+v err %v", bridgeThinkingResponse.Code, bridgeThinkingResponse.Body.String(), thinkingLog, err)
+	if err := db.Where("channel_id = ? AND type = ?", bridgeChannel.Id, model.LogTypeConsume).Order("id desc").First(&thinkingLog).Error; err != nil || bridgeThinkingResponse.Code != http.StatusOK || !strings.Contains(bridgeThinkingResponse.Body.String(), `"reasoning_content":"private"`) || strings.Contains(thinkingLog.Content, "interrupted") {
+		t.Fatalf("Anthropic thinking was not carried and billed through the Chat bridge: status %d body %s log %+v err %v", bridgeThinkingResponse.Code, bridgeThinkingResponse.Body.String(), thinkingLog, err)
 	}
 	var reverseCalls atomic.Int64
 	reverseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -607,56 +614,6 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 	r.ServeHTTP(unsupportedGeminiBridgeResponse, unsupportedGeminiBridge)
 	if unsupportedGeminiBridgeResponse.Code != http.StatusUnprocessableEntity || geminiBridgeCalls.Load() != 1 {
 		t.Fatalf("unsupported Chat to Gemini request reached upstream: status %d calls %d body %s", unsupportedGeminiBridgeResponse.Code, geminiBridgeCalls.Load(), unsupportedGeminiBridgeResponse.Body.String())
-	}
-	completionNormal := `{"id":"cmpl-1","choices":[{"text":"ok"}],"usage":{"prompt_tokens":2,"completion_tokens":3},"future":true}`
-	completionEvents := "data: {\"id\":\"cmpl-1\",\"choices\":[{\"text\":\"ok\"}],\"future\":true}\n\n" +
-		"data: {\"id\":\"cmpl-1\",\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\n\n" +
-		"data: [DONE]\n\n"
-	completionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/completions" || r.Header.Get("Authorization") != "Bearer completion-provider-key" {
-			t.Errorf("Completions upstream route or credential changed: %s %v", r.URL, r.Header)
-		}
-		body, _ := io.ReadAll(r.Body)
-		if !strings.Contains(string(body), `"model":"completion-upstream"`) || !strings.Contains(string(body), `"logprobs":3`) || !strings.Contains(string(body), `"future":{"preserve":true}`) {
-			t.Errorf("Completions request lost fields: %s", body)
-		}
-		if strings.Contains(string(body), `"stream":true`) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = io.WriteString(w, completionEvents)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, completionNormal)
-	}))
-	defer completionServer.Close()
-	completionURL, completionMapping := completionServer.URL + "/v1", `{"completion-alias":"completion-upstream"}`
-	completionChannel := model.Channel{Type: channeltype.OpenAI, Key: "completion-provider-key", Name: "completion", Status: model.ChannelStatusEnabled, Group: "default", Models: "completion-alias", BaseURL: &completionURL, ModelMapping: &completionMapping}
-	if err := completionChannel.Insert(); err != nil {
-		t.Fatal(err)
-	}
-	for _, fixture := range []struct {
-		stream bool
-		want   string
-	}{
-		{false, completionNormal},
-		{true, completionEvents},
-	} {
-		body := `{"model":"completion-alias","prompt":"hello","max_tokens":8,"logprobs":3,"future":{"preserve":true}`
-		if fixture.stream {
-			body += `,"stream":true,"stream_options":{"include_usage":true}`
-		}
-		request := httptest.NewRequest(http.MethodPost, "/v1/completions", strings.NewReader(body+`}`))
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Authorization", "Bearer sk-gateway-key")
-		response := httptest.NewRecorder()
-		r.ServeHTTP(response, request)
-		if response.Code != http.StatusOK || response.Body.String() != fixture.want {
-			t.Fatalf("Completions passthrough changed: status %d body %s", response.Code, response.Body.String())
-		}
-	}
-	var completionLogs []model.Log
-	if err := db.Where("channel_id = ? AND type = ?", completionChannel.Id, model.LogTypeConsume).Find(&completionLogs).Error; err != nil || len(completionLogs) != 2 || completionLogs[0].PromptTokens != 2 || completionLogs[1].CompletionTokens != 3 {
-		t.Fatalf("Completions usage was not settled: %+v err %v", completionLogs, err)
 	}
 	embeddingBody := `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"embedding-upstream","usage":{"prompt_tokens":7,"total_tokens":7},"future":true}`
 	embeddingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -987,4 +944,134 @@ func (w *firstWriteRecorder) Write(p []byte) (int, error) {
 	default:
 	}
 	return w.ResponseRecorder.Write(p)
+}
+
+// TestVercelChannelBridgesChatOntoOpenResponses pins the Vercel kind's
+// routing: chat requests bridge onto the gateway's bare /responses suffix,
+// streamed chats convert into chat chunks, Responses requests pass through,
+// and every path settles from the upstream usage report.
+func TestVercelChannelBridgesChatOntoOpenResponses(t *testing.T) {
+	seedFixturePrices(t)
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousClient := client.HTTPClient
+	previousRedis, previousMemoryCache, previousRetries := common.RedisEnabled, config.MemoryCacheEnabled, config.RetryTimes
+	previousSQLite := common.UsingSQLite
+	db, err := gorm.Open(sqlite.Open("file:vercel-routes?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}); err != nil {
+		t.Fatal(err)
+	}
+	model.DB, model.LOG_DB = db, db
+	client.HTTPClient = &http.Client{}
+	common.RedisEnabled, config.MemoryCacheEnabled = false, false
+	common.UsingSQLite = true
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		client.HTTPClient = previousClient
+		common.RedisEnabled, config.MemoryCacheEnabled = previousRedis, previousMemoryCache
+		common.UsingSQLite = previousSQLite
+		config.RetryTimes = previousRetries
+		_ = sqlDB.Close()
+	})
+	user := model.User{Username: "vercel-test", Status: model.UserStatusEnabled, Role: model.RoleAdminUser, Group: "default", Quota: 1000000}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	token := model.Token{UserId: user.Id, Key: "gateway-key", Name: "vercel", Status: model.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000000}
+	if err := db.Create(&token).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	vercelEvents := "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_vercel\",\"status\":\"in_progress\"}}\n\n" +
+		"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\"}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_vercel\",\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":7},\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n"
+	var upstreamCalls atomic.Int64
+	vercelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		// The fixture base carries /v1, so the bare /responses suffix lands
+		// on /v1/responses exactly as the official gateway does.
+		if r.URL.Path != "/v1/responses" || r.Header.Get("Authorization") != "Bearer gateway-provider-key" {
+			t.Errorf("Vercel upstream route or credential changed: %s %v", r.URL, r.Header)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"model":"vercel-gateway"`) || !strings.Contains(string(body), `"input"`) {
+			t.Errorf("Vercel upstream request lost fields: %s", body)
+		}
+		if strings.Contains(string(body), "responses-passthrough") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"resp_pass","object":"response","status":"completed","usage":{"input_tokens":2,"output_tokens":3},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"passthrough-ok"}]}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, vercelEvents)
+	}))
+	defer vercelServer.Close()
+	vercelURL := vercelServer.URL + "/v1"
+	vercelChannel := model.Channel{Type: channeltype.Vercel, Key: "gateway-provider-key", Name: "vercel", Status: model.ChannelStatusEnabled, Group: "default", Models: "vercel-gateway", BaseURL: &vercelURL}
+	if err := vercelChannel.Insert(); err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	SetRelayRouter(r)
+
+	chatRequest := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"vercel-gateway","messages":[{"role":"user","content":"hi"}],"max_tokens":16}`))
+	chatRequest.Header.Set("Content-Type", "application/json")
+	chatRequest.Header.Set("Authorization", "Bearer sk-gateway-key")
+	chatResponse := httptest.NewRecorder()
+	r.ServeHTTP(chatResponse, chatRequest)
+	var chatResult struct {
+		Object  string `json:"object"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if chatResponse.Code != http.StatusOK || json.Unmarshal(chatResponse.Body.Bytes(), &chatResult) != nil ||
+		chatResult.Object != "chat.completion" || len(chatResult.Choices) != 1 || chatResult.Choices[0].Message.Content != "ok" ||
+		chatResult.Usage.PromptTokens != 5 || chatResult.Usage.CompletionTokens != 7 {
+		t.Fatalf("chat onto Vercel failed: status %d body %s", chatResponse.Code, chatResponse.Body.String())
+	}
+	quotaAfterChat, err := model.GetUserQuota(user.Id)
+	if err != nil || quotaAfterChat >= 1000000 {
+		t.Fatalf("chat onto Vercel did not settle: quota %d err %v", quotaAfterChat, err)
+	}
+	var chatLog model.Log
+	if err := db.Where("channel_id = ? AND type = ?", vercelChannel.Id, model.LogTypeConsume).Order("id desc").First(&chatLog).Error; err != nil || chatLog.PromptTokens != 5 || chatLog.CompletionTokens != 7 {
+		t.Fatalf("chat onto Vercel quota log wrong: %+v err %v", chatLog, err)
+	}
+
+	streamRequest := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"vercel-gateway","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`))
+	streamRequest.Header.Set("Content-Type", "application/json")
+	streamRequest.Header.Set("Authorization", "Bearer sk-gateway-key")
+	streamResponse := httptest.NewRecorder()
+	r.ServeHTTP(streamResponse, streamRequest)
+	if streamResponse.Code != http.StatusOK || !strings.Contains(streamResponse.Body.String(), `"content":"ok"`) ||
+		!strings.Contains(streamResponse.Body.String(), `"prompt_tokens":5`) || !strings.Contains(streamResponse.Body.String(), "data: [DONE]") {
+		t.Fatalf("streamed chat onto Vercel failed: status %d body %s", streamResponse.Code, streamResponse.Body.String())
+	}
+
+	responsesRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"vercel-gateway","input":"responses-passthrough","max_output_tokens":16}`))
+	responsesRequest.Header.Set("Content-Type", "application/json")
+	responsesRequest.Header.Set("Authorization", "Bearer sk-gateway-key")
+	responsesResponse := httptest.NewRecorder()
+	r.ServeHTTP(responsesResponse, responsesRequest)
+	if responsesResponse.Code != http.StatusOK || !strings.Contains(responsesResponse.Body.String(), `"text":"passthrough-ok"`) || !strings.Contains(responsesResponse.Body.String(), `"input_tokens":2`) {
+		t.Fatalf("Responses passthrough onto Vercel failed: status %d body %s", responsesResponse.Code, responsesResponse.Body.String())
+	}
+	if upstreamCalls.Load() != 3 {
+		t.Fatalf("upstream call count changed: %d", upstreamCalls.Load())
+	}
 }

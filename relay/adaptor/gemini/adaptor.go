@@ -59,7 +59,16 @@ func (a *Adaptor) ConvertRequest(in *model.ConversionInput) (any, error) {
 	}
 	switch relayMode {
 	case relaymode.Embeddings:
-		geminiEmbeddingRequest := ConvertEmbeddingRequest(*request)
+		if request.EncodingFormat != "" && request.EncodingFormat != "float" {
+			return nil, errors.New("Gemini embedding conversion supports encoding_format=float only")
+		}
+		if request.Dimensions < 0 {
+			return nil, errors.New("dimensions must be positive")
+		}
+		geminiEmbeddingRequest, err := ConvertEmbeddingRequest(*request)
+		if err != nil {
+			return nil, err
+		}
 		return geminiEmbeddingRequest, nil
 	default:
 		geminiRequest := ConvertRequest(*request)
@@ -86,18 +95,10 @@ func (a *Adaptor) DoResponse(c *adaptor.Context, resp *http.Response, meta *meta
 	} else {
 		switch meta.Mode {
 		case relaymode.Embeddings:
-			err, usage = EmbeddingHandler(c, resp)
+			err, usage = EmbeddingHandler(c, resp, meta.ActualModelName)
 		default:
 			err, usage = Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
 		}
 	}
 	return
-}
-
-func (a *Adaptor) GetModelList() []string {
-	return nil
-}
-
-func (a *Adaptor) GetChannelName() string {
-	return "google gemini"
 }

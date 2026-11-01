@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/relay/adaptor"
@@ -42,7 +41,8 @@ import (
 var errNextLoop = errors.New("next_loop")
 
 func ImageHandler(c *adaptor.Context, resp *http.Response, meta *meta.Meta) (*model.ErrorWithStatusCode, *model.Usage) {
-	if resp.StatusCode != http.StatusCreated {
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		payload, _ := io.ReadAll(resp.Body)
 		return openai.ErrorWrapper(
 				errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)),
@@ -97,7 +97,9 @@ func ImageHandler(c *adaptor.Context, resp *http.Response, meta *meta.Meta) (*mo
 			case "failed", "canceled":
 				return errors.Errorf("task failed: %s", taskData.Status)
 			default:
-				time.Sleep(time.Second * 3)
+				if err := waitPrediction(c.Request.Context()); err != nil {
+					return err
+				}
 				return errNextLoop
 			}
 
@@ -150,8 +152,7 @@ func ImageHandler(c *adaptor.Context, resp *http.Response, meta *meta.Meta) (*mo
 
 					mu.Lock()
 					respBody.Data = append(respBody.Data, openai.ImageData{
-						B64Json: fmt.Sprintf("data:image/png;base64,%s",
-							base64.StdEncoding.EncodeToString(imgData)),
+						B64Json: base64.StdEncoding.EncodeToString(imgData),
 					})
 					mu.Unlock()
 
