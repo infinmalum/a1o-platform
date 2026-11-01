@@ -8,10 +8,11 @@ import (
 )
 
 // Stream converts Gemini GenerateContent events into Responses events. Thought
-// parts are skipped: they carry provider-internal reasoning with no
-// request-representable echo. Gemini has no terminal event, so the stream ends
-// when the upstream connection closes and a missing finish reason or usage
-// report fails the conversion.
+// parts carry the model's visible reasoning onto reasoning items so the next
+// turn replays them, with the thought signature riding the same item; the
+// function-call signature rides the function_call item. Gemini has no terminal
+// event, so the stream ends when the upstream connection closes and a missing
+// finish reason or usage report fails the conversion.
 func (responsesGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
 	state := &geminiToResponsesStream{emitter: *newResponsesStreamEmitter(dst, requestedModel)}
 	reader := newSSEReader(src)
@@ -64,16 +65,41 @@ func (s *geminiToResponsesStream) event(data []byte) error {
 	for _, part := range parsed.parts {
 		switch part.kind {
 		case geminiPartText:
+			if part.signature != "" {
+				if err := s.emitter.setReasoningSignature(part.signature); err != nil {
+					return err
+				}
+			}
 			if err := s.emitter.addText(part.text); err != nil {
 				return err
 			}
-		case geminiPartThought, geminiPartSignature:
-			continue
+		case geminiPartThought:
+			if err := s.emitter.addReasoningText(part.text); err != nil {
+				return err
+			}
+			if err := s.emitter.setReasoningSignature(part.signature); err != nil {
+				return err
+			}
+		case geminiPartSignature:
+			if err := s.emitter.setReasoningSignature(part.signature); err != nil {
+				return err
+			}
 		case geminiPartFunctionCall:
-			if _, err := s.emitter.openToolItem(part.callID, part.name, s.toolCount); err != nil {
+			callID := part.callID
+			if callID == "" {
+				generated, err := newStreamID("call_")
+				if err != nil {
+					return err
+				}
+				callID = generated
+			}
+			if _, err := s.emitter.openToolItem(callID, part.name, s.toolCount); err != nil {
 				return err
 			}
 			if err := s.emitter.addToolArguments(s.toolCount, string(part.args)); err != nil {
+				return err
+			}
+			if err := s.emitter.setToolSignature(s.toolCount, part.signature); err != nil {
 				return err
 			}
 			s.toolCount++

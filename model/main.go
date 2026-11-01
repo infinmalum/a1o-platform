@@ -202,6 +202,15 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&ChatMCPServer{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&AgentRun{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&ModelInvocation{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&RunEvent{}); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -88,11 +88,12 @@ type RunEvent struct {
 - **崩溃窗口（R0 最重要的发现）**：reservation 状态只在内存（`finished` 标志 + 互斥锁），没有任何持久预留记录、TTL 或对账清理。进程在 `PreConsumeTokenQuota` 之后、结算/退款之前崩溃，预扣额度将永久滞留在 token 额度里。现有消费日志只在结算时写入，无法事后区分"已结算"与"预扣后崩溃"。
 - **推论**：R1 的 ModelInvocation 记录请求意图与结束状态，使"预扣后崩溃"在事后可被识别（Invocation 停留在 pending/unknown 而消费日志缺失），但 R1 不实现自动对账或自动重放；此类运行进入 `needs_reconciliation`。不能宣称新增 invocation_id 就实现了崩溃安全结算（与重构方案 §4 一致）。
 
-## 4. Provider 原生状态绑定策略（R0 决策）
+## 4. Provider 原生状态绑定策略（R0 决策，R1 实施时收紧）
 
 - Item 上的不透明原生块（`ProviderState`）记录产生它的 vendor、协议、channel_id、upstream_account_id 与载荷版本。
 - **回送规则**：仅当本次调用的目标渠道与绑定一致（有 upstream_account_id 时要求同账号，否则同渠道）才把不透明块放回请求；可见思考文本、函数调用等可移植内容照常携带。
-- **执行机制**：请求携带任何绑定块时，ModelExecutor 以 SpecificChannel 锁定绑定渠道发起调用，禁止 lifecycle 跨渠道重试——这从机制上保证绑定状态不可能被送到不兼容的回退渠道；锁定渠道失败则本次调用失败，由 Run 层决定重试或转 needs_reconciliation。无绑定块的调用允许跨协议/渠道回退。
+- **执行机制（R1 收紧为全部锁定）**：ModelExecutor 每次调用都以 `lifecycle.SelectForRequest` 按模型家族偏好顺序预选渠道（Responses 家族 → Anthropic → Gemini → Chat），随后以 `Principal.SpecificChannel` 锁定该渠道发起调用，禁止 lifecycle 跨渠道重试——无论请求是否携带绑定块。这从机制上保证绑定状态不可能被送到不兼容的回退渠道，也保证为特定上游协议构建的请求体（如仅 Responses 透传携带的 `store`/`include`）不会被重试到不兼容的渠道。锁定渠道失败由 Run 层决定是否发起新的 Invocation（全新选择、全新重试预算），内核不隐式故障转移。R1 实际携带的不透明载荷走 Item 专属槽位：reasoning 的 `signature`/`encrypted_content`、function_call 的 `thought_signature`；`ProviderState` 通用列表是 R2+ 扩展点（服务端工具结果等）。
+- **归属记录**：一次 Invocation 只经过一个渠道，因此调用级归属（ModelInvocation 的 channel_id/channel_type/upstream_account_id/upstream_protocol 列）与逐块归属等价；R1 用调用级记录。
 - bridge 层的跨供应商响亮拒绝保持为最后防线，两处规则独立生效。
 
 ## 5. 错误与幂等策略（R0 决策）
@@ -107,3 +108,12 @@ type RunEvent struct {
 - 假上游覆盖：Responses 推理 Item（summary/encrypted_content）与 function_call 续接、Claude thinking/signature 经桥往返、Gemini thoughtSignature 往返；持久化后下一轮请求重新携带上述块，且绑定块不落到未绑定渠道。
 - 每次真实模型调用恰好一条消费日志，Invocation 与之关联；流中断结算保留预扣的行为不变。
 - 消息内图像等首批不支持形状：明确拒绝并留痕，不做未知字段透传。
+
+## 7. R1 实施记录（2026-11-01）
+
+交付物：`agent/item.go`（标准 Item）、`agent/collector.go`（Responses SSE → Item）、`agent/executor.go`（ModelExecutor）、`model/agent_run.go`（AgentRun / ModelInvocation / RunEvent 及序号、幂等、事件辅助函数，已注册 AutoMigrate）、计费关联管线（`NativeReservation.ConsumeLogID` + `lifecycle.Request.OnSettlement`）。
+
+- 四种假上游集成测试（`agent/executor_test.go`）覆盖：OpenAI Responses 透传（含 `store:false` + `include:["reasoning.encrypted_content"]` 与密封思考回读）、Vercel OpenResponses 透传、Anthropic thinking/signature 经桥往返、Gemini thoughtSignature 往返；每例两腿——第一腿产出生成物，第二腿断言持久化上下文连回不透明块一起重放，且每腿恰好一条消费日志并与 Invocation 关联。
+- **修复遗留丢弃**：`relay/bridge/stream_responses_gemini.go` 的 Gemini→Responses 流式方向原样跳过 thought 部件与 thoughtSignature（非流式方向已携带）。现补齐：thought 文本与签名进 reasoning item，functionCall 签名挂 function_call 项，缺失 call_id 时与非流式方向一致地生成。
+- **"保留 Chat 路径"的落地口径**：既有 `chat/leg.go`（inbound OpenAIChat）一行未动、测试全绿；Responses→Chat 桥由 bridge 包既有测试覆盖。agent 腿的 Chat 上游在现行路由契约下仅 Cloudflare kind 可达（其 Workers AI 专有格式经既有 `prepareCloudflareRun` 转换），OpenAI/Azure/OpenRouter kind 的 base 按现行契约视为原生提供 /v1/responses。
+- 计费关联：`RecordConsumeLog` 的 GORM Create 回填 `log.Id`，`NativeReservation` 在结算后捕获之，`OnSettlement` 在 Forward 的三条结算路径与 `ForwardAdapter` 的两处、以及固定额度路径统一触发；退款路径无日志，回调收到 id 0。

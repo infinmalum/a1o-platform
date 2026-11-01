@@ -31,6 +31,7 @@ type NativeReservation struct {
 	quota             *Reservation
 	mu                sync.Mutex
 	finished          bool
+	consumeLogID      int
 }
 
 // ReserveNativeQuota uses the provider's output limit plus the configured
@@ -142,7 +143,7 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 	if interrupted {
 		content += "; response interrupted"
 	}
-	model.RecordConsumeLog(ctx, &model.Log{
+	log := &model.Log{
 		UserId:            r.UserID,
 		ChannelId:         r.ChannelID,
 		PromptTokens:      int(usage.Input),
@@ -154,9 +155,22 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 		IsStream:          streamed,
 		ElapsedTime:       time.Since(r.StartedAt).Milliseconds(),
 		SystemPromptReset: r.SystemPromptReset,
-	})
+	}
+	model.RecordConsumeLog(ctx, log)
+	// RecordConsumeLog may be disabled or fail; a zero id means the
+	// invocation association is unavailable, not that billing was skipped.
+	r.consumeLogID = log.Id
 	model.UpdateUserUsedQuotaAndRequestCount(r.UserID, quota)
 	model.UpdateChannelUsedQuota(r.ChannelID, quota)
+}
+
+// ConsumeLogID reports the consume log written by settlement, or 0 when
+// consume logging is disabled or failed.
+func (r *NativeReservation) ConsumeLogID() int {
+	if r == nil {
+		return 0
+	}
+	return r.consumeLogID
 }
 
 // SettleDirect charges an operation-specific amount without token ratio math,
@@ -180,7 +194,7 @@ func (r *NativeReservation) SettleDirect(ctx context.Context, amount, promptToke
 	if interrupted {
 		content += "; response interrupted"
 	}
-	model.RecordConsumeLog(ctx, &model.Log{
+	log := &model.Log{
 		UserId:       r.UserID,
 		ChannelId:    r.ChannelID,
 		PromptTokens: int(promptTokens),
@@ -189,7 +203,9 @@ func (r *NativeReservation) SettleDirect(ctx context.Context, amount, promptToke
 		Quota:        int(quota),
 		Content:      content,
 		ElapsedTime:  time.Since(r.StartedAt).Milliseconds(),
-	})
+	}
+	model.RecordConsumeLog(ctx, log)
+	r.consumeLogID = log.Id
 	model.UpdateUserUsedQuotaAndRequestCount(r.UserID, quota)
 	model.UpdateChannelUsedQuota(r.ChannelID, quota)
 }
