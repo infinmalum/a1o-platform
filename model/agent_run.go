@@ -35,7 +35,8 @@ const (
 )
 
 // Run event type identifiers (agent-runtime-contract.md §2). Model events use
-// the OpenResponses event names verbatim in the payload's type field.
+// the OpenResponses event names verbatim; the run-level types below are the
+// a1o control plane.
 const (
 	RunEventRunQueued           = "run.queued"
 	RunEventRunStarted          = "run.started"
@@ -43,9 +44,16 @@ const (
 	RunEventRunFailed           = "run.failed"
 	RunEventRunCancelled        = "run.cancelled"
 	RunEventInvocationStarted   = "invocation.started"
+	RunEventInvocationUsage     = "invocation.usage"
 	RunEventInvocationCompleted = "invocation.completed"
 	RunEventInvocationFailed    = "invocation.failed"
 	RunEventInputAppended       = "input.appended"
+	// Chat-mode structural events. Text/reasoning deltas stream
+	// transiently and are not persisted as RunEvents.
+	RunEventMessageStarted   = "message.started"
+	RunEventToolCalled       = "tool.called"
+	RunEventToolResult       = "tool.result"
+	RunEventContextCompacted = "context.compacted"
 )
 
 // AgentRun is one persistent execution record. It is the single run fact
@@ -56,9 +64,12 @@ type AgentRun struct {
 	// UserId plus IdempotencyKey form the owner-scoped idempotency contract:
 	// the same key under the same owner resolves to this run instead of
 	// creating a second one.
-	UserId         int    `json:"user_id" gorm:"index;uniqueIndex:idx_agent_run_idempotency,priority:1"`
-	Kind           string `json:"kind" gorm:"type:varchar(16)"`
-	Status         string `json:"status" gorm:"type:varchar(32);index"`
+	UserId int    `json:"user_id" gorm:"index;uniqueIndex:idx_agent_run_idempotency,priority:1"`
+	Kind   string `json:"kind" gorm:"type:varchar(16)"`
+	Status string `json:"status" gorm:"type:varchar(32);index"`
+	// SessionId links a chat-mode run to its conversation; 0 for runs
+	// without a session (Work tasks carry their own task reference).
+	SessionId      int    `json:"session_id" gorm:"index"`
 	IdempotencyKey string `json:"idempotency_key" gorm:"type:varchar(255);uniqueIndex:idx_agent_run_idempotency,priority:2"`
 	Model          string `json:"model" gorm:"type:varchar(255)"`
 	Instructions   string `json:"instructions" gorm:"type:text"`

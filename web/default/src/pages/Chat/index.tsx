@@ -216,24 +216,25 @@ const Chat = () => {
   };
 
   const handleEvent = (event: ChatEvent) => {
+    const payload = event.payload || {};
     setMessages((current) => {
       const next = [...current];
       const last = next[next.length - 1];
       switch (event.type) {
-        case 'message_start':
+        case 'message.started':
           next.push({
-            id: event.message_id || -Date.now(),
+            id: payload.message_id || -Date.now(),
             role: 'assistant',
             content: '',
             streaming: true,
           });
           break;
-        case 'delta':
+        case 'response.output_text.delta':
           if (last && last.role === 'assistant' && last.streaming) {
-            next[next.length - 1] = { ...last, content: last.content + (event.delta || '') };
+            next[next.length - 1] = { ...last, content: last.content + (payload.delta || '') };
           }
           break;
-        case 'tool_call':
+        case 'tool.called':
           if (last && last.role === 'assistant') {
             next[next.length - 1] = {
               ...last,
@@ -241,28 +242,28 @@ const Chat = () => {
               toolCalls: [
                 ...(last.toolCalls || []),
                 {
-                  id: event.tool_call_id || '',
-                  name: event.name || '',
-                  arguments: event.arguments || '',
+                  id: payload.tool_call_id || '',
+                  name: payload.name || '',
+                  arguments: payload.arguments || '',
                 },
               ],
             };
           }
           break;
-        case 'tool_result':
+        case 'tool.result':
           next.push({
             id: -(Date.now() + next.length),
             role: 'tool',
-            content: event.content || '',
+            content: payload.content || '',
             toolResult: {
-              id: event.tool_call_id || '',
-              name: event.name || '',
-              content: event.content || '',
-              isError: !!event.is_error,
+              id: payload.tool_call_id || '',
+              name: payload.name || '',
+              content: payload.content || '',
+              isError: !!payload.is_error,
             },
           });
           break;
-        case 'compact':
+        case 'context.compacted':
           next.push({
             id: -(Date.now() + next.length),
             role: 'assistant',
@@ -270,13 +271,13 @@ const Chat = () => {
             compacted: true,
           });
           break;
-        case 'error':
-          setStreamError(event.error || t('chat.requestFailed'));
+        case 'run.failed':
+          setStreamError(payload.error || t('chat.requestFailed'));
           if (last && last.role === 'assistant') {
             next[next.length - 1] = { ...last, streaming: false };
           }
           break;
-        case 'done':
+        case 'run.completed':
           if (last && last.role === 'assistant') {
             next[next.length - 1] = { ...last, streaming: false };
           }

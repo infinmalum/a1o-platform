@@ -43,6 +43,16 @@ type InvokeRequest struct {
 	Tools []Tool
 	// MaxOutputTokens bounds the reserved estimate; 0 uses the gateway default.
 	MaxOutputTokens int64
+	// Temperature, when set, rides the request for wires that carry it.
+	Temperature *float64
+	// OnTextDelta and OnReasoningDelta stream increments as they arrive;
+	// nil in storage-only runs.
+	OnTextDelta      func(string)
+	OnReasoningDelta func(string)
+	// SkipContextAppend keeps the call's output out of the run's persisted
+	// context, for auxiliary legs (summarization) and hosts whose history
+	// lives elsewhere (chat sessions persist their own rows).
+	SkipContextAppend bool
 }
 
 // InvokeResult reports one completed model call.
@@ -107,6 +117,9 @@ func (e *ModelExecutor) Invoke(ctx context.Context, req InvokeRequest) (InvokeRe
 	}
 	// forward returns nil only for calls that produced replayable output;
 	// failures stay visible through events and the invocation record.
+	if req.SkipContextAppend {
+		return result, nil
+	}
 	if err := e.appendRunContext(run, result.Items); err != nil {
 		return result, fmt.Errorf("persist run context: %w", err)
 	}
@@ -142,7 +155,7 @@ func (e *ModelExecutor) selectUpstream(modelName string) (lifecycle.Channel, nat
 func (e *ModelExecutor) forward(ctx context.Context, req InvokeRequest, invocation *model.ModelInvocation,
 	channel lifecycle.Channel, upstream native.Protocol, body []byte,
 ) (InvokeResult, error) {
-	collector := newStreamCollector(nil, nil)
+	collector := newStreamCollector(req.OnTextDelta, req.OnReasoningDelta)
 	var consumeLogID int
 	input := lifecycle.Request{
 		Protocol:         native.OpenAIResponses,
@@ -325,6 +338,9 @@ func buildResponsesRequest(req InvokeRequest, upstream native.Protocol) ([]byte,
 	if req.Instructions != "" {
 		request["instructions"] = req.Instructions
 	}
+	if req.Temperature != nil {
+		request["temperature"] = *req.Temperature
+	}
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools))
 		for _, tool := range req.Tools {
@@ -377,6 +393,14 @@ func itemToWire(item Item) (map[string]any, error) {
 					entry["annotations"] = part.Annotations
 				}
 				parts = append(parts, entry)
+			case PartInputImage:
+				if item.Role != "user" {
+					return nil, errors.New("input_image parts belong on user messages")
+				}
+				if part.ImageURL == "" {
+					return nil, errors.New("input_image part requires an image_url")
+				}
+				parts = append(parts, map[string]any{"type": PartInputImage, "image_url": part.ImageURL})
 			case PartRefusal:
 				parts = append(parts, map[string]any{"type": PartRefusal, "refusal": part.Refusal})
 			default:

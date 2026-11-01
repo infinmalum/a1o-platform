@@ -26,9 +26,10 @@ const (
 
 // Content part types. input_text/output_text/refusal and summary_text are
 // spec names; reasoning_text carries raw visible reasoning inside a
-// reasoning item's content.
+// reasoning item's content, and input_image rides on user messages.
 const (
 	PartInputText     = "input_text"
+	PartInputImage    = "input_image"
 	PartOutputText    = "output_text"
 	PartRefusal       = "refusal"
 	PartSummaryText   = "summary_text"
@@ -41,6 +42,9 @@ type ContentPart struct {
 	Text string `json:"text,omitempty"`
 	// Refusal holds the refusal text for type "refusal" parts.
 	Refusal string `json:"refusal,omitempty"`
+	// ImageURL carries the data or remote URL for input_image parts; the
+	// bridges turn data URLs into inline provider payloads.
+	ImageURL string `json:"image_url,omitempty"`
 	// Annotations ride on output_text parts (citations) and round-trip to
 	// providers that understand them.
 	Annotations []map[string]any `json:"annotations,omitempty"`

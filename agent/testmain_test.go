@@ -1,4 +1,4 @@
-package chat
+package agent
 
 import (
 	"crypto/rand"
@@ -11,7 +11,7 @@ import (
 )
 
 // openChatTestDB opens an isolated in-memory SQLite database with the chat
-// runtime tables.
+// session tables and the agent runtime tables.
 func openChatTestDB() (*gorm.DB, error) {
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
@@ -27,7 +27,8 @@ func openChatTestDB() (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.ChatSession{}, &model.ChatMessage{}, &model.ChatFile{},
-		&model.ChatSkill{}, &model.ChatMCPServer{}, &model.Token{}, &model.User{}); err != nil {
+		&model.ChatSkill{}, &model.ChatMCPServer{}, &model.Token{}, &model.User{},
+		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{}); err != nil {
 		return nil, err
 	}
 	return db, nil

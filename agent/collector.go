@@ -271,6 +271,7 @@ func parseItem(raw json.RawMessage) (Item, error) {
 				Type        string           `json:"type"`
 				Text        string           `json:"text"`
 				Refusal     string           `json:"refusal"`
+				ImageURL    string           `json:"image_url"`
 				Annotations []map[string]any `json:"annotations"`
 			} `json:"content"`
 		}
@@ -280,9 +281,10 @@ func parseItem(raw json.RawMessage) (Item, error) {
 		item.ID, item.Status, item.Role = wire.ID, wire.Status, wire.Role
 		for _, part := range wire.Content {
 			switch part.Type {
-			case PartOutputText, PartRefusal:
+			case PartOutputText, PartRefusal, PartInputImage:
 				item.Content = append(item.Content, ContentPart{
-					Type: part.Type, Text: part.Text, Refusal: part.Refusal, Annotations: part.Annotations,
+					Type: part.Type, Text: part.Text, Refusal: part.Refusal,
+					ImageURL: part.ImageURL, Annotations: part.Annotations,
 				})
 			default:
 				return item, fmt.Errorf("message content part %q cannot be represented", part.Type)

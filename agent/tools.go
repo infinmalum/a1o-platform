@@ -1,4 +1,4 @@
-package chat
+package agent
 
 import (
 	"context"
@@ -8,14 +8,6 @@ import (
 
 	"github.com/infinmalum/a1o-platform/model"
 )
-
-// Tool is one callable tool advertised to the model in OpenAI function
-// format.
-type Tool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-}
 
 // toolRequest is a model-initiated invocation with raw JSON arguments.
 type toolRequest struct {
@@ -98,7 +90,7 @@ func sandboxToolDef(languages []string) Tool {
 }
 
 // runSandbox parses the model's arguments and executes the code.
-func (r *Runtime) runSandbox(ctx context.Context, req toolRequest) toolResult {
+func (e *Engine) runSandbox(ctx context.Context, req toolRequest) toolResult {
 	var args struct {
 		Language string `json:"language"`
 		Code     string `json:"code"`
@@ -111,7 +103,7 @@ func (r *Runtime) runSandbox(ctx context.Context, req toolRequest) toolResult {
 	}
 	ctx, cancel := sandboxContext(ctx)
 	defer cancel()
-	output, err := r.Sandbox.Execute(ctx, args.Language, args.Code)
+	output, err := e.Sandbox.Execute(ctx, args.Language, args.Code)
 	content := output
 	if err != nil {
 		if content != "" {

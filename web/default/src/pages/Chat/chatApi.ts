@@ -68,18 +68,26 @@ export interface ChatBootstrap {
   max_text_file_bytes: number;
 }
 
+// RunEvent is one versioned agent run event streamed during a turn; the
+// payload fields depend on the event type (agent-runtime-contract.md §2).
 export interface ChatEvent {
+  run_id?: number;
+  sequence?: number;
   type: string;
-  message_id?: number;
-  delta?: string;
-  tool_call_id?: string;
-  name?: string;
-  arguments?: string;
-  content?: string;
-  is_error?: boolean;
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  error?: string;
+  invocation_id?: number;
+  payload?: {
+    session_id?: number;
+    message_id?: number;
+    delta?: string;
+    tool_call_id?: string;
+    name?: string;
+    arguments?: string;
+    content?: string;
+    is_error?: boolean;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    error?: string;
+  };
 }
 
 interface ApiResponse<T> {

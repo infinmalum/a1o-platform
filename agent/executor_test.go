@@ -43,6 +43,8 @@ func setupExecutorDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{},
 		&model.UpstreamAccount{}, &model.UpstreamAccountCooldown{}, &model.Log{},
+		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatFile{},
+		&model.ChatSkill{}, &model.ChatMCPServer{},
 		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{}); err != nil {
 		t.Fatal(err)
 	}

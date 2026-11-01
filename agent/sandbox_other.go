@@ -1,6 +1,6 @@
 //go:build !linux
 
-package chat
+package agent
 
 import (
 	"os"

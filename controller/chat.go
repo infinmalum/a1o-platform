@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/a1o-platform/chat"
+	"github.com/infinmalum/a1o-platform/agent"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/model"
@@ -191,7 +191,8 @@ func GetChatSessionMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": messages})
 }
 
-// RunChatTurn persists the user message, then streams the turn as SSE.
+// RunChatTurn persists the user message, records the run, then streams the
+// turn as versioned agent run events over SSE.
 func RunChatTurn(c *gin.Context) {
 	userId := c.GetInt(ctxkey.Id)
 	id, err := strconv.Atoi(c.Param("id"))
@@ -270,6 +271,12 @@ func RunChatTurn(c *gin.Context) {
 		chatError(c, err)
 		return
 	}
+	run := &model.AgentRun{UserId: userId, SessionId: session.Id, Kind: "chat",
+		Status: model.RunStatusQueued, Model: session.Model}
+	if err := model.CreateAgentRun(run); err != nil {
+		chatError(c, fmt.Errorf("记录运行失败: %w", err))
+		return
+	}
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -284,22 +291,23 @@ func RunChatTurn(c *gin.Context) {
 
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
-	emit := func(event chat.Event) error {
-		if _, err := c.Writer.Write(chat.EncodeEvent(event)); err != nil {
+	emit := func(event agent.EventEnvelope) error {
+		if _, err := c.Writer.Write(agent.EncodeEvent(event)); err != nil {
 			cancel()
 			return err
 		}
 		flusher.Flush()
 		return nil
 	}
-	turn := chat.TurnRequest{
+	turn := agent.ChatTurnRequest{
+		Run:           run,
 		Session:       session,
 		History:       history,
 		Skills:        skills,
-		Leg:           chat.NewLifecycleLeg(session.Model, userId, token.Id, token.Name),
+		Executor:      &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
 		ContextBudget: session.ContextBudget,
 	}
-	_ = chat.Default().Run(ctx, emit, turn)
+	_ = agent.Default().RunChat(ctx, emit, turn)
 }
 
 // truncateChatTitle derives a session title from the first user message.
@@ -405,9 +413,9 @@ func DeleteChatFile(c *gin.Context) {
 
 // GetChatBootstrap exposes runtime limits for the chat UI.
 func GetChatBootstrap(c *gin.Context) {
-	runtime := chat.Default()
+	engine := agent.Default()
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"sandbox_available":   runtime.Sandbox.Available(),
+		"sandbox_available":   engine.Sandbox.Available(),
 		"sandbox_enabled":     config.ChatSandboxEnabled,
 		"budget":              config.ChatContextBudgetTokens,
 		"max_tool_iterations": config.ChatMaxToolIterations,

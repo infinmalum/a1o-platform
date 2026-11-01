@@ -62,11 +62,15 @@ type ChatMessage struct {
 	Content   string `json:"content" gorm:"type:text"`
 	// Parts holds JSON attachments for user messages as []ChatMessagePart;
 	// payloads resolve from ChatFile at build time.
-	Parts       *string `json:"parts" gorm:"type:text"`
-	ToolCalls   *string `json:"tool_calls" gorm:"type:text"`
-	ToolCallId  string  `json:"tool_call_id" gorm:"type:varchar(255)"`
-	Name        string  `json:"name" gorm:"type:varchar(255)"`
-	Tokens      int     `json:"tokens"`
+	Parts      *string `json:"parts" gorm:"type:text"`
+	ToolCalls  *string `json:"tool_calls" gorm:"type:text"`
+	ToolCallId string  `json:"tool_call_id" gorm:"type:varchar(255)"`
+	Name       string  `json:"name" gorm:"type:varchar(255)"`
+	Tokens     int     `json:"tokens"`
+	// Reasoning holds the assistant turn's opaque native state as JSON
+	// (visible reasoning, vendor signature, encrypted content, per-call
+	// thought signatures) so the next turn replays it to the bound channel.
+	Reasoning   *string `json:"reasoning" gorm:"type:text"`
 	CreatedTime int64   `json:"created_time" gorm:"bigint"`
 }
 
@@ -272,7 +276,7 @@ func InsertChatMessage(message *ChatMessage) error {
 
 // UpdateChatMessage rewrites the mutable fields of one message row.
 func UpdateChatMessage(message *ChatMessage) error {
-	return DB.Model(message).Select("content", "tool_calls", "tokens").Updates(message).Error
+	return DB.Model(message).Select("content", "tool_calls", "tokens", "reasoning").Updates(message).Error
 }
 
 func GetSessionMessages(sessionId int) ([]*ChatMessage, error) {
