@@ -45,7 +45,7 @@ Studio 采用单独、有版本的 Run 事件信封：`run_id / event_id / seque
 | Workspace / Artifact 服务 | 按任务隔离目录和资源；按需代码环境；持久产物与引用计数 | 浏览智能体就创建沙箱；释放环境时连带删历史素材 |
 | EventStore / Projections | 追加事件、提交检查点、消息/任务视图、重连游标 | 直接把供应商调试数据或凭据发给浏览器 |
 
-Chat 和 Work 使用同一 Engine。Chat 默认不启用代码工具，兼容旧接口的断开即取消；Work 启动后不受观察连接断开影响。新运行模式及断开策略启动时冻结，不能执行途中暗中改为 Work。HTTP context 只控制请求与订阅，Work worker 使用受 Run 控制的 context。
+Chat 和 Work 使用同一 Engine。Chat 默认不启用代码工具，断开即取消；Work 启动后不受观察连接断开影响。新运行模式及断开策略启动时冻结，不能执行途中暗中改为 Work。HTTP context 只控制请求与订阅，Work worker 使用受 Run 控制的 context。
 
 智能体定义回答“以什么规则与能力执行”，运行记录回答“这一次做什么”。广场只含内置与我的，不增加销售。普通生成、翻译、图像仍可直接调用应用服务，不要求经 Agent 推理，也不自动申请代码环境。保留将这些服务包装为 Agent 工具的边界。
 
@@ -75,23 +75,22 @@ Worker 领取需事务比较状态与租约；每次领取产生递增 fencing t
 
 | 决策 | 现有载体与调用方 | 新位置及替换条件 |
 | --- | --- | --- |
-| REPLACE | `chat/runtime.go` Run/runLoop，`controller/chat.go` RunChatTurn | 新 Engine/Host 实际接入旧 Chat 和新 Work；文本流、工具、预算、取消、持久化、结算等价后才移除旧私有循环 |
-| REPLACE | `chat/leg.go` 的 Chat 固定协议和文本累积 | ModelExecutor 直接承载标准 Item 和原生扩展，经 lifecycle；原 Leg 测试适配新边界，不删除保留行为覆盖 |
+| REPLACE | `chat/runtime.go` Run/runLoop，`controller/chat.go` RunChatTurn，`chat/leg.go` 的固定协议腿 | 新 Engine/ModelExecutor 直接接通 `/api/chat/.../run`：文本流、工具、预算、取消、持久化、结算对齐保留行为测试覆盖与前端联调后，切换与删除旧私有循环在同一阶段完成 |
+| REPLACE | 八类旧 SSE 事件与前端旧事件消费 | 不建兼容投影、不设运行时双引擎开关（项目无外部旧客户端，对外 `/v1` 契约不变）：前端 chatApi 同阶段迁移到版本化 Run 事件接口；会话/消息/文件/Skill/MCP 管理 CRUD 是数据接口，原样保留并按 Studio 信息架构重排 |
 | MOVE + KEEP | `chat/context.go`、`tools.go`、MCPManager、Skill 过滤 | 抽取共享上下文/工具能力；保留摘要计费、工具并集限制、全局/个人可见性、虚拟名称和个人仅 HTTP 的约束 |
 | KEEP / 适配 | `chat/sandbox*.go` 的 Python/Node、超时和限制 | 作为可选执行后端保留；不把宿主 UID 子进程宣传为强隔离。扩大公众代码开放前验证独立执行环境；未具备时不静默回退宿主执行 |
 | KEEP + 增量扩展 | ChatSession、ChatMessage、ChatFile、Skill/MCP 表；`model/main.go` 注册 | 保留主键/owner/历史/附件/tool-call 关联；新增标准 Item 与运行关联，不伪造旧数据中的推理块或执行状态 |
-| KEEP / 投影 | `/api/chat` 路由、八类旧 SSE、前端 chatApi/消息列表 | 旧路由经兼容投影保持契约，新 Studio 使用版本化事件与任务接口；旧客户端不能展示的内容仍保存在标准记录中 |
 | KEEP | relay lifecycle/native/bridge、渠道、订阅账号、余额、日志、全部 `/v1` 与 `/v1beta` 入口 | 复用并补能力约束与 Invocation 关联；不让运行内核变成第二个无计费网关；管理员原生代理不作为普通 Agent 的模型入口 |
 | KEEP + 新增 | 既有上传与图像/翻译；Studio Chat/Work/智能体广场 | 新入口可用后迁移导航；素材引用共享时删除会话不得误删他处仍在使用的文件 |
 | DELETE | 本轮无公共能力、数据或测试删除 | 仅在替换能力连接、迁移及回归通过，确认无调用者后删除旧私有实现 |
 
-新增字段/表仅增量迁移。旧消息经可重复运行的导入或按需读取生成标准表示，并保存来源 ID/版本及去重约束；来源记录不删除。一个会话不能让新旧引擎同时写入。回退到旧引擎仅限旧表示可完整承载的会话；新原生内容不可无损投影时继续使用新引擎或只读，不静默截断历史。应用回滚保留新增数据，禁止通过删表回滚。受支持数据库需在副本验证迁移、备份恢复与回退。
+新增字段/表仅增量迁移。旧消息经可重复运行的导入或按需读取生成标准表示，并保存来源 ID/版本及去重约束；来源记录不删除。切换后单一引擎写入会话，不存在新旧引擎并行写入或回退旧引擎的路径；升级前产生的旧消息按需生成标准表示，不静默截断历史。应用回滚保留新增数据，禁止通过删表回滚。受支持数据库需在副本验证迁移、备份恢复与回退。
 
 ## 6. 实施顺序与门槛
 
 1. **R0 固定契约与基线**：实现者固定仓库提交；补查实际调用方和 lifecycle 计费事务边界；保存现有测试基线。固定 OpenResponses 规范版本，列明支持 Item/事件/扩展；定义 provider 状态绑定、错误及幂等策略。此阶段不删旧循环、不迁移生产数据库。
 2. **R1 模型与存储纵向闭环**：实现标准 Item、Invocation、事件存储和 ModelExecutor；分别打通 OpenResponses、OpenAI Responses、Messages、Gemini，并保留 Chat 路径。先验证一轮流式及工具续接的持久回读，再做 UI。不得用一轮收齐冒充实时流。生产状态绑定不清时不开放跨渠道自动回退。
-3. **R2 新 Engine 接通现有 Chat**：挂接真实旧路由、MCP、Skill、上下文/附件/摘要、Python/Node；加入版本开关与旧事件投影。每次真实请求只选一个引擎，不双跑收费调用或工具。通过等价验证再切默认。
+3. **R2 新 Engine 接通现有 Chat（直接切换）**：挂接真实旧路由、MCP、Skill、上下文/附件/摘要、Python/Node；前端 chatApi 同阶段迁移到版本化 Run 事件接口，不建旧事件投影、不设运行时双引擎开关（项目无外部旧客户端，对外 `/v1` 契约不变）。开发期新旧包可并存于工作树，但每一次真实请求只走一个引擎，不双跑收费调用或工具；文本流、工具、预算、取消、持久化、结算对齐保留行为覆盖后，同一阶段删除旧 runLoop 与旧事件发射。
 4. **R3 Work 持久执行**：接通任务 API 与最小任务列表/进度/产物界面、队列、跨实例租约、追加输入、离页继续、查询重连、显式取消、重启核对；验证多用户/任务隔离。首版已有这些真实入口才可称为 Agent 运行时，不能以新包或接口空壳宣称完成。
 5. **R4 配置复用与平台工作台**：接入不可变 AgentVersion、内置与我的广场，完善工作区/素材与图像/翻译工具；专用翻译/图像界面可按 Studio 原方案独立并行，不因运行时重构无限延后。
 
@@ -99,7 +98,7 @@ Worker 领取需事务比较状态与租约；每次领取产生递增 fencing t
 
 ## 7. 可观察验收与未决条件
 
-- 保留现有 chat runtime/context/leg/MCP/integration 的行为覆盖；对旧客户端验证事件顺序、部分回复、工具配对、附件与摘要。模板符号按原文传递。
+- 保留现有 chat runtime/context/leg/MCP/integration 的行为覆盖（测试适配新边界，不删除保留行为的断言）；对新 Run 事件接口验证事件顺序、部分回复、工具配对、附件与摘要。模板符号按原文传递。
 - 假上游集成覆盖 Responses 推理与函数/服务端工具 Item、Claude thinking/signature/tool_result、Gemini thoughtSignature/多模态、OpenResponses 独立协议身份；持久化后下一轮回送相关原生块。明确列出未支持类型，不用未知字段透传代替执行支持。
 - 断流、超时、畸形/重复事件、取消、余额不足、DB 写入失败均不伪造成功；一次摘要/模型调用计费一次，费用归属到 owner/run/invocation，既有账目不改算。
 - 两个 worker 竞争、租约过期、旧 worker 回写、重启及追加输入重复提交不产生双写。模型受理、工具外部生效、结算提交与事件提交各边界故障注入；未知副作用转待核对。
