@@ -78,7 +78,6 @@ func main() {
 
 	// Initialize options
 	model.InitOptionMap()
-	logger.SysLog(fmt.Sprintf("using theme %s", config.Theme))
 	if common.RedisEnabled {
 		config.MemoryCacheEnabled = true
 	}

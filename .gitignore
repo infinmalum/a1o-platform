@@ -7,7 +7,7 @@ build
 *.db-journal
 logs
 data
-/web/node_modules
+web/*/node_modules
 cmd.md
 .env
 /a1o-platform

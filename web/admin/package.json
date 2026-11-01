@@ -1,0 +1,50 @@
+{
+  "name": "a1o-platform-admin",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.20.0",
+    "dompurify": "^3.4.17",
+    "i18next": "^26.4.2",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "marked": "^18.0.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.15",
+    "react-router-dom": "^7.18.4",
+    "react-toastify": "^11.1.0",
+    "react-turnstile": "^1.1.5",
+    "recharts": "^3.10.1",
+    "semantic-ui-css": "^2.5.0",
+    "semantic-ui-react": "^2.1.5"
+  },
+  "scripts": {
+    "start": "vite --host",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "jsxSingleQuote": true
+  }
+}

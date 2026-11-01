@@ -46,14 +46,6 @@ func UpdateOption(c *gin.Context) {
 		return
 	}
 	switch option.Key {
-	case "Theme":
-		if !config.ValidThemes[option.Value] {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无效的主题",
-			})
-			return
-		}
 	case "UpstreamRoutingPolicy":
 		if !config.ValidUpstreamRoutingPolicies[option.Value] {
 			c.JSON(http.StatusOK, gin.H{

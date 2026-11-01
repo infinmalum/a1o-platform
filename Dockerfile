@@ -4,9 +4,11 @@ WORKDIR /web
 COPY ./VERSION .
 COPY ./web .
 
-RUN npm ci --legacy-peer-deps --prefix /web/default
+RUN npm ci --legacy-peer-deps --prefix /web/admin
+RUN npm ci --legacy-peer-deps --prefix /web/studio
 
-RUN REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/default
+RUN REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/admin
+RUN REACT_APP_VERSION=$(cat ./VERSION) npm run build --prefix /web/studio
 
 FROM golang:1.27.1-alpine AS builder2
 

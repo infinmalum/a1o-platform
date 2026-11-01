@@ -37,7 +37,10 @@ jobs:
         env:
           CI: ""
         run: |
-          cd web/default
+          cd web/admin
+          npm ci --legacy-peer-deps
+          REACT_APP_VERSION=$(git describe --tags) npm run build
+          cd ../web/studio
           npm ci --legacy-peer-deps
           REACT_APP_VERSION=$(git describe --tags) npm run build
           cd ../..

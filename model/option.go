@@ -72,7 +72,6 @@ func InitOptionMap() {
 	config.OptionMap["ChatLink"] = config.ChatLink
 	config.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(config.QuotaPerUnit, 'f', -1, 64)
 	config.OptionMap["RetryTimes"] = strconv.Itoa(config.RetryTimes)
-	config.OptionMap["Theme"] = config.Theme
 	config.OptionMap["UpstreamRoutingPolicy"] = config.UpstreamRoutingPolicy
 	config.OptionMap["ChatSandboxEnabled"] = strconv.FormatBool(config.ChatSandboxEnabled)
 	config.OptionMap["ChatSandboxNetworkEnabled"] = strconv.FormatBool(config.ChatSandboxNetworkEnabled)
@@ -170,7 +169,6 @@ var stringOptionBindings = map[string]*string{
 	"SMTPToken":                   &config.SMTPToken,
 	"ServerAddress":               &config.ServerAddress,
 	"SystemName":                  &config.SystemName,
-	"Theme":                       &config.Theme,
 	"TopUpLink":                   &config.TopUpLink,
 	"TurnstileSecretKey":          &config.TurnstileSecretKey,
 	"TurnstileSiteKey":            &config.TurnstileSiteKey,

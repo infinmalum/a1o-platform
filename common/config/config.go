@@ -161,11 +161,6 @@ var UpstreamMaxInflight = env.Int("UPSTREAM_MAX_INFLIGHT", 100)
 // account capacity before failing over to another channel. 0 fails fast.
 var UpstreamLeaseWaitSeconds = env.Int("UPSTREAM_LEASE_WAIT_SECONDS", 3)
 
-var Theme = env.String("THEME", "default")
-var ValidThemes = map[string]bool{
-	"default": true,
-}
-
 // All duration's unit is seconds
 // Shouldn't larger then RateLimitKeyExpirationDuration
 var (

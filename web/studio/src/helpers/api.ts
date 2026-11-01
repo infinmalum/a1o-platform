@@ -1,0 +1,15 @@
+import axios from 'axios';
+
+import { showError } from './utils';
+
+export const API = axios.create({
+  baseURL: import.meta.env.REACT_APP_SERVER ? import.meta.env.REACT_APP_SERVER : '',
+});
+
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    showError(error);
+    return Promise.reject(error);
+  }
+);

@@ -27,11 +27,17 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/default/package-lock.json
+          cache-dependency-path: |
+            web/admin/package-lock.json
+            web/studio/package-lock.json
       - run: npm ci --legacy-peer-deps
-        working-directory: web/default
+        working-directory: web/admin
       - run: npm run build
-        working-directory: web/default
+        working-directory: web/admin
+      - run: npm ci --legacy-peer-deps
+        working-directory: web/studio
+      - run: npm run build
+        working-directory: web/studio
 
   unit_tests:
     name: "Unit tests"
