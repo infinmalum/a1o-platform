@@ -1,61 +1,41 @@
 name: CI
 
-# This setup assumes that you run the unit tests in the same workflow that
-# will also print the coverage report as comment to the pull request.
-# Therefore, you need to trigger this workflow when a pull request is (re)opened or
-# when new code is pushed to the branch of the pull request. In addition, you also
-# need to trigger this workflow when new code is pushed to the main branch.
-#
-# We do not want to trigger the workflow for pushes to *any* branch because this
-# would trigger our jobs twice on pull requests (once from "push" event and once
-# from "pull_request->synchronize")
 on:
   push:
-    branches:
-      - 'main'
+    branches: [main]
   pull_request:
-    branches:
-      - 'main'
+    branches: [main]
 
 jobs:
   web_build:
-    name: "Build web frontend"
+    name: Build frontend (${{ matrix.app }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [admin, studio]
+    defaults:
+      run:
+        working-directory: web/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            web/admin/package-lock.json
-            web/studio/package-lock.json
+          cache-dependency-path: web/${{ matrix.app }}/package-lock.json
       - run: npm ci --legacy-peer-deps
-        working-directory: web/admin
       - run: npm run build
-        working-directory: web/admin
-      - run: npm ci --legacy-peer-deps
-        working-directory: web/studio
-      - run: npm run build
-        working-directory: web/studio
 
   unit_tests:
-    name: "Unit tests"
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
         with:
           go-version: '1.27.1'
-
-      # When you execute your unit tests, make sure to use the "-coverprofile" flag to write a
-      # coverage profile to a file. You will need the name of the file (e.g. "coverage.txt")
-      # in the next step as well as the next job.
-      - name: Test
-        run: go test -cover ./...
+      - run: go test -mod=readonly -cover ./...
 
   commit_lint:
     runs-on: ubuntu-latest

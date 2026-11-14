@@ -25,7 +25,7 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 - 🔌 **4 つのネイティブ API 形式** — OpenAI Chat Completions、OpenAI Responses（照会・キャンセル可能なバックグラウンド実行を含む）、Anthropic Messages、Gemini `generateContent`。同じトークンで embeddings・画像・音声・モデレーションも利用可能。
 - 🌉 **プロトコル間ブリッジ** — クライアントと上流の形式が異なっても、リクエストとレスポンスを相互変換します（ストリーミング対応）。OpenAI クライアントは Anthropic・Gemini・Responses の上流へ、Anthropic クライアントは OpenAI chat・Gemini の上流へ接続できます。
 - 🔀 **スマートルーティング** — 15 種類のチャネル種別と 9 つのプロバイダーアダプター、チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
-- 🤖 **内蔵チャットランタイム** — サーバー側のエージェントツールループ。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
+- 🤖 **内蔵チャットランタイム** — Chat と Work で [Lapua](https://github.com/infinmalum/Lapua) のツールループを共有。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
 - 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
 - 🖥️ **Web コンソール** — ダッシュボード、チャネル、アップストリームアカウント、ユーザー、トークン、ログ、設定を一画面で管理。内蔵チャットページと画像・デシジョンプレイグラウンド付き。
 - 💾 **柔軟なストレージ** — 初期状態で SQLite、共有ストレージに MySQL / PostgreSQL、キャッシュと同期には Redis を利用可能。master/slave のマルチノード構成にも対応。
@@ -44,22 +44,24 @@ docker build -t a1o-platform:local .
 docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
 ```
 
-<http://localhost:3000> を開いてください。新しいデータベースでは、起動ログに一度だけ出力されるランダムなパスワードで `root` アカウントが作成されます（`INITIAL_ROOT_PASSWORD` で事前指定も可能です）。**初回ログイン後、直ちにパスワードを変更してください。**マウントしたディレクトリには標準の SQLite データベースが保存されるため、コンテナを更新しても保持してください。外部公開する場合は HTTPS と固定の `SESSION_SECRET` も設定してください。
+初回起動後に <http://localhost:3000/admin/setup> を開き、root アカウントを作成します。無人セットアップでは、コンテナの初回起動前に `INITIAL_ROOT_PASSWORD` を渡します。初期化後は <http://localhost:3000/> で Studio、<http://localhost:3000/admin/> で管理コンソールを開けます。コンテナを交換するときはデータボリュームを維持してください。公開環境では HTTPS と固定の `SESSION_SECRET` を設定します。
 
 同梱の `docker-compose.yml` はイメージをローカルでビルドし、`a1o-platform:local` タグを付けます。データベース名とデータの保存先は `a1o-platform` 系の名前に統一されています。以前の `one-api` 系の名前を使う compose ファイルで運用している場合は、切り替え前にデータベースと `data/` ディレクトリを移行してください。
 
 ## ソースからビルドする
 
-Dockerfile は Node.js 24 と Go 1.27.1 を使用します。対応する環境でフロントエンドを先にビルドし、`web/build` を埋め込む Go バイナリを作成します。
+Node.js 24、Go 1.27.1、および CGO SQLite ドライバーに必要な C コンパイラを用意し、リポジトリのルートから実行します。
 
 ```sh
-npm ci --legacy-peer-deps --prefix web/default
-npm run build --prefix web/default
+npm ci --legacy-peer-deps --prefix web/studio
+npm run build --prefix web/studio
+npm ci --legacy-peer-deps --prefix web/admin
+npm run build --prefix web/admin
 go build -o a1o-platform .
-/./a1o-platform --port 3000
+./a1o-platform --port 3000
 ```
 
-ダウンロードした npm と Go のモジュールは、それぞれ標準の永続キャッシュを使用します。フロントエンドの依存関係は `web/default/node_modules` に入り、成果物は `web/build/default` に出力されます。
+Vite は `web/build/studio` と `web/build/admin` に成果物を出力し、Go バイナリは両方を埋め込みます。Lapua は Chat と Work のモデルとツールの実行ループを担当します。A1O は許可済みのツールを提供し、モデルのルーティング、課金、永続化、スケジューリングを管理します。
 
 ## 設定と使い方
 
@@ -103,12 +105,11 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## ドキュメント
 
-- [フロントエンドテーマの説明](web/README.md)
+- [フロントエンド開発](web/README.md)
 
 ## 開発
 
-- フロントエンド編集中は `npm run typecheck --prefix web/default` を実行できます。
-- 埋め込みアセットを変更する前に、`npm run build --prefix web/default` を実行してください。
+- 編集対象に応じて `npm run typecheck --prefix web/studio` または `npm run typecheck --prefix web/admin` を実行します。最新のフロントエンドを埋め込むには、Go バイナリをビルドする前に両方のアプリをビルドします。
 - バックエンドの変更には `go test ./...` を使用します。
 
 不具合や変更は[このリポジトリの Issue](https://github.com/infinmalum/a1o-platform/issues) で報告してください。

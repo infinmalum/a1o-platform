@@ -15,7 +15,7 @@
 
 ---
 
-A1O Platform is an independently maintained AI gateway, originally derived from [One API](https://github.com/songquanpeng/one-api). It fronts many model providers through one deployment that natively speaks the OpenAI (Chat Completions and Responses), Anthropic, and Gemini API formats, and ships a web console for channels, users, tokens, quotas, and usage logs. One API was created by JustSong and its contributors; A1O Platform builds on their work.
+A1O Platform is an independently maintained AI gateway, originally derived from [One API](https://github.com/songquanpeng/one-api). It fronts many model providers through one deployment that natively speaks the OpenAI (Chat Completions and Responses), Anthropic, and Gemini API formats, and ships Studio for end users and an administration console for channels, users, tokens, quotas, and usage logs. One API was created by JustSong and its contributors; A1O Platform builds on their work.
 
 > [!NOTE]
 > This repository is maintained independently of One API. One API's releases, Docker images, demo sites, and issue trackers are not releases or support channels for A1O Platform.
@@ -25,9 +25,9 @@ A1O Platform is an independently maintained AI gateway, originally derived from 
 - 🔌 **Four native API formats** — OpenAI Chat Completions, OpenAI Responses (including background runs you can poll or cancel), Anthropic Messages, and Gemini `generateContent`, plus embeddings, images, audio, and moderations endpoints under the same token.
 - 🌉 **Cross-protocol bridging** — requests and responses are converted between client and upstream formats, streaming included: OpenAI clients reach Anthropic, Gemini, and Responses upstreams, and Anthropic clients reach OpenAI-chat and Gemini upstreams.
 - 🔀 **Smart routing** — 15 channel kinds behind 9 provider adapters, channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
-- 🤖 **Built-in chat runtime** — a server-side agent tool loop with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
+- 🤖 **Built-in chat runtime** — a [Lapua](https://github.com/infinmalum/Lapua) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
 - 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
-- 🖥️ **Web console** — dashboard, channels, upstream accounts, users, tokens, logs, and settings in one place, with a built-in chat page and image/decision playgrounds.
+- 🖥️ **Web apps** — Studio at `/` includes Chat, background Work tasks, an agent library, translation, and image generation. The console at `/admin/` manages channels, upstream accounts, users, tokens, logs, and settings.
 - 💾 **Flexible storage** — SQLite out of the box; MySQL or PostgreSQL for shared storage; Redis for caching and synchronization; master/slave multi-node deployments.
 - 🛠️ **Modern stack** — a Go backend with TypeScript and Vite frontends; every frontend build runs its type check first.
 
@@ -44,22 +44,24 @@ docker build -t a1o-platform:local .
 docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
 ```
 
-Open <http://localhost:3000>. On a new database, the application creates the `root` account with a random password printed once in the startup log; set `INITIAL_ROOT_PASSWORD` to preseed it instead. **Change that password immediately** in the console. The volume stores the default SQLite database; keep it when replacing the container. For an exposed deployment, configure HTTPS and a persistent `SESSION_SECRET` as well.
+Open <http://localhost:3000/admin/setup> on first launch to create the root account. For unattended setup, pass `INITIAL_ROOT_PASSWORD` to the container before its first start. Once initialized, open Studio at <http://localhost:3000/> or the admin console at <http://localhost:3000/admin/>. Keep the data volume when replacing the container. For a public deployment, configure HTTPS and a persistent `SESSION_SECRET`.
 
 The checked-in `docker-compose.yml` builds the image locally, tags it `a1o-platform:local`, and stores data under `a1o-platform`-named database and volume paths. If you deployed an earlier compose file that used the inherited `one-api` names, migrate your database and `data/` directory before switching.
 
 ## Build from source
 
-The Dockerfile uses Node.js 24 and Go 1.27.1. Install compatible versions, then build the frontend before compiling the Go binary, which embeds `web/build`:
+Use Node.js 24, Go 1.27.1, and a C compiler for the CGO SQLite driver. Run these commands from the repository root.
 
 ```sh
-npm ci --legacy-peer-deps --prefix web/default
-npm run build --prefix web/default
+npm ci --legacy-peer-deps --prefix web/studio
+npm run build --prefix web/studio
+npm ci --legacy-peer-deps --prefix web/admin
+npm run build --prefix web/admin
 go build -o a1o-platform .
-/./a1o-platform --port 3000
+./a1o-platform --port 3000
 ```
 
-Downloaded npm and Go modules use their normal persistent caches. The frontend dependencies also live in `web/default/node_modules`; compiled assets go to `web/build/default`.
+Vite writes the two apps to `web/build/studio` and `web/build/admin`. The Go binary embeds both builds. Lapua drives the model and tool loop in both Chat and Work. A1O supplies the permitted tools and owns model routing, billing, persistence, and scheduling.
 
 ## Configure and use
 
@@ -103,12 +105,11 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## Documentation
 
-- [Frontend theme notes](web/README.md)
+- [Frontend development](web/README.md)
 
 ## Development
 
-- Run `npm run typecheck --prefix web/default` while editing the frontend.
-- Run `npm run build --prefix web/default` before changing embedded assets.
+- Run `npm run typecheck --prefix web/studio` or `npm run typecheck --prefix web/admin` for the app you are editing. Rebuild both apps before compiling a binary with the latest frontend assets.
 - Run `go test ./...` for backend changes.
 
 Report bugs and changes in [this repository's issues](https://github.com/infinmalum/a1o-platform/issues).

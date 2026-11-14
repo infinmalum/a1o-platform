@@ -202,52 +202,37 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	}()
 
 	totalPrompt, totalCompletion := int64(0), int64(0)
-	for iteration := 0; ; iteration++ {
-		if iteration > maxIterations {
-			return e.fail(turn, emit, fmt.Errorf("已达工具调用轮数上限（%d）", maxIterations))
-		}
+	err = lapuaLoop(ctx, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
 		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools)
-		pendingCalls = pending
+		pendingCalls = append([]Item(nil), pending...)
 		totalPrompt += result.Usage.Input
 		totalCompletion += result.Usage.Output
-		if ctx.Err() != nil {
-			return ctx.Err()
+		return result, pending, legErr
+	}, func(result InvokeResult, call Item, callResult toolResult) error {
+		emitToolResult(e, turn.Run, result.InvocationID, call, callResult, emit)
+		row := &model.ChatMessage{
+			SessionId:  turn.Session.Id,
+			Role:       model.ChatRoleTool,
+			Content:    callResult.Content,
+			ToolCallId: call.CallID,
+			Name:       call.Name,
 		}
-		if legErr != nil {
-			return e.fail(turn, emit, legErr)
+		if err := model.InsertChatMessage(row); err != nil {
+			return fmt.Errorf("保存工具结果失败: %w", err)
 		}
-		calls := resultToolCalls(result.Items)
-		if len(calls) == 0 || len(tools.defs) == 0 {
-			break
-		}
-		for _, call := range calls {
-			callResult := e.executeTool(ctx, tools, call)
-			_ = e.emitEvent(turn.Run, result.InvocationID, model.RunEventToolCalled,
-				map[string]any{"tool_call_id": call.CallID, "name": call.Name, "arguments": call.Arguments},
-				true, emit)
-			_ = e.emitEvent(turn.Run, result.InvocationID, model.RunEventToolResult,
-				map[string]any{"tool_call_id": call.CallID, "name": call.Name,
-					"content": callResult.Content, "is_error": callResult.IsError},
-				true, emit)
-			row := &model.ChatMessage{
-				SessionId:  turn.Session.Id,
-				Role:       model.ChatRoleTool,
-				Content:    callResult.Content,
-				ToolCallId: call.CallID,
-				Name:       call.Name,
-			}
-			if err := model.InsertChatMessage(row); err != nil {
-				return e.fail(turn, emit, fmt.Errorf("保存工具结果失败: %w", err))
-			}
-			for i, pendingCall := range pendingCalls {
-				if pendingCall.CallID == call.CallID {
-					pendingCalls = append(pendingCalls[:i], pendingCalls[i+1:]...)
-					break
-				}
-			}
-			items = append(items, call, Item{Type: ItemFunctionCallOutput,
-				CallID: call.CallID, Output: callResult.Content})
-		}
+		pendingCalls = pendingCalls[1:]
+		items = append(items, call, Item{Type: ItemFunctionCallOutput,
+			CallID: call.CallID, Output: callResult.Content})
+		return nil
+	})
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if isLapuaTurnLimit(err) {
+		err = fmt.Errorf("已达工具调用轮数上限（%d）", maxIterations)
+	}
+	if err != nil {
+		return e.fail(turn, emit, err)
 	}
 	if err := model.UpdateAgentRunStatus(turn.Run.Id, model.RunStatusCompleted, ""); err != nil {
 		logger.SysError("failed to mark run completed: " + err.Error())
@@ -322,13 +307,12 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 	return result, calls, legErr
 }
 
-// executeTool dispatches one tool call with its own timeout.
-func (e *Engine) executeTool(ctx context.Context, tools *toolSet, call Item) toolResult {
-	fn, ok := tools.exec[call.Name]
-	if !ok {
-		return toolResult{Content: fmt.Sprintf("未知工具 %q", call.Name), IsError: true}
-	}
-	return fn(ctx, toolRequest{Name: call.Name, Arguments: call.Arguments})
+func emitToolResult(e *Engine, run *model.AgentRun, invocationID int, call Item, result toolResult, emit Emitter) {
+	_ = e.emitEvent(run, invocationID, model.RunEventToolCalled,
+		map[string]any{"tool_call_id": call.CallID, "name": call.Name, "arguments": call.Arguments}, true, emit)
+	_ = e.emitEvent(run, invocationID, model.RunEventToolResult,
+		map[string]any{"tool_call_id": call.CallID, "name": call.Name,
+			"content": result.Content, "is_error": result.IsError}, true, emit)
 }
 
 // fail reports a turn failure; the client still receives run.completed.

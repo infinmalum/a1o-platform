@@ -25,9 +25,9 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 - 🔌 **四种原生 API 协议** —— OpenAI Chat Completions、OpenAI Responses（支持可查询、可取消的后台任务）、Anthropic Messages、Gemini `generateContent`，同一个令牌还能调用 embeddings、图像、音频和内容审核接口。
 - 🌉 **跨协议桥接** —— 请求与响应会在客户端协议和上游协议之间自动转换，流式同样支持：OpenAI 客户端可以打到 Anthropic、Gemini、Responses 上游，Anthropic 客户端可以打到 OpenAI chat 和 Gemini 上游。
 - 🔀 **智能路由** —— 15 种渠道类型、9 个服务商适配器，渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
-- 🤖 **内置 chat 运行时** —— 服务端 agent 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
+- 🤖 **内置 chat 运行时** —— Chat 和 Work 共用 [Lapua](https://github.com/infinmalum/Lapua) 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
 - 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
-- 🖥️ **管理控制台** —— 仪表盘、渠道、上游账号、用户、令牌、日志、设置一站管理，内置 chat 页面与图像/决策 Playground。
+- 🖥️ **双前端** —— `/` 的 Studio 提供聊天、后台任务、智能体广场、翻译和图像生成。`/admin/` 的控制台管理渠道、上游账号、用户、令牌、日志和设置。
 - 💾 **灵活存储** —— 开箱即用 SQLite；共享存储支持 MySQL / PostgreSQL；缓存与同步可配合 Redis；支持 master/slave 多节点部署。
 - 🛠️ **现代技术栈** —— Go 后端搭配 TypeScript + Vite 前端，每次前端构建都会先做类型检查。
 
@@ -44,22 +44,24 @@ docker build -t a1o-platform:local .
 docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
 ```
 
-打开 <http://localhost:3000>。数据库首次初始化时会创建 `root` 账号，密码为启动日志中打印一次的随机密码（也可通过 `INITIAL_ROOT_PASSWORD` 预先指定）。**首次登录后请立即修改密码。**挂载目录保存默认的 SQLite 数据库，更换容器时应保留该目录。对外提供服务时还应配置 HTTPS 和固定的 `SESSION_SECRET`。
+首次启动后打开 <http://localhost:3000/admin/setup> 创建 root 账号。无人值守部署时，可在首次启动前给容器传入 `INITIAL_ROOT_PASSWORD`。初始化后，从 <http://localhost:3000/> 打开 Studio，从 <http://localhost:3000/admin/> 打开管理控制台。更换容器时保留数据卷。对外提供服务时，配置 HTTPS 和固定的 `SESSION_SECRET`。
 
 仓库的 `docker-compose.yml` 会在本地构建本项目，镜像标记为 `a1o-platform:local`，数据库与数据目录均使用 `a1o-platform` 命名。如果你沿用了早期继承 `one-api` 命名的 compose 文件，切换前需要先迁移数据库和 `data/` 目录。
 
 ## 从源码构建
 
-Dockerfile 使用 Node.js 24 和 Go 1.27.1。安装兼容版本后，先构建前端，再编译嵌入 `web/build` 的 Go 程序：
+准备 Node.js 24、Go 1.27.1，以及 CGO SQLite 驱动所需的 C 编译器。在仓库根目录运行以下命令。
 
 ```sh
-npm ci --legacy-peer-deps --prefix web/default
-npm run build --prefix web/default
+npm ci --legacy-peer-deps --prefix web/studio
+npm run build --prefix web/studio
+npm ci --legacy-peer-deps --prefix web/admin
+npm run build --prefix web/admin
 go build -o a1o-platform .
-/./a1o-platform --port 3000
+./a1o-platform --port 3000
 ```
 
-下载的 npm 和 Go 模块使用各自默认的持久缓存。前端依赖安装在 `web/default/node_modules` 中，构建产物位于 `web/build/default`。
+Vite 将构建产物分别写入 `web/build/studio` 和 `web/build/admin`，Go 二进制会嵌入两个前端。Lapua 驱动 Chat 和 Work 的模型与工具循环。A1O 提供已获授权的工具，负责模型路由、计费、持久化和调度。
 
 ## 配置与使用
 
@@ -103,12 +105,11 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## 文档
 
-- [前端主题说明](web/README.md)
+- [前端开发说明](web/README.md)
 
 ## 开发
 
-- 修改前端时，可运行 `npm run typecheck --prefix web/default`。
-- 修改嵌入的前端资源前，运行 `npm run build --prefix web/default`。
+- 修改前端时，运行对应应用的 `npm run typecheck --prefix web/studio` 或 `npm run typecheck --prefix web/admin`。编译包含最新前端资源的 Go 程序前，先构建两个应用。
 - 修改后端时，运行 `go test ./...`。
 
 请在[本仓库的 issue 列表](https://github.com/infinmalum/a1o-platform/issues)反馈问题与改动。

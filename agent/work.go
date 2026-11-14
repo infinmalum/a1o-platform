@@ -33,6 +33,8 @@ const CompleteTaskToolName = "complete_task"
 // owner (or the reconciliation pass) owns its state from there.
 var errLeaseLost = errors.New("work run lease lost")
 
+var errWorkCompleted = errors.New("work completion tool recorded a summary")
+
 // WorkTurnRequest carries one claimed work run into the engine.
 type WorkTurnRequest struct {
 	// Run is the claimed run row (status running, LeaseOwner/FencingToken
@@ -85,87 +87,75 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 		return toolResult{Content: "任务完成已记录。"}
 	})
 
-	for iteration := 0; ; iteration++ {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if iteration > config.WorkMaxToolIterations {
-			return e.workFail(req, fmt.Errorf("已达工具调用步数上限（%d）", config.WorkMaxToolIterations))
-		}
-
-		// Safe boundary: pull the persisted context, then consume queued
-		// user inputs into it before the next model call, so appended input
-		// never rewrites an in-flight leg.
-		items, err := loadWorkContext(req)
-		if err != nil {
-			return e.workFail(req, fmt.Errorf("运行上下文损坏: %w", err))
-		}
-		inputItems, err := e.consumePendingInputs(req)
-		if err != nil {
-			return e.workFail(req, fmt.Errorf("消费追加输入失败: %w", err))
-		}
-		items = append(items, inputItems...)
-		// The agent version's reference files ride ahead of the task context.
-		preamble, err := referenceFileItems(req.ReferenceFiles)
-		if err != nil {
-			return e.workFail(req, err)
-		}
-		items = append(preamble, items...)
-
-		leg, legErr := e.workLeg(ctx, req, items, tools)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if legErr != nil {
-			if leg.ResponseID != "" {
-				// The upstream engaged (a response arrived) but the outcome
-				// cannot be verified from here; report reconciliation
-				// instead of guessing success or double-invoking.
-				return e.workReconcile(req, legErr)
+	preamble, err := referenceFileItems(req.ReferenceFiles)
+	if err != nil {
+		return e.workFail(req, err)
+	}
+	limit := config.WorkMaxToolIterations
+	remaining := limit + 1
+	// Lapua drives each stretch of work until a model turn has no tools.
+	// Input arriving during that final turn starts another stretch of this run.
+	for remaining > 0 {
+		var outputs []Item
+		var lastLeg InvokeResult
+		err := lapuaLoop(ctx, tools, remaining, func(ctx context.Context) (InvokeResult, []Item, error) {
+			lastLeg = InvokeResult{}
+			if len(outputs) > 0 {
+				if err := e.appendWorkContext(req, outputs); err != nil {
+					return InvokeResult{}, nil, err
+				}
+				outputs = nil
 			}
-			return e.workFail(req, legErr)
+			if summary != "" {
+				return InvokeResult{}, nil, errWorkCompleted
+			}
+			items, err := loadWorkContext(req)
+			if err != nil {
+				return InvokeResult{}, nil, fmt.Errorf("运行上下文损坏: %w", err)
+			}
+			inputs, err := e.consumePendingInputs(req)
+			if err != nil {
+				return InvokeResult{}, nil, fmt.Errorf("消费追加输入失败: %w", err)
+			}
+			items = append(items, inputs...)
+			contextItems := append(append([]Item(nil), preamble...), items...)
+			remaining--
+			lastLeg, err = e.workLeg(ctx, req, contextItems, tools)
+			return lastLeg, resultToolCalls(lastLeg.Items), err
+		}, func(leg InvokeResult, call Item, result toolResult) error {
+			emitToolResult(e, req.Run, leg.InvocationID, call, result, req.Emit)
+			outputs = append(outputs, Item{Type: ItemFunctionCallOutput, CallID: call.CallID, Output: result.Content})
+			return nil
+		})
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-
-		calls := resultToolCalls(leg.Items)
-		outputs := make([]Item, 0, len(calls))
-		for _, call := range calls {
-			callResult := e.executeTool(ctx, tools, call)
-			_ = e.emitEvent(req.Run, leg.InvocationID, model.RunEventToolCalled,
-				map[string]any{"tool_call_id": call.CallID, "name": call.Name, "arguments": call.Arguments},
-				true, req.Emit)
-			_ = e.emitEvent(req.Run, leg.InvocationID, model.RunEventToolResult,
-				map[string]any{"tool_call_id": call.CallID, "name": call.Name,
-					"content": callResult.Content, "is_error": callResult.IsError},
-				true, req.Emit)
-			outputs = append(outputs, Item{Type: ItemFunctionCallOutput,
-				CallID: call.CallID, Output: callResult.Content})
-		}
-		// Checkpoint the tool batch: the executor already appended the leg's
-		// function_call items to the run context, so only the outputs are
-		// missing; persisting them keeps the context replayable after a
-		// crash or pause.
 		if len(outputs) > 0 {
 			if err := e.appendWorkContext(req, outputs); err != nil {
 				return err
 			}
 		}
-
-		if summary != "" {
+		switch {
+		case errors.Is(err, errLeaseLost):
+			return err
+		case errors.Is(err, errWorkCompleted), isLapuaTurnLimit(err) && summary != "":
 			return e.workComplete(req, summary)
+		case isLapuaTurnLimit(err):
+			return e.workFail(req, fmt.Errorf("已达工具调用步数上限（%d）", limit))
+		case err != nil && lastLeg.ResponseID != "":
+			return e.workReconcile(req, err)
+		case err != nil:
+			return e.workFail(req, err)
 		}
-		if len(calls) == 0 {
-			// Safe boundary before pausing: inputs that arrived during the
-			// final leg keep the run going instead of parking it.
-			pending, err := model.ListPendingRunInputs(req.Run.Id)
-			if err != nil {
-				return e.workFail(req, fmt.Errorf("读取追加输入失败: %w", err))
-			}
-			if len(pending) > 0 {
-				continue
-			}
+		pending, err := model.ListPendingRunInputs(req.Run.Id)
+		if err != nil {
+			return e.workFail(req, fmt.Errorf("读取追加输入失败: %w", err))
+		}
+		if len(pending) == 0 {
 			return e.workPause(req)
 		}
 	}
+	return e.workFail(req, fmt.Errorf("已达工具调用步数上限（%d）", limit))
 }
 
 // workLeg streams one model leg. The executor appends the leg's output to

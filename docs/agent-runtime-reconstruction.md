@@ -1,8 +1,10 @@
 # Agent 运行时重构：自研内核与 OpenResponses
 
-日期：2026-11-01。面向本项目实现者。状态：重构方案，尚未实现；不是上线能力声明。
+日期为 2026-11-01。本文保留当时的重构方案，供实现者追溯设计。
 
-用户要求重构现有 Chat 运行时，并重新考虑自研、OpenResponses 及 Hermes / Cherry Studio / ZCode 的实现。本方案建议采用 Go 自研运行内核，以 OpenResponses 作为模型交互的标准基础，不引入 Eino 或 Google ADK 为核心依赖。该建议替代 Studio 旧方案的 Eino 迁移路线；Chat / Work、内置与个人智能体广场、DeepL、图像及现有 API 保留要求继续有效。详细表结构与新增接口仍是拟议契约，实施前按本方案门槛验证。
+2026-11-14 更新。Chat 和 Work 的模型与工具循环采用 Lapua 的 `harness.Query`，取代本文提出的自研循环。A1O 继续负责模型调用与计费、原生协议状态、会话与任务持久化、事件和调度。进入循环的工具来自 A1O 已解析的工具清单。
+
+用户要求重构现有 Chat 运行时，并重新考虑自研、OpenResponses 及 Hermes / Cherry Studio / ZCode 的实现。原方案建议采用 Go 自研运行内核，以 OpenResponses 作为模型交互的标准基础，并排除了 Eino 与 Google ADK 作为核心依赖。该建议替代 Studio 旧方案的 Eino 迁移路线；Chat / Work、内置与个人智能体广场、DeepL、图像及现有 API 保留要求继续有效。详细表结构与新增接口仍是拟议契约，实施前按本方案门槛验证。
 
 ## 1. 检查范围与结论依据
 
