@@ -13,12 +13,8 @@ func BaseURL(kind int) string {
 		return "https://api.anthropic.com"
 	case Gemini:
 		return "https://generativelanguage.googleapis.com"
-	case Coze:
-		return "https://api.coze.com"
 	case Cloudflare:
 		return "https://api.cloudflare.com"
-	case DeepL:
-		return "https://api-free.deepl.com"
 	case TypeSafe:
 		return "https://api.typesafe.ai"
 	case OpenRouter:

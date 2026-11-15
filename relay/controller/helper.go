@@ -45,10 +45,6 @@ func isErrorHappened(meta *meta.Meta, resp *http.Response) bool {
 		resp.StatusCode != http.StatusCreated {
 		return true
 	}
-	if meta.ChannelType == channeltype.DeepL {
-		// skip stream check for deepl
-		return false
-	}
 
 	if meta.IsStream && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") &&
 		// Even if stream mode is enabled, replicate will first return a task info in JSON format,

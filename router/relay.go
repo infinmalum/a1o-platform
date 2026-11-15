@@ -19,7 +19,7 @@ func SetRelayRouter(router *gin.Engine) {
 	// The dispatcher selects across every channel kind by model, so a
 	// Responses or Messages request can land on any kind: native wires ride
 	// the shared lifecycle with protocol fallbacks, and the provider kinds
-	// (Coze, Replicate) convert the client's wire natively in their adapters.
+	// (Replicate) convert the client's wire natively in their adapters.
 	relayOpenAI := router.Group("/v1")
 	relayOpenAI.Use(middleware.RelayPanicRecover(), middleware.TokenAuth(), middleware.Distribute())
 	relayOpenAI.POST("/responses", controller.NativeOpenAIResponses)

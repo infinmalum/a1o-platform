@@ -10,10 +10,8 @@ const (
 	Anthropic = 14
 	Gemini    = 24
 	AwsClaude = 33
-	Coze      = 34
 
 	Cloudflare = 37
-	DeepL      = 38
 
 	VertextAI = 42
 	Replicate = 46
@@ -48,8 +46,8 @@ const (
 // kinds explicitly.
 func IsValid(kind int) bool {
 	switch kind {
-	case OpenAI, Azure, Anthropic, Gemini, AwsClaude, Coze,
-		Cloudflare, DeepL, VertextAI, Replicate,
+	case OpenAI, Azure, Anthropic, Gemini, AwsClaude,
+		Cloudflare, VertextAI, Replicate,
 		TypeSafe, OpenAIResponses, OpenRouter, Vercel:
 		return true
 	}

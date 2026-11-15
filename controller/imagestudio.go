@@ -39,6 +39,23 @@ const (
 	maxImageAssetBytes    = int64(25 << 20)
 )
 
+// listUserModelNames resolves the caller's group into the model names their
+// channels can serve.
+func listUserModelNames(ctx context.Context, userId int) ([]string, error) {
+	group, err := model.CacheGetUserGroup(userId)
+	if err != nil {
+		return nil, err
+	}
+	names, err := model.CacheGetGroupModels(ctx, group)
+	if err != nil {
+		return nil, err
+	}
+	if names == nil {
+		names = []string{}
+	}
+	return names, nil
+}
+
 // GetImageMeta backs the creation form: the caller's servable model list
 // with the models the pricing table knows marked, their size options, and
 // the concurrency cap. Unknown-capability models stay selectable — the

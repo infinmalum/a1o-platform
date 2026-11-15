@@ -136,7 +136,6 @@
         "update_success": "渠道更新成功！",
         "create_success": "渠道创建成功！"
       },
-      "coze_notice": "对于 Coze 而言，模型名称即 Bot ID，你可以添加一个前缀 `bot-`，例如：`bot-123456`。",
       "aws_region_placeholder": "region，例如：us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -474,7 +473,19 @@
       "disable": "禁用",
       "edit": "编辑",
       "promote": "提升",
-      "demote": "降级"
+      "demote": "降级",
+      "topup": "充值"
+    },
+    "topup": {
+      "title": "为 {{name}} 充值",
+      "quota": "充值额度",
+      "quota_placeholder": "输入金额或额度数",
+      "remark": "备注",
+      "remark_placeholder": "留空使用默认备注",
+      "cancel": "取消",
+      "confirm": "充值",
+      "success": "充值成功",
+      "invalid_quota": "请输入大于零的额度"
     }
   },
   "dashboard": {

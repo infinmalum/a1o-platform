@@ -39,8 +39,8 @@ func unsupportedOperation(c *gin.Context, message string) {
 // pass through, Anthropic, Gemini, AWS Bedrock, and Cloudflare channels are
 // bridged onto their native wire, VertexAI channels resolve their wire from
 // the model family, Responses-wire channels (which have no provider adapter)
-// are bridged onto /v1/responses, and the retained provider adapters (Coze,
-// Replicate) serve their channel types.
+// are bridged onto /v1/responses, and the retained provider adapters
+// (Replicate) serve their channel types.
 func RelayChat(c *gin.Context) {
 	channelType := c.GetInt(ctxkey.Channel)
 	switch {

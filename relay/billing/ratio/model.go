@@ -3,7 +3,6 @@ package ratio
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -34,18 +33,12 @@ var CompletionRatio = map[string]float64{}
 // manual pricing step:
 //   - TypeSafe Jev bills $0.042 per million input tokens and never charges
 //     for output.
-//   - DeepL bills $25 per million characters; the adaptor reports the
-//     request's character count as prompt tokens, so every
-//     "deepl-<language>" model shares the one price.
 //
 // Everything else is priced by the operator or synced from the upstream.
 func contractRatio(name string) (input float64, completion float64, ok bool) {
 	switch name {
 	case "jev-latest", "jev-1.13.0", "jev-preview":
 		return 0.042 / 1000 * USD, 0, true
-	}
-	if strings.HasPrefix(name, "deepl-") {
-		return 25.0 / 1000 * USD, 0, true
 	}
 	return 0, 0, false
 }

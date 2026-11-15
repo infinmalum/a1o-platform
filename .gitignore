@@ -21,3 +21,4 @@ temp
 /docs/relay-rewrite-plan.md
 /docs/subscription-upstream-plan.md
 /docs/upstream-pr-review.md
+*.tsbuildinfo

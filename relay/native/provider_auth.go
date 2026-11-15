@@ -39,8 +39,6 @@ func AuthenticateProviderRequest(ctx context.Context, req *http.Request, input R
 		}
 	case channeltype.Gemini:
 		req.Header.Set("x-goog-api-key", input.APIKey)
-	case channeltype.DeepL:
-		req.Header.Set("Authorization", "DeepL-Auth-Key "+input.APIKey)
 	case channeltype.Azure:
 		req.Header.Set("api-key", input.APIKey)
 	case channeltype.VertextAI:

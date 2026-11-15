@@ -12,7 +12,7 @@ import Work from './pages/Work';
 import WorkTaskDetail from './pages/Work/WorkTaskDetail';
 import Agents from './pages/Agents';
 import Workspace from './pages/Workspace';
-import Translate from './pages/Translate';
+import Account from './pages/Account';
 import Images from './pages/Images';
 import OAuthCallback from './pages/OAuthCallback';
 import { Button } from '@/components/ui/button';
@@ -151,10 +151,10 @@ const App: React.FC = () => {
             }
           />
           <Route
-            path='/translate'
+            path='/account'
             element={
               <PrivateRoute>
-                <Translate />
+                <Account />
               </PrivateRoute>
             }
           />

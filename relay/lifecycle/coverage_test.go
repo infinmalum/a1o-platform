@@ -11,11 +11,11 @@ import (
 )
 
 // TestThreeEndpointKindCoverage locks the full-coverage matrix the three
-// client endpoints promise: every channel kind except TypeSafe and DeepL (the
-// decision and translation wires) serves Chat, Responses, and Messages
-// clients — native kinds through the lifecycle's protocol support and the
-// bridge's direct conversions, provider kinds through their adapters. When a
-// row fails, the endpoint that kind lost is the bug.
+// client endpoints promise: every channel kind except TypeSafe (the decision
+// wire) serves Chat, Responses, and Messages clients — native kinds through
+// the lifecycle's protocol support and the bridge's direct conversions,
+// provider kinds through their adapters. When a row fails, the endpoint that
+// kind lost is the bug.
 func TestThreeEndpointKindCoverage(t *testing.T) {
 	chatCompatible := []struct {
 		kind     int
@@ -33,7 +33,7 @@ func TestThreeEndpointKindCoverage(t *testing.T) {
 		{channeltype.OpenAIResponses, native.OpenAIResponses},
 		{channeltype.Vercel, native.OpenAIResponses},
 	}
-	providerKinds := []int{channeltype.Coze, channeltype.Replicate}
+	providerKinds := []int{channeltype.Replicate}
 
 	inbounds := []native.Protocol{native.OpenAIChat, native.OpenAIResponses, native.Anthropic}
 	for _, inbound := range inbounds {
@@ -57,9 +57,9 @@ func TestThreeEndpointKindCoverage(t *testing.T) {
 		}
 	}
 
-	// TypeSafe and DeepL are the deliberate exclusions: the decision wire
-	// only serves /v1/systemone and the translation wire only its own route.
-	for _, kind := range []int{channeltype.TypeSafe, channeltype.DeepL} {
+	// TypeSafe is the deliberate exclusion: the decision wire only serves
+	// /v1/systemone.
+	for _, kind := range []int{channeltype.TypeSafe} {
 		for _, upstream := range []native.Protocol{native.OpenAIChat, native.OpenAIResponses, native.Anthropic, native.Gemini} {
 			if channelSupportsProtocol(kind, upstream) {
 				t.Errorf("kind %d must not serve the %s wire", kind, upstream)

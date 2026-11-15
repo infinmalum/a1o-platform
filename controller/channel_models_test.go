@@ -79,7 +79,7 @@ func TestFetchUpstreamModelsGeminiFiltersAndStripsPrefix(t *testing.T) {
 	require.Equal(t, []string{"aqa", "gemini-2.0-flash"}, models)
 }
 
-func TestFetchUpstreamModelsOpenRouterAndDeepL(t *testing.T) {
+func TestFetchUpstreamModelsOpenRouter(t *testing.T) {
 	var gotPath, gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -88,10 +88,6 @@ func TestFetchUpstreamModelsOpenRouterAndDeepL(t *testing.T) {
 		}
 		gotAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		if gotAuth == "DeepL-Auth-Key dl-key" {
-			_, _ = w.Write([]byte(`[{"language":"ZH","name":"Chinese"},{"language":"EN-US","name":"English (American)"},{"language":"ZH"}]`))
-			return
-		}
 		_, _ = w.Write([]byte(`{"data":[{"id":"m1"}]}`))
 	}))
 	defer server.Close()
@@ -101,13 +97,6 @@ func TestFetchUpstreamModelsOpenRouterAndDeepL(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "/api/v1/models", gotPath)
 	require.Equal(t, "Bearer or-key", gotAuth)
-
-	// DeepL lists its translatable target languages as the channel's models.
-	models, err := fetchUpstreamModels(server.Client(), channeltype.DeepL, server.URL, "dl-key")
-	require.NoError(t, err)
-	require.Equal(t, "/v2/languages?type=target", gotPath)
-	require.Equal(t, "DeepL-Auth-Key dl-key", gotAuth)
-	require.Equal(t, []string{"EN-US", "ZH"}, models)
 }
 
 func TestFetchUpstreamModelsRefusesMissingBaseAndBadURLs(t *testing.T) {

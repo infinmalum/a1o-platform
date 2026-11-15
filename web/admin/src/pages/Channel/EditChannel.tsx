@@ -426,73 +426,6 @@ const EditChannel = () => {
               </>
             )}
 
-            {/* Coze's domestic and international platforms are separate
-                accounts with separate tokens; the operator picks the site the
-                token was issued on instead of typing a base URL. */}
-            {inputs.type === 34 && (
-              <Form.Field>
-                <Form.Select
-                  label='Coze 站点'
-                  placeholder='选择令牌所属的 Coze 平台'
-                  options={[
-                    {key: 'cn', text: '国内站（coze.cn）', value: 'cn'},
-                    {key: 'com', text: '国际站（coze.com）', value: 'com'},
-                  ]}
-                  value={
-                    (inputs.base_url || '').includes('coze.cn') ? 'cn' : 'com'
-                  }
-                  onChange={(e, {value}) => {
-                    handleInputChange(e, {
-                      name: 'base_url',
-                      value:
-                        value === 'cn'
-                          ? 'https://api.coze.cn'
-                          : 'https://api.coze.com',
-                    });
-                  }}
-                />
-              </Form.Field>
-            )}
-
-            {/* DeepL's free and pro accounts live on separate fixed hosts;
-                the operator picks the tier the auth key was issued for
-                instead of typing a base URL. */}
-            {inputs.type === 38 && (
-              <Form.Field>
-                <Form.Select
-                  label='DeepL 账号类型'
-                  placeholder='选择令牌所属的 DeepL 账号'
-                  options={[
-                    {
-                      key: 'free',
-                      text: '免费版（api-free.deepl.com）',
-                      value: 'free',
-                    },
-                    {
-                      key: 'pro',
-                      text: 'Pro 版（api.deepl.com）',
-                      value: 'pro',
-                    },
-                  ]}
-                  value={
-                    (inputs.base_url || '').includes('api.deepl.com') &&
-                    !(inputs.base_url || '').includes('api-free')
-                      ? 'pro'
-                      : 'free'
-                  }
-                  onChange={(e, {value}) => {
-                    handleInputChange(e, {
-                      name: 'base_url',
-                      value:
-                        value === 'free'
-                          ? 'https://api-free.deepl.com'
-                          : 'https://api.deepl.com',
-                    });
-                  }}
-                />
-              </Form.Field>
-            )}
-
             {BASE_URL_INPUT_KINDS.has(inputs.type) && (
               <Form.Field>
                 <Form.Input
@@ -506,9 +439,6 @@ const EditChannel = () => {
               </Form.Field>
             )}
 
-            {inputs.type === 34 && (
-              <Message>{t('channel.edit.coze_notice')}</Message>
-            )}
             <Form.Field>
               <Form.Dropdown
                 label={t('channel.edit.models')}

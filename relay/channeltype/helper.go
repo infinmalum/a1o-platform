@@ -15,12 +15,8 @@ func ToAPIType(channelType int) int {
 		apiType = apitype.Gemini
 	case AwsClaude:
 		apiType = apitype.AwsClaude
-	case Coze:
-		apiType = apitype.Coze
 	case Cloudflare:
 		apiType = apitype.Cloudflare
-	case DeepL:
-		apiType = apitype.DeepL
 	case VertextAI:
 		apiType = apitype.VertexAI
 	case Replicate:

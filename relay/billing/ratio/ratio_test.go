@@ -103,16 +103,6 @@ func TestContractPricesServeFirstPartyIntegrations(t *testing.T) {
 	if err != nil || jevCompletion != 0 {
 		t.Fatalf("jev completion ratio = %v, err %v; want 0", jevCompletion, err)
 	}
-	// The DeepL contract price covers every language code, not a fixed list.
-	for _, name := range []string{"deepl-zh", "deepl-en", "deepl-de", "deepl-ko"} {
-		input, err := GetModelRatio(name)
-		if err != nil || input != 12.5 {
-			t.Fatalf("%s input ratio = %v, err %v; want 12.5", name, input, err)
-		}
-		if completion, err := GetCompletionRatio(name); err != nil || completion != 0 {
-			t.Fatalf("%s completion ratio = %v, err %v; want 0", name, completion, err)
-		}
-	}
 }
 
 func TestMergeFetchedModelPricesFillsOnlyMissing(t *testing.T) {

@@ -4,7 +4,7 @@
 // vendor address is genuinely pasted: the OpenAI/Anthropic/Gemini wire kinds,
 // TypeSafe when pointed at a
 // non-official SystemOne endpoint. Kinds with a fixed official endpoint
-// (OpenRouter, Vercel), a preset choice (Coze's site, DeepL's account tier),
+// (OpenRouter, Vercel)
 // or dedicated credential fields (Azure, AWS, VertexAI) get no free-form URL
 // to misfill.
 export const BASE_URL_INPUT_KINDS = new Set([1, 14, 24, 52, 53]);
@@ -75,25 +75,7 @@ export const CHANNEL_OPTIONS = [
     tip:
       'TypeSafe Jev 决策模型，通过 /v1/systemone 调用。Base URL 留空即官方 https://api.typesafe.ai；指向其他实现了 SystemOne 协议的服务时，填写该服务的完整接口前缀。',
   },
-  {
-    key: 34,
-    text: 'Coze',
-    value: 34,
-    color: 'blue',
-    description: '国内站 / 国际站',
-    tip:
-      'Coze 国内站（coze.cn）与国际站（coze.com）是两个独立平台，令牌互不通用：在国内站签发的令牌选「国内站」，国际站签发的选「国际站」，无需填写 Base URL。',
-  },
   { key: 37, text: 'Cloudflare', value: 37, color: 'orange' },
-  {
-    key: 38,
-    text: 'DeepL',
-    value: 38,
-    color: 'black',
-    description: '免费版 / Pro 版',
-    tip:
-      'DeepL 翻译渠道：免费账号与 Pro 账号各有一个固定官方地址，按令牌所属账号选择即可，无需填写 Base URL。模型名填目标语言代码（如 EN-US、DE、ZH），「获取模型」按钮会列出全部可选语言。',
-  },
   { key: 42, text: 'Google Vertex', value: 42, color: 'blue' },
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
 ];

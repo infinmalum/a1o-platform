@@ -5,9 +5,7 @@ const (
 	Anthropic
 	Gemini
 	AwsClaude
-	Coze
 	Cloudflare
-	DeepL
 	VertexAI
 	Replicate
 	// SystemOne marks TypeSafe channels that only serve the native

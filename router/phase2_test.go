@@ -344,8 +344,8 @@ func TestLegacyImageAndAudioSettleOnlySuccessfulChannel(t *testing.T) {
 	}
 
 	// Native provider payloads must reach the actual registered proxy route,
-	// including Coze resume and model-specific Replicate schemas.
-	for _, kind := range []int{channeltype.Coze, channeltype.Replicate, channeltype.Vercel, channeltype.OpenRouter, channeltype.Cloudflare} {
+	// including model-specific Replicate schemas.
+	for _, kind := range []int{channeltype.Replicate, channeltype.Vercel, channeltype.OpenRouter, channeltype.Cloudflare} {
 		payload := `{"tool_outputs":[{"tool_call_id":"call","output":"ok"}],"input":{"custom_model_parameter":true}}`
 		nativeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)

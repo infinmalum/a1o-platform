@@ -15,7 +15,7 @@ import (
 
 func TestRawProviderAuthPreservesNativePayload(t *testing.T) {
 	raw := `{"input":{"steps":99,"arbitrary_model_field":true},"tool_outputs":[{"tool_call_id":"call","output":"ok"}]}`
-	for _, kind := range []int{channeltype.Coze, channeltype.Replicate, channeltype.Vercel, channeltype.OpenRouter, channeltype.Cloudflare, channeltype.AwsClaude} {
+	for _, kind := range []int{channeltype.Replicate, channeltype.Vercel, channeltype.OpenRouter, channeltype.Cloudflare, channeltype.AwsClaude} {
 		req := httptest.NewRequest("POST", "https://example.test/native?conversation_id=c&chat_id=h", strings.NewReader(raw))
 		req.Header.Set("Authorization", "Bearer caller")
 		req.Header.Set("x-api-key", "caller")

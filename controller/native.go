@@ -12,10 +12,10 @@ import (
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
 	"github.com/infinmalum/a1o-platform/relay/ginmeta"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
-	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
 )
 
 type nativeInput struct {
@@ -52,14 +52,14 @@ func writeProviderErrorFor(c *gin.Context, protocol native.Protocol, result *lif
 }
 
 func NativeOpenAIResponses(c *gin.Context) {
-	// The dispatcher may land on a provider channel (Coze, Replicate) whose
+	// The dispatcher may land on a provider channel (Replicate) whose
 	// adapter converts the Responses wire natively; everything else rides the
 	// shared lifecycle with the protocol fallbacks below.
 	switch kind := c.GetInt(ctxkey.Channel); kind {
-	case channeltype.Coze, channeltype.Replicate:
+	case channeltype.Replicate:
 		writeProviderErrorFor(c, native.OpenAIResponses, relaycontroller.RelayProviderResponses(c))
 		return
-	case channeltype.DeepL, channeltype.TypeSafe:
+	case channeltype.TypeSafe:
 		writeNativeError(c, native.OpenAIResponses, http.StatusUnprocessableEntity,
 			errors.New("this channel type does not serve the Responses operation"))
 		return
@@ -205,14 +205,14 @@ func NativeOpenAIModerations(c *gin.Context) {
 }
 
 func NativeAnthropic(c *gin.Context) {
-	// The dispatcher may land on a provider channel (Coze, Replicate) whose
+	// The dispatcher may land on a provider channel (Replicate) whose
 	// adapter converts the Messages wire natively; everything else rides the
 	// shared lifecycle with the protocol fallbacks below.
 	switch kind := c.GetInt(ctxkey.Channel); kind {
-	case channeltype.Coze, channeltype.Replicate:
+	case channeltype.Replicate:
 		writeProviderErrorFor(c, native.Anthropic, relaycontroller.RelayProviderMessages(c))
 		return
-	case channeltype.DeepL, channeltype.TypeSafe:
+	case channeltype.TypeSafe:
 		writeNativeError(c, native.Anthropic, http.StatusUnprocessableEntity,
 			errors.New("this channel type does not serve the Messages operation"))
 		return

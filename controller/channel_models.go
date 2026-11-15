@@ -123,10 +123,6 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		listURL = baseURL + "/v1/models"
 	case channeltype.Gemini:
 		listURL = baseURL + "/v1beta/models"
-	case channeltype.DeepL:
-		// DeepL's listing endpoint returns the translatable target
-		// languages; those codes are the channel's model names.
-		listURL = baseURL + "/v2/languages?type=target"
 	case channeltype.OpenRouter:
 		// The fixed unified base carries /api/v1; the listing endpoint is
 		// the bare suffix.
@@ -161,8 +157,6 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		req.Header.Set("anthropic-version", "2026-10-21")
 	case channeltype.Gemini:
 		req.Header.Set("x-goog-api-key", key)
-	case channeltype.DeepL:
-		req.Header.Set("Authorization", "DeepL-Auth-Key "+key)
 	default:
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
@@ -192,8 +186,6 @@ func fetchUpstreamModels(httpClient *http.Client, channelType int, baseURL, key 
 		}
 		sort.Strings(ids)
 		return ids, nil
-	case channeltype.DeepL:
-		return parseDeepLLanguages(body)
 	default:
 		return parseOpenAIStyleModels(body)
 	}
@@ -322,31 +314,6 @@ type geminiModelList struct {
 		Name                       string   `json:"name"`
 		SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
 	} `json:"models"`
-}
-
-// deepLLanguageList parses DeepL's /v2/languages array; each entry's language
-// code doubles as a channel model name (the adaptor derives the target
-// language from the model name).
-type deepLLanguageList []struct {
-	Language string `json:"language"`
-}
-
-func parseDeepLLanguages(body []byte) ([]string, error) {
-	var list deepLLanguageList
-	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("解析模型列表失败：%s", err.Error())
-	}
-	models := make([]string, 0, len(list))
-	seen := make(map[string]bool, len(list))
-	for _, item := range list {
-		if item.Language == "" || seen[item.Language] {
-			continue
-		}
-		seen[item.Language] = true
-		models = append(models, item.Language)
-	}
-	sort.Strings(models)
-	return models, nil
 }
 
 func parseOpenAIStyleModels(body []byte) ([]string, error) {

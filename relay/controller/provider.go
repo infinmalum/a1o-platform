@@ -33,8 +33,8 @@ import (
 )
 
 // The provider controllers retain the provider-specific wire adapters for
-// the channel types whose upstream wire has no native protocol (Coze, DeepL,
-// Replicate) while the shared lifecycle owns channel retries and quota
+// the channel types whose upstream wire has no native protocol (Replicate)
+// while the shared lifecycle owns channel retries and quota
 // settlement. The adapters run against the framework-neutral adaptor.Context
 // built here, so no provider route depends on the legacy Gin relay controller.
 
@@ -212,7 +212,7 @@ func parseProviderRequest(body []byte, relayMode int, modelParam string, inbound
 }
 
 // RelayProviderMessages serves Anthropic Messages clients on the provider
-// channels that keep adapters (Coze, Replicate); the raw body converts
+// channels that keep adapters (Replicate); the raw body converts
 // natively inside the adapter.
 func RelayProviderMessages(c *gin.Context) *lifecycle.HTTPError {
 	body, err := common.GetRequestBody(c)
@@ -231,7 +231,7 @@ func RelayProviderMessages(c *gin.Context) *lifecycle.HTTPError {
 }
 
 // RelayProviderResponses serves Responses clients on the provider channels
-// that keep adapters (Coze, Replicate); the raw body converts natively inside
+// that keep adapters (Replicate); the raw body converts natively inside
 // the adapter.
 func RelayProviderResponses(c *gin.Context) *lifecycle.HTTPError {
 	body, err := common.GetRequestBody(c)

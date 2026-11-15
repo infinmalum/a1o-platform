@@ -3,6 +3,7 @@ import {
   Button,
   Form,
   Label,
+  Modal,
   Pagination,
   Popup,
   Table,
@@ -13,6 +14,7 @@ import { API, showError, showSuccess } from '../helpers';
 import { useTranslation } from 'react-i18next';
 
 import { ITEMS_PER_PAGE } from '../constants';
+import QuotaInput from './QuotaInput';
 import {
   renderGroup,
   renderNumber,
@@ -43,6 +45,13 @@ const UsersTable = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searching, setSearching] = useState(false);
   const [orderBy, setOrderBy] = useState('');
+  // Manual top-up: the operator grants quota through /api/topup, which also
+  // writes a top-up log entry — distinct from editing the quota field on the
+  // user record, which bypasses the ledger note.
+  const [topupUser, setTopupUser] = useState(null);
+  const [topupQuota, setTopupQuota] = useState(0);
+  const [topupRemark, setTopupRemark] = useState('');
+  const [topupSubmitting, setTopupSubmitting] = useState(false);
 
   const loadUsers = async (startIdx) => {
     const res = await API.get(`/api/user/?p=${startIdx}&order=${orderBy}`);
@@ -104,6 +113,46 @@ const UsersTable = () => {
         showError(message);
       }
     })();
+  };
+
+  const submitTopup = async () => {
+    if (!topupUser || topupQuota <= 0) {
+      showError(t('user.topup.invalid_quota'));
+      return;
+    }
+    setTopupSubmitting(true);
+    try {
+      const res = await API.post('/api/topup', {
+        user_id: topupUser.id,
+        quota: topupQuota,
+        remark: topupRemark,
+      });
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('user.topup.success'));
+        const refreshed = await API.get(
+          `/api/user/${topupUser.id}`
+        );
+        const fresh = refreshed.data;
+        if (fresh.success) {
+          const newUsers = [...users];
+          const realIdx = newUsers.findIndex((u) => u.id === topupUser.id);
+          if (realIdx >= 0) {
+            newUsers[realIdx].quota = fresh.data.quota;
+            setUsers(newUsers);
+          }
+        }
+        setTopupUser(null);
+        setTopupQuota(0);
+        setTopupRemark('');
+      } else {
+        showError(message);
+      }
+    } catch (reason) {
+      showError(reason);
+    } finally {
+      setTopupSubmitting(false);
+    }
   };
 
   const renderStatus = (status) => {
@@ -359,12 +408,64 @@ const UsersTable = () => {
                       >
                         {t('user.buttons.edit')}
                       </Button>
+                      <Button
+                        size={'tiny'}
+                        color={'green'}
+                        onClick={() => {
+                          setTopupUser(user);
+                          setTopupQuota(0);
+                          setTopupRemark('');
+                        }}
+                      >
+                        {t('user.buttons.topup')}
+                      </Button>
                     </div>
                   </Table.Cell>
                 </Table.Row>
               );
             })}
         </Table.Body>
+
+        <Modal
+          open={topupUser !== null}
+          onClose={() => setTopupUser(null)}
+          size='small'
+        >
+          <Modal.Header>
+            {t('user.topup.title', { name: topupUser ? topupUser.username : '' })}
+          </Modal.Header>
+          <Modal.Content>
+            <Form>
+              <QuotaInput
+                label={t('user.topup.quota')}
+                name='quota'
+                quota={topupQuota}
+                onQuotaChange={(name, value) => setTopupQuota(value)}
+                placeholder={t('user.topup.quota_placeholder')}
+              />
+              <Form.Input
+                label={t('user.topup.remark')}
+                name='remark'
+                placeholder={t('user.topup.remark_placeholder')}
+                onChange={(e, { value }) => setTopupRemark(value)}
+                value={topupRemark}
+                autoComplete='new-password'
+              />
+            </Form>
+          </Modal.Content>
+          <Modal.Actions>
+            <Button onClick={() => setTopupUser(null)}>
+              {t('user.topup.cancel')}
+            </Button>
+            <Button
+              positive
+              loading={topupSubmitting}
+              onClick={() => void submitTopup()}
+            >
+              {t('user.topup.confirm')}
+            </Button>
+          </Modal.Actions>
+        </Modal>
 
         <Table.Footer>
           <Table.Row>

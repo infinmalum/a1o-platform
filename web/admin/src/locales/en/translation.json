@@ -136,7 +136,6 @@
         "update_success": "Channel updated successfully!",
         "create_success": "Channel created successfully!"
       },
-      "coze_notice": "For Coze, model name is the Bot ID. You can add prefix `bot-`, e.g.: `bot-123456`.",
       "aws_region_placeholder": "region, e.g.: us-west-2",
       "aws_ak_placeholder": "AWS IAM Access Key",
       "aws_sk_placeholder": "AWS IAM Secret Key",
@@ -474,7 +473,19 @@
       "disable": "Disable",
       "edit": "Edit",
       "promote": "Promote",
-      "demote": "Demote"
+      "demote": "Demote",
+      "topup": "Top up"
+    },
+    "topup": {
+      "title": "Top up {{name}}",
+      "quota": "Top-up quota",
+      "quota_placeholder": "Enter an amount or raw quota",
+      "remark": "Remark",
+      "remark_placeholder": "Leave empty for the default remark",
+      "cancel": "Cancel",
+      "confirm": "Top up",
+      "success": "Top-up succeeded",
+      "invalid_quota": "Please enter a quota greater than zero"
     }
   },
   "dashboard": {
@@ -680,7 +691,7 @@
         },
         "advanced": "Advanced (edit the ratio JSON directly)",
         "price": {
-          "hint": "The gateway ships no vendor price list: prices come only from this editor or from an OpenRouter channel\u0027s fetch-models sync (fills gaps, never touches your edits). Models missing an input or output price are refused. The list shows the models your channels serve; search to price any other model.",
+          "hint": "The gateway ships no vendor price list: prices come only from this editor or from an OpenRouter channel's fetch-models sync (fills gaps, never touches your edits). Models missing an input or output price are refused. The list shows the models your channels serve; search to price any other model.",
           "search": "Search model name",
           "model": "Model",
           "input": "Input ($/million tokens)",
@@ -825,7 +836,8 @@
       "no_account": "No account?",
       "register": "Register",
       "other_methods": "Other login methods"
-    },    "register": {
+    },
+    "register": {
       "title": "New User Registration",
       "username": "Username (max 12 characters)",
       "password": "Password (8-20 characters)",
