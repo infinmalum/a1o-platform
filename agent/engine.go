@@ -202,7 +202,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	}()
 
 	totalPrompt, totalCompletion := int64(0), int64(0)
-	err = lapuaLoop(ctx, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
+	err = lapuaLoop(ctx, turn.Run, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
 		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools)
 		pendingCalls = append([]Item(nil), pending...)
 		totalPrompt += result.Usage.Input

@@ -10,17 +10,21 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/infinmalum/Lapua/harness"
 	"github.com/infinmalum/Lapua/llm"
 	"github.com/infinmalum/Lapua/permission"
 	lapuatool "github.com/infinmalum/Lapua/tool"
+
+	"github.com/infinmalum/a1o-platform/common/logger"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
 // lapuaLoop delegates turn progression and tool dispatch to Lapua. The host
 // supplies the next model leg from its own Item history, retaining native
 // provider state and the existing gateway's streaming and billing behavior.
-func lapuaLoop(ctx context.Context, tools *toolSet, maxLegs int,
+func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs int,
 	nextLeg func(context.Context) (InvokeResult, []Item, error),
 	onToolResult func(InvokeResult, Item, toolResult) error,
 ) error {
@@ -35,6 +39,12 @@ func lapuaLoop(ctx context.Context, tools *toolSet, maxLegs int,
 	}()
 
 	var ready []chan struct{}
+	// leg and calls hold the current model leg; tool executions belong to the
+	// leg that requested them. Declared before the registry so the dispatch
+	// closure can capture them.
+	var leg InvokeResult
+	var calls []Item
+	var processed int
 	registry := lapuatool.NewRegistry()
 	allowed := make([]string, 0, len(tools.defs))
 	for _, def := range tools.defs {
@@ -62,7 +72,9 @@ func lapuaLoop(ctx context.Context, tools *toolSet, maxLegs int,
 				if err := ctx.Err(); err != nil {
 					return lapuatool.Result{}, err
 				}
-				result := fn(ctx, toolRequest{Name: def.Name, Arguments: string(input)})
+				result := recordToolExecution(ctx, run, leg.InvocationID, calls[index], string(input), func() toolResult {
+					return fn(ctx, toolRequest{Name: def.Name, Arguments: string(input)})
+				})
 				return lapuatool.Result{
 					Content: []llm.ContentBlock{llm.TextBlock(result.Content)},
 					IsError: result.IsError,
@@ -72,9 +84,6 @@ func lapuaLoop(ctx context.Context, tools *toolSet, maxLegs int,
 		allowed = append(allowed, def.Name)
 	}
 
-	var leg InvokeResult
-	var calls []Item
-	var processed int
 	deps := harness.QueryDeps{CallModel: func(ctx context.Context, _ llm.CompletionRequest) iter.Seq2[llm.StreamEvent, error] {
 		return func(yield func(llm.StreamEvent, error) bool) {
 			var err error
@@ -141,4 +150,39 @@ func lapuaLoop(ctx context.Context, tools *toolSet, maxLegs int,
 func isLapuaTurnLimit(err error) bool {
 	var incomplete *harness.IncompleteError
 	return errors.As(err, &incomplete) && incomplete.Reason == harness.ReasonMaxTurns
+}
+
+// recordToolExecution wraps one tool dispatch with the persisted intent of
+// the runtime reconstruction plan §4: the row lands before the tool runs, so
+// a crash mid-execution leaves a pending row naming what may already have
+// acted on the outside world — the reconciliation resume flow surfaces it. A
+// cancelled context after the call marks the outcome unknown instead of
+// trusting whatever the interrupted handler returned. Recording failures log
+// and never block the tool itself, mirroring emitEvent's tolerance. A nil
+// run (direct tests) skips persistence entirely.
+func recordToolExecution(ctx context.Context, run *model.AgentRun, invocationID int,
+	call Item, arguments string, exec func() toolResult) toolResult {
+	if run == nil {
+		return exec()
+	}
+	execution := &model.ToolExecution{
+		RunId: run.Id, InvocationId: invocationID,
+		CallId: call.CallID, Name: call.Name, Arguments: arguments,
+	}
+	if err := model.CreateToolExecution(execution); err != nil {
+		logger.SysError("failed to persist tool execution intent: " + err.Error())
+	}
+	start := time.Now()
+	result := exec()
+	status := model.ToolExecutionStatusCompleted
+	if result.IsError {
+		status = model.ToolExecutionStatusFailed
+	}
+	if ctx.Err() != nil {
+		status = model.ToolExecutionStatusUnknown
+	}
+	if err := model.CompleteToolExecution(execution.Id, status, result.IsError, time.Since(start).Milliseconds()); err != nil {
+		logger.SysError("failed to complete tool execution record: " + err.Error())
+	}
+	return result
 }

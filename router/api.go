@@ -180,14 +180,11 @@ func SetApiRouter(router *gin.Engine) {
 			studioRoute.GET("/runs/:id/events", controller.StreamStudioRunEvents)
 			studioRoute.POST("/runs/:id/inputs", controller.AppendStudioRunInput)
 			studioRoute.POST("/runs/:id/cancel", controller.CancelStudioRun)
+			studioRoute.POST("/runs/:id/resume", controller.ResumeStudioRun)
 			studioRoute.GET("/tasks", controller.ListStudioTasks)
 			studioRoute.GET("/tasks/:id", controller.GetStudioTask)
-			// Dedicated workbenches (studio proposal §6/§7): the translation
-			// service with its engine metadata, and the persistent image
+			// Dedicated workbench (studio proposal §7): the persistent image
 			// generation runs with their products.
-			studioRoute.GET("/translations/meta", controller.GetTranslationMeta)
-			studioRoute.POST("/translations", controller.CreateTranslation)
-			studioRoute.GET("/translations", controller.GetTranslations)
 			studioRoute.GET("/images/meta", controller.GetImageMeta)
 			studioRoute.POST("/images", controller.CreateImageGeneration)
 			studioRoute.GET("/images", controller.ListImageGenerations)

@@ -98,7 +98,7 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 	for remaining > 0 {
 		var outputs []Item
 		var lastLeg InvokeResult
-		err := lapuaLoop(ctx, tools, remaining, func(ctx context.Context) (InvokeResult, []Item, error) {
+		err := lapuaLoop(ctx, req.Run, tools, remaining, func(ctx context.Context) (InvokeResult, []Item, error) {
 			lastLeg = InvokeResult{}
 			if len(outputs) > 0 {
 				if err := e.appendWorkContext(req, outputs); err != nil {

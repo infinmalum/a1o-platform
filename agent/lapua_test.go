@@ -17,7 +17,7 @@ func TestLapuaStopsDispatchAfterToolResultPersistenceFails(t *testing.T) {
 
 	saveErr := errors.New("tool result could not be saved")
 	legs := 0
-	err := lapuaLoop(t.Context(), tools, 2, func(context.Context) (InvokeResult, []Item, error) {
+	err := lapuaLoop(t.Context(), nil, tools, 2, func(context.Context) (InvokeResult, []Item, error) {
 		legs++
 		return InvokeResult{}, []Item{
 			{CallID: "first", Name: "test_tool", Arguments: "{}"},

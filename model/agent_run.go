@@ -262,6 +262,27 @@ func GetRunEventsAfter(runId int, after int64) ([]RunEvent, error) {
 	return events, err
 }
 
+// GetRunEventBounds returns the run's lowest and highest persisted sequence.
+// exists is false when the log is empty (fresh run or fully pruned). The
+// events stream uses the bounds to detect a stale or ahead-of-log cursor and
+// answer with an explicit resync instead of a silently gapped replay.
+func GetRunEventBounds(runId int) (minSeq, maxSeq int64, exists bool, err error) {
+	var bounds struct {
+		MinSeq *int64
+		MaxSeq *int64
+	}
+	err = DB.Model(&RunEvent{}).Where("run_id = ?", runId).
+		Select("MIN(sequence) AS min_seq, MAX(sequence) AS max_seq").
+		Scan(&bounds).Error
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if bounds.MinSeq == nil || bounds.MaxSeq == nil {
+		return 0, 0, false, nil
+	}
+	return *bounds.MinSeq, *bounds.MaxSeq, true, nil
+}
+
 // CreateModelInvocation persists the pending request intent.
 func CreateModelInvocation(invocation *ModelInvocation) error {
 	invocation.CreatedTime = helper.GetTimestamp()

@@ -188,6 +188,22 @@ func RequeueWaitingRun(runId int) (bool, error) {
 	return result.RowsAffected == 1, result.Error
 }
 
+// ResumeReconciliationRun is the only non-cancel exit from
+// needs_reconciliation: the owner's explicit decision to continue a run
+// whose earlier model calls and tool effects could not be verified. The CAS
+// clears the dead claim's lease so the next claim starts fresh; the fencing
+// token still increments on that claim, so any write from the lost worker
+// keeps failing.
+func ResumeReconciliationRun(runId int) (bool, error) {
+	result := DB.Model(&AgentRun{}).
+		Where("id = ? AND status = ?", runId, RunStatusNeedsReconciliation).
+		Updates(map[string]any{
+			"status": RunStatusQueued, "lease_owner": "", "lease_expire_time": 0,
+			"error": "", "updated_time": helper.GetTimestamp(),
+		})
+	return result.RowsAffected == 1, result.Error
+}
+
 // ReconcileInterruptedRuns is the startup pass: work runs left running by a
 // dead process move to needs_reconciliation (their worker's model calls and
 // tool effects cannot be verified from here), runs already asked to cancel

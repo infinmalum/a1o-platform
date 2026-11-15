@@ -29,6 +29,12 @@ type Log struct {
 	ElapsedTime       int64  `json:"elapsed_time" gorm:"default:0"` // unit is ms
 	IsStream          bool   `json:"is_stream" gorm:"default:false"`
 	SystemPromptReset bool   `json:"system_prompt_reset" gorm:"default:false"`
+	// Agent run association, back-filled by the agent runtime's executor
+	// after settlement: consume logs stay the settlement source of truth,
+	// and these make the ModelInvocation→ConsumeLogId link queryable from
+	// both sides. 0 for calls outside the agent runtime.
+	AgentRunId        int `json:"agent_run_id" gorm:"default:0;index"`
+	ModelInvocationId int `json:"model_invocation_id" gorm:"default:0"`
 }
 
 const (
@@ -85,6 +91,19 @@ func RecordConsumeLog(ctx context.Context, log *Log) {
 	log.CreatedAt = helper.GetTimestamp()
 	log.Type = LogTypeConsume
 	recordLogHelper(ctx, log)
+}
+
+// UpdateLogRunAssociation back-fills the agent run association on a consume
+// log after settlement; the executor learns the log id only through its
+// settlement callback, so the link lands as a second write.
+func UpdateLogRunAssociation(logId, agentRunId, invocationId int) error {
+	if logId <= 0 {
+		return nil
+	}
+	return LOG_DB.Model(&Log{}).Where("id = ?", logId).Updates(map[string]any{
+		"agent_run_id":        agentRunId,
+		"model_invocation_id": invocationId,
+	}).Error
 }
 
 func RecordTestLog(ctx context.Context, log *Log) {

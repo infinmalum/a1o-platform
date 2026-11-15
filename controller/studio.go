@@ -35,6 +35,12 @@ const studioEventPollInterval = 500 * time.Millisecond
 // observation stream.
 const studioEventPingInterval = 15 * time.Second
 
+// studioEventResync is the stream-scoped instruction telling the client its
+// event cursor is unusable and to adopt the payload's latest_sequence as its
+// new cursor. It is never persisted — replaying it to other observers would
+// be meaningless.
+const studioEventResync = "run.resync"
+
 type studioRunPayload struct {
 	Kind           string `json:"kind"`
 	Title          string `json:"title"`
@@ -250,6 +256,12 @@ type runProjection struct {
 	PromptTokens     int64            `json:"prompt_tokens"`
 	CompletionTokens int64            `json:"completion_tokens"`
 	Invocations      int64            `json:"invocations"`
+	// Reconciliation forensics, computed for needs_reconciliation runs: how
+	// many model calls ended without a verifiable outcome and which tool
+	// executions started but never recorded a result. The resume dialog
+	// shows them before the owner decides to continue the run.
+	UnknownInvocations int64    `json:"unknown_invocations"`
+	UnverifiedTools    []string `json:"unverified_tools"`
 }
 
 type projectionItem struct {
@@ -285,6 +297,9 @@ func buildRunProjection(run *model.AgentRun) (*runProjection, error) {
 	}
 	projection.Invocations = int64(len(invocations))
 	for _, invocation := range invocations {
+		if invocation.Status == model.InvocationStatusUnknown {
+			projection.UnknownInvocations++
+		}
 		if invocation.Usage == nil {
 			continue
 		}
@@ -301,6 +316,13 @@ func buildRunProjection(run *model.AgentRun) (*runProjection, error) {
 	}
 	if pending, err := model.CountPendingRunInputs(run.Id); err == nil {
 		projection.PendingInputs = pending
+	}
+	if run.Status == model.RunStatusNeedsReconciliation {
+		if pending, err := model.ListPendingToolExecutions(run.Id); err == nil {
+			for _, execution := range pending {
+				projection.UnverifiedTools = append(projection.UnverifiedTools, execution.Name)
+			}
+		}
 	}
 	return projection, nil
 }
@@ -350,6 +372,27 @@ func StreamStudioRunEvents(c *gin.Context) {
 	}
 
 	lastSequence := after
+	// A cursor can be stale (history pruned by retention) or ahead of the log
+	// head (a resumed run whose pruned log restarted sequences at 1). Either
+	// way a raw replay would be silently gapped or deduped into nothing, so
+	// the contract answers with an explicit resync instruction (plan §4)
+	// instead of pretending the history is intact.
+	minSeq, maxSeq, exists, berr := model.GetRunEventBounds(run.Id)
+	if berr != nil {
+		return
+	}
+	if resyncAt, resync, rebuild := eventResyncTarget(after, minSeq, maxSeq, exists); resync {
+		if !write(agent.EventEnvelope{
+			RunID: run.Id, Type: studioEventResync, SchemaVersion: "1",
+			Payload: json.RawMessage(fmt.Sprintf(`{"latest_sequence":%d,"reset":%t}`, resyncAt, rebuild)),
+		}) {
+			return
+		}
+		lastSequence = resyncAt
+	}
+	// The replay still runs after a resync: surviving events reach the
+	// client — which dedupes what it already showed — while a pruned or
+	// restarted log simply yields nothing here.
 	replay, err := model.GetRunEventsAfter(run.Id, after)
 	if err != nil {
 		return
@@ -428,6 +471,30 @@ func studioRunTerminal(status string) bool {
 		return true
 	}
 	return false
+}
+
+// eventResyncTarget decides whether an events replay from the given cursor
+// needs an explicit resync instruction, and returns the sequence the client
+// should adopt as its new baseline plus whether its whole timeline must be
+// rebuilt. A gap below the cursor means retained history was pruned — the
+// client keeps what it saw and re-baselines to the head. A cursor at or
+// beyond the log head (a resumed run whose pruned log restarted sequences)
+// or an entirely pruned log invalidates the client's sequence space — the
+// client rebuilds its timeline from scratch.
+func eventResyncTarget(after, minSeq, maxSeq int64, exists bool) (target int64, resync, rebuild bool) {
+	if after <= 0 {
+		return 0, false, false
+	}
+	if !exists {
+		return 0, true, true
+	}
+	switch {
+	case after > maxSeq:
+		return maxSeq, true, true
+	case minSeq > after+1:
+		return maxSeq, true, false
+	}
+	return 0, false, false
 }
 
 func orStudioString(value *string) string {
@@ -541,6 +608,73 @@ func CancelStudioRun(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"status": status, "changed": changed}})
+}
+
+// ResumeStudioRun is the owner's decision to continue a needs_reconciliation
+// run: the earlier attempt's model calls and tool effects could not be
+// verified, so the resume re-queues the run from its persisted context and
+// records what was unverified in the control event. Resuming acknowledges
+// that the previous attempt's side effects may already have happened.
+func ResumeStudioRun(c *gin.Context) {
+	userId := c.GetInt(ctxkey.Id)
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		chatError(c, errors.New("无效的运行 ID"))
+		return
+	}
+	run, err := model.GetAgentRun(id, userId)
+	if err != nil {
+		chatError(c, err)
+		return
+	}
+	if run.Status != model.RunStatusNeedsReconciliation {
+		chatError(c, fmt.Errorf("运行已%s，无需恢复", studioRunStateText(run.Status)))
+		return
+	}
+	unknownInvocations := 0
+	if invocations, ierr := model.GetRunInvocations(run.Id); ierr == nil {
+		for _, invocation := range invocations {
+			if invocation.Status == model.InvocationStatusUnknown {
+				unknownInvocations++
+			}
+		}
+	}
+	var unverifiedTools []string
+	if pending, terr := model.ListPendingToolExecutions(run.Id); terr == nil {
+		for _, execution := range pending {
+			unverifiedTools = append(unverifiedTools, execution.Name)
+		}
+	}
+	requeued, rerr := model.ResumeReconciliationRun(run.Id)
+	if rerr != nil {
+		chatError(c, rerr)
+		return
+	}
+	if !requeued {
+		// Another request resumed or cancelled it first; report the fresh
+		// state instead of failing the idempotent-ish call.
+		fresh, ferr := model.GetAgentRunById(run.Id)
+		if ferr != nil {
+			chatError(c, ferr)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"status": fresh.Status, "changed": false}})
+		return
+	}
+	payload := map[string]any{"reason": "resumed_after_reconciliation", "unknown_invocations": unknownInvocations}
+	if len(unverifiedTools) > 0 {
+		payload["unverified_tools"] = unverifiedTools
+	}
+	if err := model.AppendRunControlEvent(run.Id, model.RunEventRunQueued, payload); err != nil {
+		// Queue state is the truth; a missing timeline entry never blocks.
+	}
+	agent.DefaultScheduler().Wake()
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"status":              model.RunStatusQueued,
+		"changed":             true,
+		"unknown_invocations": unknownInvocations,
+		"unverified_tools":    unverifiedTools,
+	}})
 }
 
 // ListStudioTasks lists the caller's tasks with each task's latest run.

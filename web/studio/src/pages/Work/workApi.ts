@@ -51,6 +51,11 @@ export interface RunProjection {
   prompt_tokens: number;
   completion_tokens: number;
   invocations: number;
+  // Reconciliation forensics, populated for needs_reconciliation runs: model
+  // calls without a verifiable outcome and tool executions that started but
+  // never recorded a result.
+  unknown_invocations: number;
+  unverified_tools: string[];
 }
 
 export interface RunEventPayload {
@@ -136,6 +141,16 @@ export const workApi = {
     }),
   cancelRun: (runId: number) =>
     request<{ status: string; changed: boolean }>(`/api/studio/runs/${runId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  resumeRun: (runId: number) =>
+    request<{
+      status: string;
+      changed: boolean;
+      unknown_invocations: number;
+      unverified_tools: string[];
+    }>(`/api/studio/runs/${runId}/resume`, {
       method: 'POST',
       body: JSON.stringify({}),
     }),

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/infinmalum/a1o-platform/common/config"
+	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
@@ -241,6 +242,14 @@ func (e *ModelExecutor) recordOutcome(runID int, invocation *model.ModelInvocati
 		// state a crash leaves; the caller's result still stands but the
 		// record gap is visible instead of papered over.
 		return
+	}
+	if invocation.ConsumeLogId > 0 {
+		// Back-fill the consume log's run association so the settlement link
+		// is queryable from both sides; a failure only loses the shortcut,
+		// ModelInvocation.ConsumeLogId still carries the join.
+		if err := model.UpdateLogRunAssociation(invocation.ConsumeLogId, runID, invocation.Id); err != nil {
+			logger.SysError("failed to associate consume log with run: " + err.Error())
+		}
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"invocation_id":     invocation.Id,

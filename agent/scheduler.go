@@ -102,10 +102,21 @@ func (s *Scheduler) NotifyCancel(runId int) {
 func (s *Scheduler) loop() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+	// The startup reconciliation pass only covers this process's own restart.
+	// A periodic pass also recovers runs orphaned without one: a dead peer
+	// instance in a multi-node deployment, or a worker that walked away during
+	// a database outage and never reached its finalizer.
+	reconcile := time.NewTicker(time.Minute)
+	defer reconcile.Stop()
 	for {
 		select {
 		case <-s.wake:
 		case <-ticker.C:
+		case <-reconcile.C:
+			if err := model.ReconcileInterruptedRuns(); err != nil {
+				logger.SysError("periodic work run reconciliation failed: " + err.Error())
+			}
+			continue
 		}
 		s.claimAvailable()
 	}

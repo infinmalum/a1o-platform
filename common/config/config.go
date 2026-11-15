@@ -136,6 +136,9 @@ var (
 	WorkRunTimeoutSeconds = env.Int("WORK_RUN_TIMEOUT_SECONDS", 1800)
 	// WorkMaxToolIterations bounds the model/tool steps of one work run.
 	WorkMaxToolIterations = env.Int("WORK_MAX_TOOL_ITERATIONS", 32)
+	// RunEventRetentionDays prunes the event logs of runs quiet for longer
+	// than this many days; 0 keeps event logs forever.
+	RunEventRetentionDays = env.Int("RUN_EVENT_RETENTION_DAYS", 30)
 )
 
 var RootUserEmail = ""

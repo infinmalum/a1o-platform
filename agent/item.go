@@ -1,8 +1,8 @@
-// Package agent hosts the agent runtime's model leg: the standard Item
-// schema, the run event envelope, and the ModelExecutor that maps Items onto
-// native provider protocols through the shared relay lifecycle. Chat/Work
-// orchestration (Engine, Scheduler) lands in later stages of the runtime
-// reconstruction plan; this package only owns the model-call vertical.
+// Package agent hosts the agent runtime: the standard Item schema, the run
+// event envelope, the ModelExecutor that maps Items onto native provider
+// protocols through the shared relay lifecycle, the Engine driving Chat and
+// Work turns over Lapua, and the work-queue Scheduler with its cross-instance
+// lease.
 package agent
 
 import "encoding/json"

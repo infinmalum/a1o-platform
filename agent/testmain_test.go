@@ -28,7 +28,8 @@ func openChatTestDB() (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.ChatSession{}, &model.ChatMessage{}, &model.ChatFile{},
 		&model.ChatSkill{}, &model.ChatMCPServer{}, &model.Token{}, &model.User{},
-		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{}); err != nil {
+		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{},
+		&model.ToolExecution{}); err != nil {
 		return nil, err
 	}
 	return db, nil

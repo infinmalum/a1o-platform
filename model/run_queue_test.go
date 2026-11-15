@@ -16,7 +16,7 @@ func openRunQueueTestDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&AgentRun{}, &ModelInvocation{}, &RunEvent{},
-		&WorkTask{}, &RunInput{}); err != nil {
+		&WorkTask{}, &RunInput{}, &ToolExecution{}); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -217,6 +217,51 @@ func TestRequeueWaitingRunClearsLease(t *testing.T) {
 	DB.Where("id = ?", run.Id).First(&fresh)
 	if fresh.Status != RunStatusQueued || fresh.LeaseOwner != "" || fresh.LeaseExpireTime != 0 {
 		t.Fatalf("requeue must reset the lease: %+v", fresh)
+	}
+}
+
+func TestResumeReconciliationRun(t *testing.T) {
+	useRunQueueTestDB(t)
+	_, run := newWorkRunFixture(t, 1, RunStatusNeedsReconciliation)
+	if err := DB.Model(&AgentRun{}).Where("id = ?", run.Id).
+		Updates(map[string]any{"lease_owner": "dead-instance", "lease_expire_time": helperStampNow() - 10,
+			"error": "进程重启，上一次执行结果待核对"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, err := ResumeReconciliationRun(run.Id)
+	if err != nil || !resumed {
+		t.Fatalf("resume: %v %v", resumed, err)
+	}
+	var fresh AgentRun
+	DB.Where("id = ?", run.Id).First(&fresh)
+	if fresh.Status != RunStatusQueued || fresh.LeaseOwner != "" || fresh.LeaseExpireTime != 0 {
+		t.Fatalf("resume must reset the lease: %+v", fresh)
+	}
+	if fresh.Error != "" {
+		t.Fatalf("resume must clear the reconciliation error: %q", fresh.Error)
+	}
+
+	// Non-reconciliation statuses are refused; the CAS never moves them.
+	_, failed := newWorkRunFixture(t, 1, RunStatusFailed)
+	resumed, err = ResumeReconciliationRun(failed.Id)
+	if err != nil || resumed {
+		t.Fatalf("failed run must not resume: %v %v", resumed, err)
+	}
+	var stillFailed AgentRun
+	DB.Where("id = ?", failed.Id).First(&stillFailed)
+	if stillFailed.Status != RunStatusFailed {
+		t.Fatalf("refused resume must not change status: %s", stillFailed.Status)
+	}
+
+	// A resumed run is claimable again, and the claim still bumps fencing so
+	// the dead worker's guarded writes keep failing.
+	claimed, err := ClaimNextWorkRun("instance-b", 60, 1)
+	if err != nil || claimed == nil || claimed.Id != run.Id {
+		t.Fatalf("resumed run must be claimable: %+v err=%v", claimed, err)
+	}
+	if claimed.FencingToken != run.FencingToken+1 {
+		t.Fatalf("claim must bump fencing: %d -> %d", run.FencingToken, claimed.FencingToken)
 	}
 }
 

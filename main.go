@@ -113,6 +113,10 @@ func main() {
 	// then start the persistent queue workers.
 	agent.DefaultScheduler().Start()
 
+	// Run event logs carry their own retention policy; the loop self-disables
+	// when RUN_EVENT_RETENTION_DAYS is unset or zero.
+	go model.RunEventRetentionLoop()
+
 	// Image workbench (studio proposal §7): reconcile interrupted
 	// generations, then start the same-process generation workers.
 	controller.StartImageWorker()

@@ -1,11 +1,11 @@
 package agent
 
 import (
-	"os"
-	"path/filepath"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -333,6 +333,61 @@ func TestRunWorkContextCarriesToolOutputsAcrossLegs(t *testing.T) {
 	}
 }
 
+// The dispatch wrapper must persist the before-the-fact tool intent
+// (runtime plan §4): every dispatched call lands a ToolExecution row before
+// the executor runs, completed with the observed outcome afterwards.
+func TestRunWorkRecordsToolExecutions(t *testing.T) {
+	openWorkTestDB(t)
+	task, run := newWorkFixture(t, 1)
+	fencing := claimFixture(t, run)
+
+	tools := newToolSet()
+	tools.add(Tool{Name: "echo", Description: "原样返回"}, func(ctx context.Context, req toolRequest) toolResult {
+		if req.Arguments != `{"x":1}` {
+			t.Fatalf("unexpected arguments: %s", req.Arguments)
+		}
+		return toolResult{Content: "echo-ok"}
+	})
+	executor := &fakeExecutor{responses: []InvokeResult{
+		{Items: []Item{{Type: ItemFunctionCall, CallID: "c1", Name: "echo", Arguments: `{"x":1}`}}},
+		{Items: []Item{{Type: ItemFunctionCall, CallID: "c2", Name: CompleteTaskToolName,
+			Arguments: `{"summary":"done"}`}}},
+	}}
+
+	engine := &Engine{extraTools: tools}
+	if err := engine.RunWork(context.Background(), WorkTurnRequest{
+		Run: run, Fencing: fencing, Task: task, Executor: executor,
+		Emit: func(EventEnvelope) error { return nil },
+	}); err != nil {
+		t.Fatalf("RunWork failed: %v", err)
+	}
+
+	executions, err := model.ListRunToolExecutions(run.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(executions) != 2 {
+		t.Fatalf("both dispatched calls must be recorded: %+v", executions)
+	}
+	first := executions[0]
+	if first.Name != "echo" || first.CallId != "c1" || first.Arguments != `{"x":1}` ||
+		first.Status != model.ToolExecutionStatusCompleted || first.IsError {
+		t.Fatalf("echo execution record mismatch: %+v", first)
+	}
+	if first.DurationMs < 0 {
+		t.Fatalf("duration must be recorded: %+v", first)
+	}
+	second := executions[1]
+	if second.Name != CompleteTaskToolName || second.CallId != "c2" ||
+		second.Status != model.ToolExecutionStatusCompleted {
+		t.Fatalf("complete_task execution record mismatch: %+v", second)
+	}
+	pending, err := model.ListPendingToolExecutions(run.Id)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("a completed run must leave no pending executions: %+v err=%v", pending, err)
+	}
+}
+
 func TestSchedulerClaimsAndCompletesWork(t *testing.T) {
 	openWorkTestDB(t)
 	_, run := newWorkFixture(t, 1)
@@ -534,7 +589,7 @@ func TestSchedulerBuildTurnRequestResolvesAgent(t *testing.T) {
 	def := &model.AgentDefinition{Name: "报告员"}
 	if err := model.CreateAgentDefinition(def, 1, &model.AgentVersionSpec{
 		Instructions: "写报告。", Modes: []string{model.AgentModeWork},
-		SkillIds:      []int{enabled.Id},
+		SkillIds: []int{enabled.Id},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +651,7 @@ func TestRunWorkInjectsReferenceFiles(t *testing.T) {
 	def := &model.AgentDefinition{Name: "文件助手"}
 	if err := model.CreateAgentDefinition(def, 1, &model.AgentVersionSpec{
 		Instructions: "按参考文件执行。", Modes: []string{model.AgentModeWork},
-		FileIds:       []int{file.Id},
+		FileIds: []int{file.Id},
 	}); err != nil {
 		t.Fatal(err)
 	}
