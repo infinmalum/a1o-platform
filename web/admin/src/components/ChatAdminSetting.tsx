@@ -24,6 +24,13 @@ const GlobalChatOptions: React.FC = () => {
   const [budget, setBudget] = React.useState(32000);
   const [maxIterations, setMaxIterations] = React.useState(8);
   const [maxFileBytes, setMaxFileBytes] = React.useState(0);
+  const [webTools, setWebTools] = React.useState(true);
+  const [memory, setMemory] = React.useState(true);
+  const [webSearchBackend, setWebSearchBackend] = React.useState('ddgs');
+  const [webSearchAPIKey, setWebSearchAPIKey] = React.useState('');
+  const [webSearchProxy, setWebSearchProxy] = React.useState('');
+  const [workSubagent, setWorkSubagent] = React.useState(true);
+  const [workSubagentMaxTurns, setWorkSubagentMaxTurns] = React.useState(12);
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -39,6 +46,13 @@ const GlobalChatOptions: React.FC = () => {
         setBudget(Number(options.ChatContextBudgetTokens) || 32000);
         setMaxIterations(Number(options.ChatMaxToolIterations) || 8);
         setMaxFileBytes(Number(options.ChatMaxFileBytes) || 0);
+        setWebTools(options.ChatWebToolsEnabled !== 'false');
+        setMemory(options.ChatMemoryEnabled !== 'false');
+        setWebSearchBackend(options.ChatWebSearchBackend || 'ddgs');
+        setWebSearchAPIKey(options.ChatWebSearchAPIKey || '');
+        setWebSearchProxy(options.ChatWebSearchProxy || '');
+        setWorkSubagent(options.WorkSubagentEnabled !== 'false');
+        setWorkSubagentMaxTurns(Number(options.WorkSubagentMaxTurns) || 12);
       } catch {
         // interceptor toasts the error
       }
@@ -55,6 +69,13 @@ const GlobalChatOptions: React.FC = () => {
       if (maxFileBytes > 0) {
         await API.put('/api/option/', { key: 'ChatMaxFileBytes', value: String(maxFileBytes) });
       }
+      await API.put('/api/option/', { key: 'ChatWebToolsEnabled', value: String(webTools) });
+      await API.put('/api/option/', { key: 'ChatMemoryEnabled', value: String(memory) });
+      await API.put('/api/option/', { key: 'ChatWebSearchBackend', value: webSearchBackend || 'ddgs' });
+      await API.put('/api/option/', { key: 'ChatWebSearchAPIKey', value: webSearchAPIKey });
+      await API.put('/api/option/', { key: 'ChatWebSearchProxy', value: webSearchProxy });
+      await API.put('/api/option/', { key: 'WorkSubagentEnabled', value: String(workSubagent) });
+      await API.put('/api/option/', { key: 'WorkSubagentMaxTurns', value: String(workSubagentMaxTurns) });
       showSuccess(t('chat.saved'));
     } catch {
       // interceptor toasts the error
@@ -104,6 +125,70 @@ const GlobalChatOptions: React.FC = () => {
             type='number'
             value={maxFileBytes}
             onChange={(event, data) => setMaxFileBytes(Number(data.value) || 0)}
+          />
+        </Form.Field>
+      </Form.Group>
+      <Form.Field>
+        <Checkbox
+          toggle
+          label={t('chat.webToolsToggle')}
+          checked={webTools}
+          onChange={() => setWebTools(!webTools)}
+        />
+      </Form.Field>
+      <Form.Group widths='three'>
+        <Form.Field>
+          <label>{t('chat.webSearchBackend')}</label>
+          <Form.Select
+            value={webSearchBackend}
+            options={[
+              { key: 'ddgs', value: 'ddgs', text: t('chat.webSearchBackendDDGS') },
+              { key: 'brave-free', value: 'brave-free', text: t('chat.webSearchBackendBrave') },
+              { key: 'tavily', value: 'tavily', text: t('chat.webSearchBackendTavily') },
+            ]}
+            onChange={(event, data) => setWebSearchBackend(String(data.value ?? 'ddgs'))}
+          />
+        </Form.Field>
+        <Form.Field>
+          <label>{t('chat.webSearchAPIKey')}</label>
+          <Input
+            type='password'
+            value={webSearchAPIKey}
+            onChange={(event, data) => setWebSearchAPIKey(String(data.value ?? ''))}
+          />
+        </Form.Field>
+        <Form.Field>
+          <label>{t('chat.webSearchProxy')}</label>
+          <Input
+            placeholder='http://127.0.0.1:7890'
+            value={webSearchProxy}
+            onChange={(event, data) => setWebSearchProxy(String(data.value ?? ''))}
+          />
+        </Form.Field>
+      </Form.Group>
+      <Form.Field>
+        <Checkbox
+          toggle
+          label={t('chat.memoryToggle')}
+          checked={memory}
+          onChange={() => setMemory(!memory)}
+        />
+      </Form.Field>
+      <Form.Field>
+        <Checkbox
+          toggle
+          label={t('chat.workSubagentToggle')}
+          checked={workSubagent}
+          onChange={() => setWorkSubagent(!workSubagent)}
+        />
+      </Form.Field>
+      <Form.Group widths='three'>
+        <Form.Field>
+          <label>{t('chat.workSubagentMaxTurns')}</label>
+          <Input
+            type='number'
+            value={workSubagentMaxTurns}
+            onChange={(event, data) => setWorkSubagentMaxTurns(Number(data.value) || 0)}
           />
         </Form.Field>
       </Form.Group>

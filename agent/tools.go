@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/infinmalum/Lapua/llm"
+	lapuatool "github.com/infinmalum/Lapua/tool"
+
 	"github.com/infinmalum/a1o-platform/model"
 )
 
@@ -16,10 +19,46 @@ type toolRequest struct {
 }
 
 // toolResult feeds the outcome back to the model; errors travel in-band so
-// the model can react.
+// the model can react. Blocks, when set, carries the full Lapua content
+// blocks (text plus media) and Content keeps the plain-text projection for
+// persistence paths that have no media representation yet.
 type toolResult struct {
 	Content string
+	Blocks  []llm.ContentBlock
 	IsError bool
+}
+
+// sdkResultText renders a Lapua tool result's text blocks into one string.
+func sdkResultText(result lapuatool.Result) string {
+	var b strings.Builder
+	for _, block := range result.Content {
+		b.WriteString(block.Text)
+	}
+	return b.String()
+}
+
+// mediaResultItems converts a tool result's media blocks into a synthetic
+// user message item carrying input_image parts, appended after the
+// function_call_output so the next leg's provider payload includes them.
+// Every bridge already maps input_image parts on user messages, and Chat
+// Completions upstreams conventionally receive tool-result media this way.
+// The synthetic item lives only within the current run: history persistence
+// keeps tool rows as text, so cross-turn replay drops the media. Tools that
+// produce durable media should also surface a persisted asset reference in
+// their text content.
+func mediaResultItems(result toolResult) []Item {
+	parts := make([]ContentPart, 0, len(result.Blocks))
+	for _, block := range result.Blocks {
+		if block.Type != llm.BlockImage || block.Source == nil || block.Source.Type != "base64" {
+			continue
+		}
+		parts = append(parts, ContentPart{Type: PartInputImage,
+			ImageURL: "data:" + block.Source.MediaType + ";base64," + block.Source.Data})
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []Item{{Type: ItemMessage, Role: "user", Content: parts}}
 }
 
 type toolFunc func(ctx context.Context, req toolRequest) toolResult
@@ -28,10 +67,17 @@ type toolFunc func(ctx context.Context, req toolRequest) toolResult
 type toolSet struct {
 	defs []Tool
 	exec map[string]toolFunc
+	// sdk holds Lapua core tools dispatched inside lapuaLoop. They share the
+	// defs surface (skill filtering, bootstrap visibility) but their Call is
+	// the SDK implementation, not a host closure.
+	sdk map[string]lapuatool.CoreTool
+	// todos is the per-run todo store backing the TodoWrite tool; lapuaLoop
+	// passes it to the harness for reminder re-surfacing.
+	todos *lapuatool.TodoStore
 }
 
 func newToolSet() *toolSet {
-	return &toolSet{exec: map[string]toolFunc{}}
+	return &toolSet{exec: map[string]toolFunc{}, sdk: map[string]lapuatool.CoreTool{}}
 }
 
 func (t *toolSet) add(def Tool, fn toolFunc) {
@@ -40,6 +86,25 @@ func (t *toolSet) add(def Tool, fn toolFunc) {
 	}
 	t.defs = append(t.defs, def)
 	t.exec[def.Name] = fn
+}
+
+// addSDK registers a Lapua core tool. The tool def mirrors the core tool's
+// schema so the rest of the host treats it like any other tool.
+func (t *toolSet) addSDK(core lapuatool.CoreTool) {
+	name := core.Name()
+	if _, exists := t.sdk[name]; exists {
+		return
+	}
+	raw, err := json.Marshal(core.InputSchema())
+	if err != nil {
+		return
+	}
+	t.sdk[name] = core
+	t.defs = append(t.defs, Tool{
+		Name:        name,
+		Description: core.Description(),
+		Parameters:  raw,
+	})
 }
 
 // filterBySkills narrows the tool surface when any selected skill declares a

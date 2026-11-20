@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	lapuatool "github.com/infinmalum/Lapua/tool"
+
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
@@ -110,8 +112,48 @@ func (e *Engine) resolveTools(ctx context.Context, turn ChatTurnRequest) *toolSe
 			set.add(def, e.extraTools.exec[def.Name])
 		}
 	}
+	addLapuaTools(ctx, set, turn.Session.UserId)
 	set.filterBySkills(turn.Skills)
 	return set
+}
+
+// addLapuaTools registers Lapua core tools that run inside the gateway
+// process. Web tools are read-only in the permission pipeline, so they work
+// under the host's dontAsk mode; WebFetch additionally passes the SSRF guard
+// below. Search backend misconfiguration degrades to a tool-level error,
+// never a run error. Image generation reuses the studio pipeline; the tool
+// is offered only when the user's group has an image-capable model.
+func addLapuaTools(ctx context.Context, set *toolSet, userId int) {
+	if ws, err := lapuatool.NewWebSearch(lapuatool.WebSearchConfig{
+		Backend:      config.ChatWebSearchBackend,
+		BraveAPIKey:  config.ChatWebSearchAPIKey,
+		TavilyAPIKey: config.ChatWebSearchAPIKey,
+		Proxy:        config.ChatWebSearchProxy,
+	}); err == nil {
+		if config.ChatWebToolsEnabled {
+			set.addSDK(ws)
+		}
+	} else {
+		logger.SysError("failed to build web search tool: " + err.Error())
+	}
+	if config.ChatWebToolsEnabled {
+		set.addSDK(newGuardedWebFetch(lapuatool.NewWebFetch(lapuatool.WebFetchConfig{
+			Proxy: config.ChatWebSearchProxy,
+		})))
+	}
+	if hasImageModel(ctx, userId) {
+		set.add(generateImageToolDef(), imageGenExec(userId))
+	}
+	addMemoryTools(set, userId)
+}
+
+// hasImageModel probes the user's group for an image-capable model. A cache
+// or database outage must not kill the chat turn for an optional tool, so
+// any panic or error degrades to "no image tool".
+func hasImageModel(ctx context.Context, userId int) (ok bool) {
+	defer func() { recover() }()
+	_, err := defaultImageModel(ctx, userId)
+	return err == nil
 }
 
 // marshalInputSchema converts an MCP tool schema to raw JSON for the function
@@ -223,6 +265,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 		pendingCalls = pendingCalls[1:]
 		items = append(items, call, Item{Type: ItemFunctionCallOutput,
 			CallID: call.CallID, Output: callResult.Content})
+		items = append(items, mediaResultItems(callResult)...)
 		return nil
 	})
 	if ctx.Err() != nil {

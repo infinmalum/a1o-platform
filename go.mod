@@ -6,8 +6,10 @@ require (
 	cloud.google.com/go/iam v1.13.0
 	github.com/anthropics/anthropic-sdk-go v1.76.0
 	github.com/aws/aws-sdk-go-v2 v1.47.0
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0
+	github.com/aws/smithy-go v1.28.2
 	github.com/gin-contrib/cors v1.7.9
 	github.com/gin-contrib/gzip v1.2.8
 	github.com/gin-contrib/sessions v1.1.2
@@ -16,8 +18,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/infinmalum/Lapua v0.0.0-20261113102732-93c0fa04d235
-	github.com/jinzhu/copier v0.4.0
+	github.com/infinmalum/Lapua v0.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go/v3 v3.66.0
@@ -44,10 +45,8 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.1 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect
-	github.com/aws/smithy-go v1.28.2 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect

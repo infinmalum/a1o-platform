@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	lapuatool "github.com/infinmalum/Lapua/tool"
+
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
@@ -125,6 +127,7 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 		}, func(leg InvokeResult, call Item, result toolResult) error {
 			emitToolResult(e, req.Run, leg.InvocationID, call, result, req.Emit)
 			outputs = append(outputs, Item{Type: ItemFunctionCallOutput, CallID: call.CallID, Output: result.Content})
+			outputs = append(outputs, mediaResultItems(result)...)
 			return nil
 		})
 		if ctx.Err() != nil {
@@ -406,6 +409,15 @@ func (e *Engine) resolveWorkTools(ctx context.Context, req WorkTurnRequest) *too
 			set.add(def, e.extraTools.exec[def.Name])
 		}
 	}
+	addLapuaTools(ctx, set, req.Run.UserId)
+	// Work runs plan across many legs, so the todo list rides here and the
+	// harness re-surfaces it between turns. Chat stays lean without it.
+	todos := lapuatool.NewTodoStore()
+	set.todos = todos
+	set.addSDK(todos.Tool())
 	set.filterBySkills(req.Skills)
+	// The Agent delegation tool joins after the filter like complete_task:
+	// skill tool lists narrow capability tools, never delegation itself.
+	e.addSubagentTool(ctx, set, req)
 	return set
 }

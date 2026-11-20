@@ -265,7 +265,15 @@ func TestResolveToolsSandboxToggleAndSkillFilter(t *testing.T) {
 	setupChatDB(t)
 	previousEnabled := config.ChatSandboxEnabled
 	config.ChatSandboxEnabled = true
-	t.Cleanup(func() { config.ChatSandboxEnabled = previousEnabled })
+	previousWeb := config.ChatWebToolsEnabled
+	config.ChatWebToolsEnabled = false
+	previousMemory := config.ChatMemoryEnabled
+	config.ChatMemoryEnabled = false
+	t.Cleanup(func() {
+		config.ChatSandboxEnabled = previousEnabled
+		config.ChatWebToolsEnabled = previousWeb
+		config.ChatMemoryEnabled = previousMemory
+	})
 
 	engine := Default()
 	offSession := &model.ChatSession{UserId: 1, Model: "m", SandboxEnabled: false}
@@ -417,6 +425,14 @@ func TestTurnLoopPersistsPlaceholdersWhenCancelledMidTurn(t *testing.T) {
 // guards against.
 func TestTurnLoopDoesNotPersistHallucinatedToolCalls(t *testing.T) {
 	setupChatDB(t)
+	previousWeb := config.ChatWebToolsEnabled
+	config.ChatWebToolsEnabled = false
+	previousMemory := config.ChatMemoryEnabled
+	config.ChatMemoryEnabled = false
+	t.Cleanup(func() {
+		config.ChatWebToolsEnabled = previousWeb
+		config.ChatMemoryEnabled = previousMemory
+	})
 	session, run, history := newTurnFixture(t, "")
 
 	executor := &fakeExecutor{responses: []InvokeResult{

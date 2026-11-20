@@ -81,6 +81,13 @@ func InitOptionMap() {
 	config.OptionMap["ChatMaxFileBytes"] = strconv.FormatInt(config.ChatMaxFileBytes, 10)
 	config.OptionMap["ChatMCPStdioEnabled"] = strconv.FormatBool(config.ChatMCPStdioEnabled)
 	config.OptionMap["ChatMCPStdioAllowlist"] = config.ChatMCPStdioAllowlist
+	config.OptionMap["ChatWebToolsEnabled"] = strconv.FormatBool(config.ChatWebToolsEnabled)
+	config.OptionMap["ChatWebSearchBackend"] = config.ChatWebSearchBackend
+	config.OptionMap["ChatWebSearchAPIKey"] = config.ChatWebSearchAPIKey
+	config.OptionMap["ChatWebSearchProxy"] = config.ChatWebSearchProxy
+	config.OptionMap["ChatMemoryEnabled"] = strconv.FormatBool(config.ChatMemoryEnabled)
+	config.OptionMap["WorkSubagentEnabled"] = strconv.FormatBool(config.WorkSubagentEnabled)
+	config.OptionMap["WorkSubagentMaxTurns"] = strconv.Itoa(config.WorkSubagentMaxTurns)
 	config.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }
@@ -131,8 +138,10 @@ var boolOptionBindings = map[string]*bool{
 	"AutomaticDisableChannelEnabled": &config.AutomaticDisableChannelEnabled,
 	"AutomaticEnableChannelEnabled":  &config.AutomaticEnableChannelEnabled,
 	"ChatMCPStdioEnabled":            &config.ChatMCPStdioEnabled,
+	"ChatMemoryEnabled":              &config.ChatMemoryEnabled,
 	"ChatSandboxEnabled":             &config.ChatSandboxEnabled,
 	"ChatSandboxNetworkEnabled":      &config.ChatSandboxNetworkEnabled,
+	"ChatWebToolsEnabled":            &config.ChatWebToolsEnabled,
 	"DisplayInCurrencyEnabled":       &config.DisplayInCurrencyEnabled,
 	"DisplayTokenStatEnabled":        &config.DisplayTokenStatEnabled,
 	"EmailDomainRestrictionEnabled":  &config.EmailDomainRestrictionEnabled,
@@ -144,34 +153,38 @@ var boolOptionBindings = map[string]*bool{
 	"PasswordRegisterEnabled":        &config.PasswordRegisterEnabled,
 	"RegisterEnabled":                &config.RegisterEnabled,
 	"TurnstileCheckEnabled":          &config.TurnstileCheckEnabled,
+	"WorkSubagentEnabled":            &config.WorkSubagentEnabled,
 }
 
 var stringOptionBindings = map[string]*string{
-	"ChatLink":                    &config.ChatLink,
-	"ChatMCPStdioAllowlist":       &config.ChatMCPStdioAllowlist,
-	"Footer":                      &config.Footer,
-	"GitHubClientId":              &config.GitHubClientId,
-	"GitHubClientSecret":          &config.GitHubClientSecret,
-	"LarkClientId":                &config.LarkClientId,
-	"LarkClientSecret":            &config.LarkClientSecret,
-	"Logo":                        &config.Logo,
-	"MessagePusherAddress":        &config.MessagePusherAddress,
-	"MessagePusherToken":          &config.MessagePusherToken,
-	"OidcAuthorizationEndpoint":   &config.OidcAuthorizationEndpoint,
-	"OidcClientId":                &config.OidcClientId,
-	"OidcClientSecret":            &config.OidcClientSecret,
-	"OidcTokenEndpoint":           &config.OidcTokenEndpoint,
-	"OidcUserinfoEndpoint":        &config.OidcUserinfoEndpoint,
-	"OidcWellKnown":               &config.OidcWellKnown,
-	"SMTPAccount":                 &config.SMTPAccount,
-	"SMTPFrom":                    &config.SMTPFrom,
-	"SMTPServer":                  &config.SMTPServer,
-	"SMTPToken":                   &config.SMTPToken,
-	"ServerAddress":               &config.ServerAddress,
-	"SystemName":                  &config.SystemName,
-	"TopUpLink":                   &config.TopUpLink,
-	"TurnstileSecretKey":          &config.TurnstileSecretKey,
-	"TurnstileSiteKey":            &config.TurnstileSiteKey,
+	"ChatLink":                  &config.ChatLink,
+	"ChatMCPStdioAllowlist":     &config.ChatMCPStdioAllowlist,
+	"ChatWebSearchAPIKey":       &config.ChatWebSearchAPIKey,
+	"ChatWebSearchBackend":      &config.ChatWebSearchBackend,
+	"ChatWebSearchProxy":        &config.ChatWebSearchProxy,
+	"Footer":                    &config.Footer,
+	"GitHubClientId":            &config.GitHubClientId,
+	"GitHubClientSecret":        &config.GitHubClientSecret,
+	"LarkClientId":              &config.LarkClientId,
+	"LarkClientSecret":          &config.LarkClientSecret,
+	"Logo":                      &config.Logo,
+	"MessagePusherAddress":      &config.MessagePusherAddress,
+	"MessagePusherToken":        &config.MessagePusherToken,
+	"OidcAuthorizationEndpoint": &config.OidcAuthorizationEndpoint,
+	"OidcClientId":              &config.OidcClientId,
+	"OidcClientSecret":          &config.OidcClientSecret,
+	"OidcTokenEndpoint":         &config.OidcTokenEndpoint,
+	"OidcUserinfoEndpoint":      &config.OidcUserinfoEndpoint,
+	"OidcWellKnown":             &config.OidcWellKnown,
+	"SMTPAccount":               &config.SMTPAccount,
+	"SMTPFrom":                  &config.SMTPFrom,
+	"SMTPServer":                &config.SMTPServer,
+	"SMTPToken":                 &config.SMTPToken,
+	"ServerAddress":             &config.ServerAddress,
+	"SystemName":                &config.SystemName,
+	"TopUpLink":                 &config.TopUpLink,
+	"TurnstileSecretKey":        &config.TurnstileSecretKey,
+	"TurnstileSiteKey":          &config.TurnstileSiteKey,
 }
 
 var intOptionBindings = map[string]*int{
@@ -180,6 +193,7 @@ var intOptionBindings = map[string]*int{
 	"ChatSandboxTimeoutSeconds": &config.ChatSandboxTimeoutSeconds,
 	"RetryTimes":                &config.RetryTimes,
 	"SMTPPort":                  &config.SMTPPort,
+	"WorkSubagentMaxTurns":      &config.WorkSubagentMaxTurns,
 }
 
 var int64OptionBindings = map[string]*int64{

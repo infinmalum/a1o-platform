@@ -55,6 +55,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 			}
 		}
 		fn := tools.exec[def.Name]
+		sdkTool := tools.sdk[def.Name]
 		registry.Add(lapuatool.Build(lapuatool.Spec{
 			Name: def.Name, Description: def.Description, Schema: schema,
 			Run: func(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
@@ -72,9 +73,24 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 				if err := ctx.Err(); err != nil {
 					return lapuatool.Result{}, err
 				}
-				result := recordToolExecution(ctx, run, leg.InvocationID, calls[index], string(input), func() toolResult {
-					return fn(ctx, toolRequest{Name: def.Name, Arguments: string(input)})
-				})
+				var result toolResult
+				if sdkTool != nil {
+					// Lapua core tool: execute in-process via the SDK and
+					// keep its content blocks (media-capable) intact.
+					sdkResult, err := sdkTool.Call(ctx, input, tc)
+					if err != nil {
+						result = toolResult{Content: err.Error(), IsError: true}
+					} else {
+						result = toolResult{Content: sdkResultText(sdkResult), Blocks: sdkResult.Content, IsError: sdkResult.IsError}
+					}
+				} else {
+					result = recordToolExecution(ctx, run, leg.InvocationID, calls[index], string(input), func() toolResult {
+						return fn(ctx, toolRequest{Name: def.Name, Arguments: string(input)})
+					})
+				}
+				if len(result.Blocks) > 0 {
+					return lapuatool.Result{Content: result.Blocks, IsError: result.IsError}, nil
+				}
 				return lapuatool.Result{
 					Content: []llm.ContentBlock{llm.TextBlock(result.Content)},
 					IsError: result.IsError,
@@ -114,6 +130,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 	options := harness.QueryInput{
 		Tools: registry, Allowed: allowed, PermissionMode: permission.ModeDontAsk,
 		MaxTurns: maxLegs, MaxConcurrency: 1,
+		Todos: tools.todos,
 		// A1O's tool handlers already own their output limits.
 		MaxToolOutputChars: math.MaxInt,
 	}
@@ -133,7 +150,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 			for _, part := range block.Content {
 				content.WriteString(part.Text)
 			}
-			if err := onToolResult(leg, call, toolResult{Content: content.String(), IsError: block.IsError}); err != nil {
+			if err := onToolResult(leg, call, toolResult{Content: content.String(), Blocks: block.Content, IsError: block.IsError}); err != nil {
 				return err
 			}
 			processed++
