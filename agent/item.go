@@ -8,7 +8,7 @@ package agent
 import "encoding/json"
 
 // Item type discriminators, aligned with the pinned OpenResponses
-// 2026-04-24 spec (docs/agent-runtime-contract.md §1).
+// 2026-04-24 spec.
 const (
 	ItemMessage            = "message"
 	ItemFunctionCall       = "function_call"

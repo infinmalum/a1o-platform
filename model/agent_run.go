@@ -35,9 +35,8 @@ const (
 	InvocationStatusUnknown   = "unknown"
 )
 
-// Run event type identifiers (agent-runtime-contract.md §2). Model events use
-// the OpenResponses event names verbatim; the run-level types below are the
-// a1o control plane.
+// Run event type identifiers. Model events use the OpenResponses event names
+// verbatim; the run-level types below are the a1o control plane.
 const (
 	RunEventRunQueued    = "run.queued"
 	RunEventRunStarted   = "run.started"

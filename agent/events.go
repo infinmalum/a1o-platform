@@ -3,9 +3,8 @@ package agent
 import "encoding/json"
 
 // EventEnvelope is the versioned run event wire form streamed to clients and
-// persisted for replay (agent-runtime-contract.md §2). Deltas stream
-// transiently: they carry no sequence or event id and never reach the
-// RunEvent table.
+// persisted for replay. Deltas stream transiently: they carry no sequence or
+// event id and never reach the RunEvent table.
 type EventEnvelope struct {
 	RunID         int             `json:"run_id"`
 	EventID       string          `json:"event_id,omitempty"`

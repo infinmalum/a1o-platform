@@ -15,9 +15,7 @@ import {
 } from '@/components/ui/card';
 import { getSystemName } from '@/helpers/utils';
 
-// Entry point per docs/studio-transformation-proposal.md §布局: the overview
-// offers the task kinds; every confirmed entry is live — the image workbench
-// shipped with the P3 pass.
+// The overview is the entry point: each card opens one live studio area.
 const Home: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();

@@ -71,7 +71,7 @@ export interface ChatBootstrap {
 }
 
 // RunEvent is one versioned agent run event streamed during a turn; the
-// payload fields depend on the event type (agent-runtime-contract.md §2).
+// payload fields depend on the event type.
 export interface ChatEvent {
   run_id?: number;
   sequence?: number;
