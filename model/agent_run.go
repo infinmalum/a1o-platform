@@ -82,8 +82,9 @@ type AgentRun struct {
 	// AgentVersionId pins the immutable agent configuration this run froze
 	// at creation; 0 for runs without an agent. The version row is
 	// append-only, so the id alone reproduces the run's exact configuration.
-	AgentVersionId int    `json:"agent_version_id" gorm:"index;default:0"`
-	IdempotencyKey string `json:"idempotency_key" gorm:"type:varchar(255);uniqueIndex:idx_agent_run_idempotency,priority:2"`
+	AgentVersionId  int    `json:"agent_version_id" gorm:"index;default:0"`
+	ReferenceFileId int    `json:"reference_file_id,omitempty" gorm:"default:0"`
+	IdempotencyKey  string `json:"idempotency_key" gorm:"type:varchar(255);uniqueIndex:idx_agent_run_idempotency,priority:2"`
 	// Lease and fencing for work-mode queue claims: LeaseOwner identifies
 	// the claiming scheduler instance, LeaseExpireTime the heartbeat
 	// deadline, and FencingToken increments on every claim so a stale
@@ -316,8 +317,12 @@ func GetRecentAgentRuns(userId int, limit int) ([]AgentRun, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
+	return GetRecentAgentRunsPage(userId, ListPage{Limit: limit})
+}
+
+func GetRecentAgentRunsPage(userId int, page ListPage) ([]AgentRun, error) {
 	var runs []AgentRun
-	err := DB.Where("user_id = ?", userId).Order("id desc").Limit(limit).Find(&runs).Error
+	err := page.Apply(DB.Where("user_id = ?", userId).Order("id desc")).Find(&runs).Error
 	return runs, err
 }
 

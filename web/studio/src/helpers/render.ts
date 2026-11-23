@@ -1,3 +1,11 @@
+import i18n from '@/i18n';
+
+export function formatStudioDate(unixSeconds: number, dateOnly = false) {
+  const date = new Date(unixSeconds * 1000);
+  const locale = i18n.resolvedLanguage;
+  return dateOnly ? date.toLocaleDateString(locale) : date.toLocaleString(locale);
+}
+
 const DEFAULT_QUOTA_PER_UNIT = 500000;
 
 export function getQuotaPerUnitRaw() {

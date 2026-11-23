@@ -12,6 +12,10 @@
     }
   },
   "auth": {
+    "language": {
+      "label": "Language",
+      "loadFailed": "Could not load this language. Refresh the page and try again."
+    },
     "login": {
       "title": "User Login",
       "username": "Username / Email",
@@ -21,7 +25,12 @@
       "reset_password": "Reset",
       "no_account": "No account?",
       "register": "Register",
-      "other_methods": "Other login methods"
+      "other_methods": "Other login methods",
+      "required": "Enter your username and password.",
+      "rejected": "Sign-in was unsuccessful. Check your username and password.",
+      "failed": "Sign-in is currently unavailable. Please try again.",
+      "submitting": "Signing in…",
+      "passwordDisabled": "Password sign-in is turned off. Use an available sign-in provider or contact your administrator."
     },
     "register": {
       "title": "New User Registration",
@@ -52,6 +61,27 @@
         "notice": "Enter a new password to finish the reset. It must be 8-20 characters long.",
         "success_notice": "Your password has been reset. Please sign in with the new password."
       }
+    },
+    "setup": {
+      "title": "Setup required",
+      "description": "Complete installation on the <setup>admin setup page</setup>."
+    },
+    "session": {
+      "checking": "Checking your session…",
+      "failed": "Could not check your session. Please try again.",
+      "logoutFailed": "Could not sign out. Please try again."
+    },
+    "header": {
+      "admin": "Admin console",
+      "logout": "Sign out",
+      "navigation": "Studio navigation"
+    },
+    "oauth": {
+      "github": "Sign in with GitHub",
+      "lark": "Sign in with Lark",
+      "processing": "Completing sign-in…",
+      "failed": "Third-party sign-in did not complete. Return to sign-in and try again.",
+      "bound": "Account linked."
     }
   },
   "messages": {
@@ -66,6 +96,59 @@
       "password_mismatch": "Passwords do not match",
       "turnstile_wait": "Please wait a few seconds, Turnstile is checking the environment!"
     }
+  },
+  "playground": {
+    "title": "Playground",
+    "description": "Run native protocol requests through the A1O gateway using your account balance.",
+    "protocol": "Protocol",
+    "noModels": "No models available",
+    "compare": "Compare with",
+    "compareHint": "Both models receive the same input in sequence. Each request is billed separately.",
+    "noComparison": "Run one model",
+    "request": "Request JSON",
+    "useChatDraft": "Use current chat draft",
+    "requestHint": "Select the model above. Edit tool declarations, output formats, and other protocol parameters here. Set \"stream\": true to stream the response.",
+    "geminiHint": "The selected model goes in the URL. Edit native fields such as tools and generationConfig here.",
+    "streaming": "Stream response",
+    "invalidJSON": "Enter a valid JSON object without a top-level model field. Select the model above.",
+    "run": "Run",
+    "running": "Running",
+    "waiting": "Waiting for a response…",
+    "emptyResponse": "The response body is empty.",
+    "response": "Raw response",
+    "requestId": "Request ID {{id}}",
+    "stopped": "Stopped receiving",
+    "requestFailed": "The connection failed or the response was interrupted.",
+    "tokens": "{{input}} input / {{output}} output tokens",
+    "cost": "Charged {{amount}}",
+    "usageUnavailable": "No settled usage available",
+    "truncated": "The preview shows only the first 262,144 characters.",
+    "showCurl": "View request and cURL",
+    "copyCurl": "Copy cURL",
+    "copied": "Copied cURL",
+    "copyFailed": "Clipboard unavailable. Select the code to copy it manually.",
+    "examplePrompt": "Introduce yourself in one sentence."
+  },
+  "knowledge": {
+    "title": "Knowledge libraries",
+    "description": "Upload private documents, select a library in Chat, and open the cited passages.",
+    "name": "Library name",
+    "create": "Create library",
+    "upload": "Upload document",
+    "manage": "Manage libraries in Workspace",
+    "limits": "UTF-8 TXT and Markdown. Up to 256 KiB per document and 64 documents or 2 MiB per library.",
+    "empty": "No documents yet.",
+    "deleteLibrary": "Delete library",
+    "deleteDocument": "Delete document",
+    "deleteNamed": "Delete {{name}}",
+    "confirmDocument": "Delete “{{name}}” from search and make its previous references unavailable.",
+    "confirmLibrary": "Delete “{{name}}” and all its documents, and unlink it from chat sessions.",
+    "noLibrary": "No library",
+    "sources": "Sources",
+    "source": "Source document",
+    "original": "View original text",
+    "lines": "Lines {{start}}–{{end}}",
+    "noLibraries": "No libraries yet. Create one above."
   },
   "chat": {
     "title": "Built-in Chat",
@@ -129,7 +212,13 @@
     "saveAgentTitle": "Save this session as an agent",
     "saveAgentHint": "Model, system prompt, skills and sandbox become version 1 of a reusable agent",
     "saveAgentSubmit": "Save",
-    "saveAgentDefaultName": "My agent"
+    "saveAgentDefaultName": "My agent",
+    "streamInterrupted": "The reply was interrupted. Check what was saved or generate it again.",
+    "retryTurn": "Retry reply",
+    "regenerate": "Regenerate reply",
+    "branchTitle": "{{title}} · Retry",
+    "branchDescription": "Generate a new reply to the last message in a separate conversation. Your original stays available. Standard usage charges apply.",
+    "branchConfirm": "Generate reply"
   },
   "studio": {
     "home": {
@@ -160,6 +249,10 @@
       "account": {
         "title": "Account",
         "description": "API keys, usage, redemption codes, and profile settings."
+      },
+      "audio": {
+        "title": "Audio",
+        "description": "Generate speech, transcribe audio, or translate it to English."
       }
     },
     "account": {
@@ -260,6 +353,35 @@
         "regenerateToken": "Generate / regenerate",
         "tokenGenerated": "System access token generated"
       }
+    },
+    "list": {
+      "loading": "Loading list",
+      "failed": "Could not load this list. Please try again.",
+      "retry": "Retry",
+      "pages": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}}",
+      "confirm": "Confirm",
+      "close": "Close"
+    },
+    "errors": {
+      "network": "Could not connect. Check your connection and try again.",
+      "requestFailed": "The request did not complete. Please try again shortly.",
+      "requestTooLarge": "This request is too large. Reduce its size and try again.",
+      "rateLimit": "Too many requests. Try again shortly.",
+      "forbidden": "You do not have permission to perform this action.",
+      "notFound": "This item could not be found. It may have been deleted.",
+      "fileRequired": "Choose a file to upload.",
+      "uploadRead": "Could not read the file. Select it again.",
+      "uploadSave": "Could not save the file. Please try again shortly.",
+      "fileLimit": "Files must be {{limit}} or smaller.",
+      "textFileLimit": "Text attachments must be {{limit}} or smaller.",
+      "knowledgeFileLimit": "Each document must be 256 KiB or smaller.",
+      "knowledgeInvalidFile": "Choose a UTF-8 TXT or Markdown file containing searchable text.",
+      "knowledgeCapacity": "This library is full (up to 64 documents and 2 MiB total).",
+      "chatBusy": "This conversation is still generating a reply. Wait for it to finish.",
+      "retryUnavailable": "This message could not be regenerated. Reopen the conversation and try again."
     }
   },
   "work": {
@@ -310,7 +432,9 @@
       "toolCalled": "Called tool {{name}}",
       "toolResult": "Tool returned a result",
       "inputAppended": "Input appended"
-    }
+    },
+    "safeRunError": "The run did not complete. Check the task status before retrying.",
+    "reconciliationHint": "This run needs review. Check usage and any saved results before trying again."
   },
   "agents": {
     "title": "Agent Plaza",
@@ -366,7 +490,10 @@
     "draftInputLabel": "Description",
     "draftInputPlaceholder": "e.g. An assistant that rewrites English paper abstracts into Chinese with consistent terminology",
     "draftModelLabel": "Model",
-    "draftGenerate": "Generate draft"
+    "draftGenerate": "Generate draft",
+    "confirmArchive": "Archiving “{{name}}” prevents it from starting new chats or tasks.",
+    "confirmUnarchive": "Restore “{{name}}” so it can start new chats and tasks.",
+    "confirmDuplicate": "Create a copy of “{{name}}” in My agents."
   },
   "workspace": {
     "title": "Workspace",
@@ -387,10 +514,28 @@
     "emptyAssets": "No assets yet. Upload from the chat page.",
     "assetKind": {
       "text": "Text",
-      "image": "Image"
+      "image": "Image",
+      "document": "Document"
     },
     "untitledTask": "Untitled task",
     "untitledChat": "Untitled chat"
+  },
+  "audio": {
+    "title": "Audio studio",
+    "mode": "Task",
+    "speech": "Text to speech",
+    "transcriptions": "Transcribe audio",
+    "translations": "Translate audio to English",
+    "voice": "Voice",
+    "text": "Text to read",
+    "file": "Audio file",
+    "fileLimit": "Up to 16 MiB per file.",
+    "textLimit": "Text exceeds the 4096-byte limit.",
+    "modelPlaceholder": "Choose or enter a configured model",
+    "run": "Run",
+    "running": "Processing…",
+    "invalidResult": "The audio service returned an unreadable result.",
+    "download": "Download result"
   },
   "images": {
     "title": "Image studio",
@@ -412,12 +557,49 @@
     "retrySave": "Retry save",
     "cancel": "Cancel",
     "needsReconciliation": "Outcome pending reconciliation: do not resubmit, awaiting review",
+    "delete": "Delete image",
+    "confirmDelete": "Delete this image and its preview? The generation history will remain.",
+    "aspectRatio": "Aspect ratio",
+    "resolution": "Resolution",
+    "quality": "Quality",
+    "default": "Model default",
+    "reference": "Reference image",
+    "invalidReference": "Choose a PNG, JPEG, or WebP image up to 5 MiB.",
+    "removeReference": "Remove reference",
+    "selectReferenceModel": "Choose a model that supports reference images.",
+    "continueEdit": "Use as reference for edits",
+    "useInChat": "Use in Chat",
+    "useInWork": "Attach to Work",
+    "loadMore": "Load older images",
+    "videoTitle": "New video",
+    "imageMode": "Image",
+    "videoMode": "Video",
+    "videoLimits": "{{model}} · 360p short clips, saved to your gallery",
+    "duration": "Duration",
+    "seconds": "{{seconds}} s",
+    "openVideo": "Open video {{id}}",
+    "videoPreview": "Video preview",
+    "deleteVideo": "Delete video",
+    "confirmDeleteVideo": "Delete this video? The generation history will remain.",
+    "openImage": "Open image {{id}}",
+    "previewTitle": "Image preview",
+    "previewDescription": "View the original image.",
+    "download": "Download original",
+    "reuseSettings": "Reuse prompt and settings",
     "status.queued": "Queued",
     "status.running": "Running",
     "status.completed": "Completed",
     "status.save_failed": "Save failed",
     "status.failed": "Failed",
     "status.cancelled": "Cancelled",
-    "status.needs_reconciliation": "Pending review"
+    "status.needs_reconciliation": "Pending review",
+    "referenceFileLimit": "Choose a PNG, JPEG, or WebP image up to {{limit}}.",
+    "pollDelayed": "Progress updates are delayed. Reconnecting…",
+    "queuedHint": "Waiting for a generation slot.",
+    "runningHint": "Generating. The result will appear here when ready.",
+    "generationFailed": "Generation failed. Check the model settings and try again.",
+    "saveFailedHint": "Generation finished, but saving failed. You can retry saving the result.",
+    "activeLimit": "All generation slots are in use. Wait for a task to finish and try again.",
+    "invalidSettings": "Check the prompt, dimensions, and model settings before trying again."
   }
 }

@@ -91,6 +91,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           <input
             ref={fileInputRef}
             type='file'
+            accept='image/*,text/*,.txt,.md,.json,.csv,.log,.xml,.yaml,.yml'
             hidden
             onChange={(event) => {
               if (event.target.files && event.target.files[0]) {

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,14 +69,35 @@ func GetImageMeta(c *gin.Context) {
 	}
 	known := make([]string, 0, len(models))
 	other := make([]string, 0, len(models))
+	referenceModels := make([]string, 0)
+	videoModels := make([]string, 0)
+	sizes := map[string][]string{}
 	for _, name := range models {
-		if _, ok := billingratio.ImageSizeRatios[name]; ok {
+		if name == studioVideoModel {
+			channel, err := lifecycle.SelectForRequest(lifecycle.Request{Model: name, Principal: lifecycle.Principal{UserID: c.GetInt(ctxkey.Id)}}, native.GeminiInteractions)
+			if err == nil {
+				group, groupErr := model.CacheGetUserGroup(c.GetInt(ctxkey.Id))
+				if groupErr == nil {
+					if _, priceErr := videoQuota(mappedImageModel(channel, name), group, 3); priceErr == nil {
+						videoModels = append(videoModels, name)
+					}
+				}
+			}
+		} else if isGeminiImageModel(name) {
+			request := lifecycle.Request{Model: name, Principal: lifecycle.Principal{UserID: c.GetInt(ctxkey.Id)}}
+			if _, err := lifecycle.SelectForRequest(request, native.Gemini); err != nil {
+				other = append(other, name)
+				continue
+			}
+			known = append(known, name)
+			referenceModels = append(referenceModels, name)
+			sizes[name] = []string{"1:1", "4:3", "3:4", "16:9", "9:16"}
+		} else if _, ok := billingratio.ImageSizeRatios[name]; ok {
 			known = append(known, name)
 		} else {
 			other = append(other, name)
 		}
 	}
-	sizes := map[string][]string{}
 	for name, table := range billingratio.ImageSizeRatios {
 		options := make([]string, 0, len(table))
 		for size := range table {
@@ -85,20 +107,25 @@ func GetImageMeta(c *gin.Context) {
 		sizes[name] = options
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"known_models": known,
-		"other_models": other,
-		"known_sizes":  sizes,
-		"max_active":   imageMaxActivePerUser,
+		"known_models": known, "reference_models": referenceModels, "video_models": videoModels,
+		"other_models":        other,
+		"known_sizes":         sizes,
+		"max_active":          imageMaxActivePerUser,
+		"max_reference_bytes": maxImageReferenceBytes,
+		"max_upload_bytes":    config.ChatMaxFileBytes,
 	}})
 }
 
 type imageCreateRequest struct {
-	Model          string `json:"model"`
-	Prompt         string `json:"prompt"`
-	Size           string `json:"size"`
-	Quality        string `json:"quality"`
-	N              int    `json:"n"`
-	IdempotencyKey string `json:"idempotency_key"`
+	Model            string `json:"model"`
+	Prompt           string `json:"prompt"`
+	Size             string `json:"size"`
+	Quality          string `json:"quality"`
+	N                int    `json:"n"`
+	IdempotencyKey   string `json:"idempotency_key"`
+	ReferenceAssetId int    `json:"reference_asset_id"`
+	ReferenceFileId  int    `json:"reference_file_id"`
+	VideoDuration    int    `json:"video_duration"`
 }
 
 // CreateImageGeneration validates the request against the shared image
@@ -127,10 +154,57 @@ func CreateImageGeneration(c *gin.Context) {
 	if req.Size == "" {
 		req.Size = "1024x1024"
 	}
-	mapped := req.Model
-	if err := validateImageGeneration(req.Model, req.Prompt, req.Size, req.Quality, req.N); err != nil {
-		imageError(c, err)
+	if isGeminiImageModel(req.Model) && req.Size == "1024x1024" && (req.ReferenceAssetId != 0 || req.ReferenceFileId != 0) {
+		req.Size = "1:1"
+	}
+	if req.ReferenceAssetId != 0 || req.ReferenceFileId != 0 {
+		if !isGeminiImageModel(req.Model) || geminiImageRatios[req.Size] == "" {
+			imageError(c, errors.New("该模型不支持工作台参考图"))
+			return
+		}
+		payload, err := imageReferencePayload(userId, req.ReferenceAssetId, req.ReferenceFileId)
+		if err != nil {
+			imageError(c, err)
+			return
+		}
+		switch http.DetectContentType(payload) {
+		case "image/png", "image/jpeg", "image/webp":
+		default:
+			imageError(c, errors.New("参考图须为 PNG、JPEG 或 WebP"))
+			return
+		}
+	}
+	var validationErr error
+	if req.VideoDuration != 0 {
+		validationErr = validateStudioVideo(req)
+	} else {
+		validationErr = validateImageGeneration(req.Model, req.Prompt, req.Size, req.Quality, req.N)
+	}
+	if validationErr != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "code": "image_invalid_settings", "message": "请检查生成参数"})
 		return
+	}
+	apiRequest := lifecycle.Request{Model: req.Model, Principal: lifecycle.Principal{UserID: userId}}
+	if req.VideoDuration != 0 {
+		channel, selectionErr := lifecycle.SelectForRequest(apiRequest, native.GeminiInteractions)
+		if selectionErr != nil {
+			imageError(c, errors.New(selectionErr.Message))
+			return
+		}
+		group, err := model.CacheGetUserGroup(userId)
+		if err != nil {
+			imageError(c, err)
+			return
+		}
+		if _, err := videoQuota(mappedImageModel(channel, req.Model), group, req.VideoDuration); err != nil {
+			imageError(c, err)
+			return
+		}
+	} else if isGeminiImageModel(req.Model) && geminiImageRatios[req.Size] != "" {
+		if _, selectionErr := lifecycle.SelectForRequest(apiRequest, native.Gemini); selectionErr != nil {
+			imageError(c, errors.New(selectionErr.Message))
+			return
+		}
 	}
 	active, err := model.CountActiveImageGenerations(userId)
 	if err != nil {
@@ -138,11 +212,12 @@ func CreateImageGeneration(c *gin.Context) {
 		return
 	}
 	if active >= imageMaxActivePerUser {
-		imageError(c, fmt.Errorf("最多同时进行 %d 个图像生成，请等待完成后再试", imageMaxActivePerUser))
+		c.JSON(http.StatusOK, gin.H{"success": false, "code": "image_active_limit", "message": "请等待正在进行的生成完成后再试"})
 		return
 	}
 	gen := &model.ImageGeneration{
-		UserId: userId, Model: mapped, Prompt: req.Prompt,
+		UserId: userId, Model: req.Model, Prompt: req.Prompt,
+		ReferenceAssetId: req.ReferenceAssetId, ReferenceFileId: req.ReferenceFileId, VideoDuration: req.VideoDuration,
 		Size: req.Size, Quality: req.Quality, N: req.N,
 		IdempotencyKey: req.IdempotencyKey,
 	}
@@ -152,7 +227,7 @@ func CreateImageGeneration(c *gin.Context) {
 		return
 	}
 	if !created {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": existing, "replayed": true})
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": safeImageGeneration(existing), "replayed": true})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gen})
@@ -170,6 +245,15 @@ func parsePathId(c *gin.Context) (int, error) {
 // never sends parameters the pricing tables reject, and refuses unpriced
 // models instead of reserving a zero charge.
 func validateImageGeneration(modelName, prompt, size, quality string, n int) error {
+	if isGeminiImageModel(modelName) && geminiImageRatios[size] != "" {
+		if n != 1 {
+			return errors.New("Gemini 图像模型每次生成一张图片，请选择受支持的宽高比")
+		}
+		if quality != "" && !geminiImageResolutionSupported(modelName, quality) {
+			return errors.New("该 Gemini 图像模型不支持所选分辨率")
+		}
+		return nil
+	}
 	if _, err := billingratio.GetModelRatio(modelName); err != nil {
 		return err
 	}
@@ -194,6 +278,15 @@ type imageGenerationView struct {
 	Assets []*model.ImageAsset `json:"assets"`
 }
 
+// Keep provider diagnostics in storage for operators; the Studio can present
+// translated recovery instructions based on the task state.
+func safeImageGeneration(row *model.ImageGeneration) *model.ImageGeneration {
+	copy := *row
+	copy.Error = ""
+	copy.SaveError = ""
+	return &copy
+}
+
 func GetImageGenerationStatus(c *gin.Context) {
 	userId := c.GetInt(ctxkey.Id)
 	id, err := parsePathId(c)
@@ -211,7 +304,7 @@ func GetImageGenerationStatus(c *gin.Context) {
 		imageError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": imageGenerationView{gen, assets}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": imageGenerationView{safeImageGeneration(gen), assets}})
 }
 
 // ListImageGenerations returns the recent runs and the gallery's most recent
@@ -228,9 +321,18 @@ func ListImageGenerations(c *gin.Context) {
 		imageError(c, err)
 		return
 	}
+	runIDs := make([]int, 0, len(rows))
+	for _, row := range rows {
+		runIDs = append(runIDs, row.Id)
+	}
+	runAssets, err := model.GetImageAssetsForRuns(userId, runIDs)
+	if err != nil {
+		imageError(c, err)
+		return
+	}
 	views := make([]imageGenerationView, 0, len(rows))
 	for _, row := range rows {
-		views = append(views, imageGenerationView{row, nil})
+		views = append(views, imageGenerationView{safeImageGeneration(row), runAssets[row.Id]})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"generations": views,
@@ -238,10 +340,16 @@ func ListImageGenerations(c *gin.Context) {
 	}})
 }
 
+// Serialize save retries with deletion so a stale retry cannot recreate a
+// product the user just deleted from a completed run.
+var imageSaveRetryLock sync.Mutex
+
 // RetryImageSave re-attempts persisting the upstream products of a
 // save_failed generation. The generation itself is never re-run: the upstream
 // call was already charged, and Results carries its output.
 func RetryImageSave(c *gin.Context) {
+	imageSaveRetryLock.Lock()
+	defer imageSaveRetryLock.Unlock()
 	userId := c.GetInt(ctxkey.Id)
 	id, err := parsePathId(c)
 	if err != nil {
@@ -271,7 +379,7 @@ func RetryImageSave(c *gin.Context) {
 		imageError(c, err)
 		return
 	}
-	if err := model.CompleteImageGeneration(gen.Id, *gen.Results, gen.ConsumeLogId); err != nil {
+	if err := model.CompleteImageGeneration(gen.Id, gen.ConsumeLogId); err != nil {
 		imageError(c, err)
 		return
 	}
@@ -282,7 +390,7 @@ func RetryImageSave(c *gin.Context) {
 		return
 	}
 	assets, _ := model.GetRunImageAssets(gen.Id, userId)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": imageGenerationView{stored, assets}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": imageGenerationView{safeImageGeneration(stored), assets}})
 }
 
 // CancelImageGeneration cancels a queued generation; a running one cannot be
@@ -314,12 +422,95 @@ func ServeImageAsset(c *gin.Context) {
 		imageError(c, errors.New("素材不存在"))
 		return
 	}
+	c.Header("Cache-Control", "private, no-cache")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.Query("thumbnail") == "1" {
+		thumbnail, err := model.ReadImageThumbnail(asset)
+		if err == nil && len(thumbnail) > 0 {
+			c.Data(http.StatusOK, "image/jpeg", thumbnail)
+			return
+		}
+		// Some existing assets use formats the server cannot decode.
+		c.Redirect(http.StatusTemporaryRedirect, c.Request.URL.Path)
+		return
+	}
+	if asset.Mime == "video/mp4" {
+		c.Header("Content-Type", asset.Mime)
+		c.File(asset.Path)
+		return
+	}
+
 	payload, err := model.ReadImageAssetPayload(asset)
 	if err != nil {
 		imageError(c, errors.New("素材文件已丢失"))
 		return
 	}
 	c.Data(http.StatusOK, asset.Mime, payload)
+}
+
+func ListImageAssetPage(c *gin.Context) {
+	const pageSize = 24
+	beforeID, err := strconv.Atoi(c.DefaultQuery("before", "0"))
+	if err != nil || beforeID < 0 {
+		imageError(c, errors.New("无效的图片分页参数"))
+		return
+	}
+	assets, err := model.GetImageAssetPage(c.GetInt(ctxkey.Id), beforeID, pageSize+1)
+	if err != nil {
+		imageError(c, err)
+		return
+	}
+	next := 0
+	if len(assets) > pageSize {
+		assets = assets[:pageSize]
+		next = assets[pageSize-1].Id
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"assets": assets, "next": next}})
+}
+
+func AttachImageAsset(c *gin.Context) {
+	id, err := parsePathId(c)
+	if err != nil {
+		imageError(c, err)
+		return
+	}
+	asset, err := model.GetImageAsset(id, c.GetInt(ctxkey.Id))
+	if err != nil {
+		imageError(c, errors.New("素材不存在"))
+		return
+	}
+	if asset.Size > config.ChatMaxFileBytes {
+		imageError(c, errors.New("该图片超过附件大小上限"))
+		return
+	}
+	var extension string
+	switch asset.Mime {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+		extension = strings.TrimPrefix(asset.Mime, "image/")
+	default:
+		imageError(c, errors.New("该图片格式不能用作附件"))
+		return
+	}
+	file, err := model.SaveImageAssetAsChatFile(asset, fmt.Sprintf("image-%d.%s", asset.Id, extension))
+	if err != nil {
+		imageError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": file})
+}
+
+func DeleteImageAsset(c *gin.Context) {
+	imageSaveRetryLock.Lock()
+	defer imageSaveRetryLock.Unlock()
+	id, err := parsePathId(c)
+	if err == nil {
+		err = model.DeleteCompletedImageAsset(id, c.GetInt(ctxkey.Id))
+	}
+	if err != nil {
+		imageError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // ---- worker ----
@@ -383,7 +574,7 @@ func executeImageGeneration(ctx context.Context, gen *model.ImageGeneration) {
 		_ = model.MarkImageGenerationSaveFailed(gen.Id, responseJSON, err.Error(), consumeLogId)
 		return
 	}
-	_ = model.CompleteImageGeneration(gen.Id, responseJSON, consumeLogId)
+	_ = model.CompleteImageGeneration(gen.Id, consumeLogId)
 }
 
 // runImageUpstream prefers OpenAI-wire image channels and falls back to the
@@ -399,6 +590,13 @@ func runImageUpstream(ctx context.Context, gen *model.ImageGeneration) (string, 
 		return "", 0, &lifecycle.HTTPError{Status: http.StatusInternalServerError, Message: "计费令牌不可用"}
 	}
 	principal := lifecycle.Principal{UserID: gen.UserId, TokenID: token.Id, TokenName: token.Name, Group: group}
+
+	if gen.VideoDuration != 0 {
+		return runStudioVideo(ctx, gen, principal)
+	}
+	if isGeminiImageModel(gen.Model) && geminiImageRatios[gen.Size] != "" {
+		return runGeminiImage(ctx, gen, principal)
+	}
 
 	payload := map[string]any{
 		"model": gen.Model, "prompt": gen.Prompt,
@@ -520,6 +718,10 @@ func persistImageProducts(gen *model.ImageGeneration, items []imageResultItem) e
 			failures = append(failures, fmt.Sprintf("第 %d 张: %s", index+1, err.Error()))
 			continue
 		}
+		if gen.VideoDuration != 0 && (http.DetectContentType(payload) != "video/mp4" || len(payload) > maxStudioVideoBytes) {
+			failures = append(failures, fmt.Sprintf("第 %d 项: 文件格式无效或超出上限", index+1))
+			continue
+		}
 		if _, err := model.SaveImageAssetPayload(gen.UserId, gen.Id, index, payload); err != nil {
 			failures = append(failures, fmt.Sprintf("第 %d 张: %s", index+1, err.Error()))
 		}
@@ -536,6 +738,9 @@ func persistImageProducts(gen *model.ImageGeneration, items []imageResultItem) e
 func loadImageProductPayload(item imageResultItem) ([]byte, error) {
 	switch {
 	case item.B64 != "":
+		if len(item.B64) > base64.StdEncoding.EncodedLen(int(maxImageAssetBytes)) {
+			return nil, errors.New("图像超过大小上限")
+		}
 		payload, err := base64.StdEncoding.DecodeString(item.B64)
 		if err != nil {
 			return nil, fmt.Errorf("base64 解码失败: %w", err)
@@ -579,5 +784,6 @@ func loadImageProductPayload(item imageResultItem) ([]byte, error) {
 }
 
 func imageError(c *gin.Context, err error) {
-	c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+	logger.Debug(c.Request.Context(), "Studio image operation failed: "+err.Error())
+	c.JSON(http.StatusOK, gin.H{"success": false, "message": "图像操作未完成，请稍后重试"})
 }

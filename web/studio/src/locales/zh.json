@@ -12,6 +12,10 @@
     }
   },
   "auth": {
+    "language": {
+      "label": "语言",
+      "loadFailed": "语言加载失败，请刷新页面后重试。"
+    },
     "login": {
       "title": "用户登录",
       "username": "用户名 / 邮箱地址",
@@ -21,7 +25,12 @@
       "reset_password": "点击重置",
       "no_account": "没有账户？",
       "register": "点击注册",
-      "other_methods": "使用其他方式登录"
+      "other_methods": "使用其他方式登录",
+      "required": "请输入用户名和密码。",
+      "rejected": "登录未成功，请检查账号和密码。",
+      "failed": "暂时无法登录，请稍后重试。",
+      "submitting": "正在登录…",
+      "passwordDisabled": "此站点已关闭密码登录，请使用已启用的第三方登录方式或联系管理员。"
     },
     "register": {
       "title": "新用户注册",
@@ -52,6 +61,27 @@
         "notice": "请输入新密码完成重置，密码长度需在 8-20 位之间。",
         "success_notice": "密码已重置，请使用新密码登录。"
       }
+    },
+    "setup": {
+      "title": "系统尚未初始化",
+      "description": "请前往<setup>管理端初始化页面</setup>完成安装。"
+    },
+    "session": {
+      "checking": "正在检查登录状态…",
+      "failed": "暂时无法检查登录状态，请重试。",
+      "logoutFailed": "退出登录未完成，请重试。"
+    },
+    "header": {
+      "admin": "管理控制台",
+      "logout": "退出登录",
+      "navigation": "Studio 导航"
+    },
+    "oauth": {
+      "github": "使用 GitHub 登录",
+      "lark": "使用飞书登录",
+      "processing": "正在完成登录…",
+      "failed": "第三方登录未完成，请返回登录页重新开始。",
+      "bound": "账号已绑定。"
     }
   },
   "messages": {
@@ -66,6 +96,59 @@
       "password_mismatch": "两次输入的密码不一致",
       "turnstile_wait": "请稍后几秒重试，Turnstile 正在检查用户环境！"
     }
+  },
+  "playground": {
+    "title": "Playground",
+    "description": "通过 A1O 网关试跑协议原生请求，使用当前账户额度。",
+    "protocol": "协议",
+    "noModels": "没有可用模型",
+    "compare": "对比模型",
+    "compareHint": "同一份请求会依次运行两个模型，每次调用单独计费。",
+    "noComparison": "单模型运行",
+    "request": "请求 JSON",
+    "useChatDraft": "从当前聊天填入",
+    "requestHint": "模型由上方选择。可直接编辑工具声明、输出格式和其他协议参数。设置 \"stream\": true 可启用流式响应。",
+    "geminiHint": "模型写入请求路径。可直接编辑 tools、generationConfig 等原生参数。",
+    "streaming": "流式响应",
+    "invalidJSON": "请输入有效的 JSON 对象，模型由上方选择，请去掉 JSON 中顶层的 model 字段。",
+    "run": "运行",
+    "running": "运行中",
+    "waiting": "等待响应…",
+    "emptyResponse": "响应体为空。",
+    "response": "原始响应",
+    "requestId": "请求 ID {{id}}",
+    "stopped": "已停止接收",
+    "requestFailed": "连接中断或读取响应失败。",
+    "tokens": "输入 {{input}} / 输出 {{output}} tokens",
+    "cost": "实扣 {{amount}}",
+    "usageUnavailable": "暂无结算记录",
+    "truncated": "预览仅显示响应的前 262144 个字符。",
+    "showCurl": "查看请求与 cURL",
+    "copyCurl": "复制 cURL",
+    "copied": "已复制 cURL",
+    "copyFailed": "剪贴板不可用，可手动复制下方代码。",
+    "examplePrompt": "用一句话介绍你自己。"
+  },
+  "knowledge": {
+    "title": "资料库",
+    "description": "上传私人资料，在 Chat 选库提问并查看原文引用。",
+    "name": "资料库名称",
+    "create": "创建资料库",
+    "upload": "上传资料",
+    "manage": "前往 Workspace 管理资料库",
+    "limits": "支持 UTF-8 TXT 和 Markdown。每份最多 256 KiB，每库最多 64 份、共 2 MiB。",
+    "empty": "还没有资料。",
+    "deleteLibrary": "删除资料库",
+    "deleteDocument": "删除资料",
+    "deleteNamed": "删除 {{name}}",
+    "confirmDocument": "删除「{{name}}」后，这份资料将无法检索，旧引用也无法打开。",
+    "confirmLibrary": "删除「{{name}}」及其中的全部资料，并解除聊天会话的绑定。",
+    "noLibrary": "不使用资料库",
+    "sources": "引用资料",
+    "source": "原文",
+    "original": "查看资料原文",
+    "lines": "第 {{start}}–{{end}} 行",
+    "noLibraries": "还没有资料库，可以在上方创建。"
   },
   "chat": {
     "title": "内置聊天",
@@ -129,7 +212,13 @@
     "saveAgentTitle": "把当前会话设置存为智能体",
     "saveAgentHint": "模型、系统提示词、技能与沙箱设置会写入智能体第 1 版，可重复使用",
     "saveAgentSubmit": "保存",
-    "saveAgentDefaultName": "我的智能体"
+    "saveAgentDefaultName": "我的智能体",
+    "streamInterrupted": "回复中断了。可以查看已保存的内容，或重新生成。",
+    "retryTurn": "重试回复",
+    "regenerate": "重新生成回复",
+    "branchTitle": "{{title}} · 重试",
+    "branchDescription": "从最后一条消息另开会话生成回复，原会话保留。新请求按正常用量计费。",
+    "branchConfirm": "生成新回复"
   },
   "studio": {
     "home": {
@@ -160,6 +249,10 @@
       "account": {
         "title": "账户",
         "description": "API 密钥、用量统计、兑换码与个人设置。"
+      },
+      "audio": {
+        "title": "音频",
+        "description": "合成语音、转写音频或翻译为英文。"
       }
     },
     "account": {
@@ -260,6 +353,35 @@
         "regenerateToken": "生成 / 重新生成",
         "tokenGenerated": "系统访问令牌已生成"
       }
+    },
+    "list": {
+      "loading": "正在加载列表",
+      "failed": "列表加载失败，请重试。",
+      "retry": "重试",
+      "pages": "分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} 页",
+      "confirm": "确认",
+      "close": "关闭"
+    },
+    "errors": {
+      "network": "无法连接服务器，请检查网络后重试。",
+      "requestFailed": "操作未完成，请稍后重试。",
+      "requestTooLarge": "提交的内容太大，请缩小后重试。",
+      "rateLimit": "请求过多，请稍后重试。",
+      "forbidden": "你没有权限执行此操作。",
+      "notFound": "找不到该内容，可能已被删除。",
+      "fileRequired": "请选择要上传的文件。",
+      "uploadRead": "无法读取文件，请重新选择。",
+      "uploadSave": "文件保存失败，请稍后重试。",
+      "fileLimit": "文件大小不能超过 {{limit}}。",
+      "textFileLimit": "文本附件不能超过 {{limit}}。",
+      "knowledgeFileLimit": "单份资料不能超过 256 KiB。",
+      "knowledgeInvalidFile": "请选择含有可检索文本的 UTF-8 TXT 或 Markdown 文件。",
+      "knowledgeCapacity": "资料库已达容量上限（最多 64 份，合计 2 MiB）。",
+      "chatBusy": "此会话还在生成回复，请等待结束。",
+      "retryUnavailable": "无法重新生成此消息，请重新打开会话后再试。"
     }
   },
   "work": {
@@ -310,7 +432,9 @@
       "toolCalled": "调用工具 {{name}}",
       "toolResult": "工具返回结果",
       "inputAppended": "收到追加输入"
-    }
+    },
+    "safeRunError": "运行未完成，请查看任务状态后重试。",
+    "reconciliationHint": "本次运行状态待确认，请先核对用量和已有结果。"
   },
   "agents": {
     "title": "智能体广场",
@@ -366,7 +490,10 @@
     "draftInputLabel": "描述",
     "draftInputPlaceholder": "例如：一个帮我把英文论文摘要改写成中文、并保持术语一致的助手",
     "draftModelLabel": "使用模型",
-    "draftGenerate": "生成草稿"
+    "draftGenerate": "生成草稿",
+    "confirmArchive": "归档「{{name}}」后，将无法用它开启新的聊天或任务。",
+    "confirmUnarchive": "恢复「{{name}}」后，可再次用它开启聊天和任务。",
+    "confirmDuplicate": "将「{{name}}」复制到我的智能体。"
   },
   "workspace": {
     "title": "工作区",
@@ -387,10 +514,28 @@
     "emptyAssets": "还没有素材文件。上传入口在对话页。",
     "assetKind": {
       "text": "文本",
-      "image": "图像"
+      "image": "图像",
+      "document": "文档"
     },
     "untitledTask": "未命名任务",
     "untitledChat": "未命名会话"
+  },
+  "audio": {
+    "title": "语音工作台",
+    "mode": "任务",
+    "speech": "文字转语音",
+    "transcriptions": "音频转写",
+    "translations": "音频翻译成英文",
+    "voice": "声音",
+    "text": "朗读文本",
+    "file": "音频文件",
+    "fileLimit": "单个文件最多 16 MiB。",
+    "textLimit": "文本超过 4096 字节上限。",
+    "modelPlaceholder": "选择或输入已配置的模型",
+    "run": "开始",
+    "running": "正在处理…",
+    "invalidResult": "语音服务返回了无法读取的结果。",
+    "download": "下载结果"
   },
   "images": {
     "title": "图像创作",
@@ -412,12 +557,49 @@
     "retrySave": "重试保存",
     "cancel": "取消",
     "needsReconciliation": "执行结果待核对：请勿重复提交，等待管理员处理",
+    "delete": "删除图片",
+    "confirmDelete": "删除这张图片及其预览？生成记录会保留。",
+    "aspectRatio": "宽高比",
+    "resolution": "分辨率",
+    "quality": "画质",
+    "default": "模型默认",
+    "reference": "参考图",
+    "invalidReference": "请选择不超过 5 MiB 的 PNG、JPEG 或 WebP 图片。",
+    "removeReference": "移除参考图",
+    "selectReferenceModel": "请选择支持参考图的模型。",
+    "continueEdit": "用这张图继续修改",
+    "useInChat": "在 Chat 中使用",
+    "useInWork": "附到 Work",
+    "loadMore": "加载更早的图片",
+    "videoTitle": "生成视频",
+    "imageMode": "图片",
+    "videoMode": "视频",
+    "videoLimits": "{{model}} · 生成 360p 短片并保存到画廊",
+    "duration": "时长",
+    "seconds": "{{seconds}} 秒",
+    "openVideo": "打开视频 {{id}}",
+    "videoPreview": "视频预览",
+    "deleteVideo": "删除视频",
+    "confirmDeleteVideo": "删除这个视频？生成记录会保留。",
+    "openImage": "打开图片 {{id}}",
+    "previewTitle": "图片预览",
+    "previewDescription": "查看原图。",
+    "download": "下载原图",
+    "reuseSettings": "复用提示词和参数",
     "status.queued": "排队中",
     "status.running": "生成中",
     "status.completed": "已完成",
     "status.save_failed": "保存失败",
     "status.failed": "生成失败",
     "status.cancelled": "已取消",
-    "status.needs_reconciliation": "待核对"
+    "status.needs_reconciliation": "待核对",
+    "referenceFileLimit": "请选择不超过 {{limit}} 的 PNG、JPEG 或 WebP 图片。",
+    "pollDelayed": "暂时无法更新进度，正在重连。",
+    "queuedHint": "正在等待空闲生成位置。",
+    "runningHint": "正在生成，完成后会在这里显示结果。",
+    "generationFailed": "生成未完成，请检查模型设置后重试。",
+    "saveFailedHint": "生成已完成，但结果保存失败。可以重试保存。",
+    "activeLimit": "当前生成任务已满，请等其中一项完成后再试。",
+    "invalidSettings": "生成参数无效，请检查提示词、尺寸和模型设置。"
   }
 }

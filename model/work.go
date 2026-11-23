@@ -70,8 +70,12 @@ func GetWorkTask(id, userId int) (*WorkTask, error) {
 
 // ListWorkTasks lists the caller's tasks, newest first.
 func ListWorkTasks(userId int) ([]*WorkTask, error) {
+	return ListWorkTasksPage(userId, ListPage{})
+}
+
+func ListWorkTasksPage(userId int, page ListPage) ([]*WorkTask, error) {
 	var tasks []*WorkTask
-	err := DB.Where("user_id = ?", userId).Order("id DESC").Find(&tasks).Error
+	err := page.Apply(DB.Where("user_id = ?", userId).Order("id DESC")).Find(&tasks).Error
 	return tasks, err
 }
 

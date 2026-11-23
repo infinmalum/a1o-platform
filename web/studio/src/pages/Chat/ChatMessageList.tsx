@@ -1,11 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { Wrench } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { knowledgeSourceUrl, type KnowledgeSource } from '@/pages/Workspace/knowledgeApi';
 
 export interface DisplayToolCall {
   id: string;
@@ -36,6 +38,7 @@ export interface DisplayMessage {
   toolResult?: DisplayToolResult;
   attachments?: DisplayAttachment[];
   compacted?: boolean;
+  sources?: KnowledgeSource[];
 }
 
 // renderMarkdown sanitizes model output before it enters the DOM.
@@ -49,7 +52,7 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
   if (message.role === 'tool') {
     const result = message.toolResult;
     return (
-      <div className='my-2 ml-12'>
+      <div className='my-2 ms-12'>
         <div
           className={cn(
             'max-h-60 overflow-auto rounded-md border p-3 text-sm whitespace-pre-wrap',
@@ -98,9 +101,10 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
           </div>
         )}
         {isUser ? (
-          <div className='whitespace-pre-wrap'>{message.content}</div>
+          <div dir='auto' className='whitespace-pre-wrap'>{message.content}</div>
         ) : (
           <div
+            dir='auto'
             className='chat-markdown overflow-wrap:anywhere'
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content || '') }}
           />
@@ -112,6 +116,27 @@ const MessageBubble: React.FC<{ message: DisplayMessage }> = ({ message }) => {
                 <Wrench className='size-3' /> {call.name}
               </Badge>
             ))}
+          </div>
+        )}
+        {!!message.sources?.length && (
+          <div className='mt-3 border-t pt-2 text-xs'>
+            <p className='mb-1 font-medium'>{t('knowledge.sources')}</p>
+            <ul className='space-y-1'>
+              {message.sources.map((source) => (
+                <li key={source.label}>
+                  <Link
+                    className='text-primary break-words underline underline-offset-2'
+                    to={knowledgeSourceUrl(source.document_id, source.start_line, source.end_line)}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                  >
+                    [{source.label}] {source.name}{source.heading ? ` · ${source.heading}` : ''} · {t('knowledge.lines', {
+                      start: source.start_line, end: source.end_line,
+                    })}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {message.error && (

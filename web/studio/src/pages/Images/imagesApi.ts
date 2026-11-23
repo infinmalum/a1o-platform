@@ -1,7 +1,7 @@
 // API client for the image workbench (studio proposal §7): persistent
 // generation runs driven by the backend worker, retryable product saving,
 // and the gallery. The server contract lives in controller/imagestudio.go.
-import { showError } from '../../helpers/utils';
+import { studioRequest as request } from '@/helpers/studioRequest';
 
 export type ImageGenStatus =
   | 'queued'
@@ -27,6 +27,7 @@ export interface ImageGeneration {
   prompt: string;
   size: string;
   quality: string;
+  video_duration?: number;
   n: number;
   status: ImageGenStatus;
   error: string;
@@ -42,40 +43,12 @@ export interface ImageGenerationView extends ImageGeneration {
 export interface ImageMeta {
   known_models: string[];
   other_models: string[];
+  reference_models?: string[];
+  video_models?: string[];
   known_sizes: Record<string, string[]>;
   max_active: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    });
-  } catch (error) {
-    showError(error instanceof Error ? error : String(error));
-    throw error;
-  }
-  let payload: ApiResponse<T>;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch {
-    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
-  }
-  if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
-    showError(error);
-    throw error;
-  }
-  return payload.data;
+  max_reference_bytes?: number;
+  max_upload_bytes?: number;
 }
 
 function randomKey(): string {
@@ -85,6 +58,12 @@ function randomKey(): string {
 export const assetUrl = (id: number) => `/api/studio/images/assets/${id}/content`;
 
 export const imagesApi = {
+  assetPage: (before = 0) =>
+    request<{ assets: ImageAsset[]; next: number }>(`/api/studio/images/assets?before=${before}`),
+  attachAsset: (id: number) =>
+    request<{ id: number; name: string }>(`/api/studio/images/assets/${id}/attachment`, { method: 'POST' }),
+  deleteAsset: (id: number) =>
+    request<void>(`/api/studio/images/assets/${id}`, { method: 'DELETE' }),
   meta: () => request<ImageMeta>('/api/studio/images/meta'),
   create: (payload: {
     model: string;
@@ -92,6 +71,9 @@ export const imagesApi = {
     size: string;
     quality?: string;
     n?: number;
+    video_duration?: number;
+    reference_asset_id?: number;
+    reference_file_id?: number;
   }) =>
     request<ImageGeneration>('/api/studio/images', {
       method: 'POST',
@@ -99,7 +81,7 @@ export const imagesApi = {
     }),
   list: () =>
     request<{ generations: ImageGenerationView[]; assets: ImageAsset[] }>('/api/studio/images'),
-  get: (id: number) => request<ImageGenerationView>(`/api/studio/images/${id}`),
+  get: (id: number, signal: AbortSignal) => request<ImageGenerationView>(`/api/studio/images/${id}`, { signal }, false),
   retrySave: (id: number) =>
     request<ImageGenerationView>(`/api/studio/images/${id}/retry-save`, { method: 'POST' }),
   cancel: (id: number) =>

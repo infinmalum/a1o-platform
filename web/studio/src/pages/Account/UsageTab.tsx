@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { renderQuota, renderNumber } from '@/helpers/render';
+import { formatStudioDate, renderQuota, renderNumber } from '@/helpers/render';
 import { accountApi, type LogStatistic, type UsageLog } from './accountApi';
 
 // Personal usage tab: the caller's spend, the last seven days by day and by
@@ -111,7 +111,7 @@ const UsageTab: React.FC = () => {
                             style={{ width: `${Math.max(2, (quota / maxDayQuota) * 100)}%` }}
                           />
                         </div>
-                        <span className='w-24 shrink-0 text-right'>{renderQuota(quota, t)}</span>
+                        <span className='w-24 shrink-0 text-end'>{renderQuota(quota, t)}</span>
                       </div>
                     ))}
                   </div>
@@ -133,8 +133,8 @@ const UsageTab: React.FC = () => {
                             style={{ width: `${Math.max(2, (entry.quota / maxModelQuota) * 100)}%` }}
                           />
                         </div>
-                        <span className='w-24 shrink-0 text-right'>{renderQuota(entry.quota, t)}</span>
-                        <span className='text-muted-foreground w-14 shrink-0 text-right'>
+                        <span className='w-24 shrink-0 text-end'>{renderQuota(entry.quota, t)}</span>
+                        <span className='text-muted-foreground w-14 shrink-0 text-end'>
                           {t('studio.account.usage.requestCount', { count: entry.count })}
                         </span>
                       </div>
@@ -161,26 +161,26 @@ const UsageTab: React.FC = () => {
               <div className='overflow-x-auto'>
                 <table className='w-full text-sm'>
                   <thead>
-                    <tr className='text-muted-foreground border-b text-left'>
-                      <th className='py-2 pr-3 font-medium'>{t('studio.account.usage.time')}</th>
-                      <th className='py-2 pr-3 font-medium'>{t('studio.account.usage.model')}</th>
-                      <th className='py-2 pr-3 font-medium'>{t('studio.account.usage.tokens')}</th>
+                    <tr className='text-muted-foreground border-b text-start'>
+                      <th className='py-2 pe-3 font-medium'>{t('studio.account.usage.time')}</th>
+                      <th className='py-2 pe-3 font-medium'>{t('studio.account.usage.model')}</th>
+                      <th className='py-2 pe-3 font-medium'>{t('studio.account.usage.tokens')}</th>
                       <th className='py-2 font-medium'>{t('studio.account.usage.spend')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.map((log) => (
                       <tr key={log.id} className='border-b last:border-0'>
-                        <td className='text-muted-foreground py-2 pr-3 whitespace-nowrap'>
-                          {new Date(log.created_at * 1000).toLocaleString()}
+                        <td className='text-muted-foreground py-2 pe-3 whitespace-nowrap'>
+                          {formatStudioDate(log.created_at)}
                         </td>
-                        <td className='py-2 pr-3 font-mono text-xs'>
+                        <td className='py-2 pe-3 font-mono text-xs'>
                           {log.model_name || '—'}
                           {log.token_name ? (
-                            <span className='text-muted-foreground ml-2'>({log.token_name})</span>
+                            <span className='text-muted-foreground ms-2'>({log.token_name})</span>
                           ) : null}
                         </td>
-                        <td className='py-2 pr-3 whitespace-nowrap'>
+                        <td className='py-2 pe-3 whitespace-nowrap'>
                           {renderNumber(log.prompt_tokens)} / {renderNumber(log.completion_tokens)}
                         </td>
                         <td className='py-2 whitespace-nowrap'>{renderQuota(log.quota, t)}</td>

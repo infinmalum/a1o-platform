@@ -126,6 +126,14 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), controller.SearchUserLogs)
+		knowledgeRoute := apiRouter.Group("/knowledge", middleware.UserAuth())
+		knowledgeRoute.GET("/libraries", controller.ListKnowledgeLibraries)
+		knowledgeRoute.POST("/libraries", controller.CreateKnowledgeLibrary)
+		knowledgeRoute.DELETE("/libraries/:libraryId", controller.DeleteKnowledgeLibrary)
+		knowledgeRoute.GET("/libraries/:libraryId/documents", controller.ListKnowledgeDocuments)
+		knowledgeRoute.POST("/libraries/:libraryId/documents", controller.UploadKnowledgeDocument)
+		knowledgeRoute.DELETE("/libraries/:libraryId/documents/:documentId", controller.DeleteKnowledgeDocument)
+		knowledgeRoute.GET("/documents/:documentId", controller.GetKnowledgeDocument)
 		chatRoute := apiRouter.Group("/chat")
 		chatRoute.Use(middleware.UserAuth())
 		{
@@ -134,9 +142,11 @@ func SetApiRouter(router *gin.Engine) {
 			chatRoute.POST("/sessions", controller.CreateChatSession)
 			chatRoute.GET("/sessions/:id", controller.GetChatSession)
 			chatRoute.PUT("/sessions/:id", controller.UpdateChatSession)
+			chatRoute.PUT("/sessions/:id/knowledge", controller.SetChatKnowledgeLibrary)
 			chatRoute.DELETE("/sessions/:id", controller.DeleteChatSession)
 			chatRoute.GET("/sessions/:id/messages", controller.GetChatSessionMessages)
 			chatRoute.POST("/sessions/:id/run", controller.RunChatTurn)
+			chatRoute.POST("/sessions/:id/branches", controller.BranchChatTurn)
 			chatRoute.GET("/files", controller.GetChatFiles)
 			chatRoute.POST("/files", controller.UploadChatFile)
 			chatRoute.DELETE("/files/:id", controller.DeleteChatFile)
@@ -191,7 +201,9 @@ func SetApiRouter(router *gin.Engine) {
 			studioRoute.GET("/images/:id", controller.GetImageGenerationStatus)
 			studioRoute.POST("/images/:id/retry-save", controller.RetryImageSave)
 			studioRoute.POST("/images/:id/cancel", controller.CancelImageGeneration)
-			studioRoute.GET("/images/assets/:id/content", controller.ServeImageAsset)
+			studioRoute.GET("/images/assets", controller.ListImageAssetPage)
+			studioRoute.DELETE("/images/assets/:id", controller.DeleteImageAsset)
+			studioRoute.POST("/images/assets/:id/attachment", controller.AttachImageAsset)
 		}
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.AdminAuth())
@@ -199,4 +211,9 @@ func SetApiRouter(router *gin.Engine) {
 			groupRoute.GET("/", controller.GetGroups)
 		}
 	}
+	// Already-compressed media uses the same account checks outside API gzip
+	// so browsers can seek through partial MP4 responses.
+	router.GET("/api/studio/images/assets/:id/content",
+		middleware.GlobalAPIRateLimit(), middleware.UserAuth(), controller.ServeImageAsset)
+
 }

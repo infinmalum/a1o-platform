@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	lapuatool "github.com/infinmalum/Lapua/tool"
@@ -71,6 +72,7 @@ type ChatTurnRequest struct {
 	// regardless of the current user (built-in agents carry their admin
 	// author's published material).
 	ReferenceFiles []*model.ChatFile
+	Knowledge      []model.KnowledgeMatch
 	// Executor performs the model legs; it carries the billing identity.
 	Executor ModelInvoker
 	// ContextBudget overrides the configured budget when positive.
@@ -216,9 +218,15 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	if err != nil {
 		return e.fail(turn, emit, err)
 	}
+	knowledge, sources := knowledgePreamble(turn)
 	items := make([]Item, 0, len(working)*2+len(preamble))
 	items = append(items, preamble...)
-	for _, entry := range working {
+	for i, entry := range working {
+		if knowledge != "" && i == len(working)-1 && entry.row.Role == model.ChatRoleUser {
+			// Keep this turn's sources adjacent to its question. The original
+			// history and the durable user message contain no source text.
+			entry.items[0].Content = append([]ContentPart{{Type: PartInputText, Text: knowledge}}, entry.items[0].Content...)
+		}
 		items = append(items, entry.items...)
 	}
 
@@ -245,7 +253,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 
 	totalPrompt, totalCompletion := int64(0), int64(0)
 	err = lapuaLoop(ctx, turn.Run, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
-		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools)
+		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools, sources)
 		pendingCalls = append([]Item(nil), pending...)
 		totalPrompt += result.Usage.Input
 		totalCompletion += result.Usage.Output
@@ -291,7 +299,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 // on the assistant row — nil when the row write failed or the model
 // hallucinated calls while no tools were offered, because either way the
 // stored history has no tool_calls to answer.
-func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest, items []Item, tools *toolSet) (InvokeResult, []Item, error) {
+func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest, items []Item, tools *toolSet, sources []model.KnowledgeCitation) (InvokeResult, []Item, error) {
 	maxTokens := turn.Session.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = int(DefaultMaxOutputTokens)
@@ -304,10 +312,14 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 		map[string]any{"message_id": row.Id}, true, emit)
 	// The callbacks append the row id so the client can anchor deltas; they
 	// run inside Invoke before the result is complete.
+	instructions := systemContent(turn.Session, turn.Skills, turn.AgentSpec)
+	if turn.Session.KnowledgeLibraryId != 0 {
+		instructions = strings.TrimSpace(instructions + "\n\n" + knowledgeInstructions)
+	}
 	result, legErr := turn.Executor.Invoke(ctx, InvokeRequest{
 		RunID:           turn.Run.Id,
 		Model:           turn.Session.Model,
-		Instructions:    systemContent(turn.Session, turn.Skills, turn.AgentSpec),
+		Instructions:    instructions,
 		Items:           items,
 		Tools:           tools.defs,
 		MaxOutputTokens: int64(maxTokens),
@@ -325,6 +337,7 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 	text := messageText(result.Items)
 	calls := resultToolCalls(result.Items)
 	row.Content = text
+	row.Sources = usedKnowledgeSources(text, sources)
 	row.Tokens = int(result.Usage.Output)
 	if len(calls) > 0 && len(tools.defs) > 0 {
 		raw, _ := json.Marshal(toStoredToolCalls(calls))

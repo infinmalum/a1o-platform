@@ -1,7 +1,8 @@
+import { studioPageSize } from '@/components/StudioList';
 // API client for the agent plaza (R4): built-in and own agent definitions,
 // immutable versions, and the frozen spec each run pins. The server contract
 // lives in controller/agents.go.
-import { showError } from '../../helpers/utils';
+import { studioRequest as request } from '@/helpers/studioRequest';
 
 export type AgentMode = 'chat' | 'work';
 
@@ -72,41 +73,15 @@ export interface AgentDraft {
   opening_hint: string;
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    });
-  } catch (error) {
-    showError(error instanceof Error ? error : String(error));
-    throw error;
-  }
-  let payload: ApiResponse<T>;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch {
-    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
-  }
-  if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
-    showError(error);
-    throw error;
-  }
-  return payload.data;
-}
-
 export const agentsApi = {
   listPlaza: () =>
     request<{ builtin: AgentView[]; mine: AgentView[] }>('/api/chat/agents'),
+  listPage: (builtin: number, mine: number) => request<{ builtin: AgentView[]; mine: AgentView[]; builtin_more?: boolean; mine_more?: boolean }>(
+    '/api/chat/agents?' + new URLSearchParams({
+      builtin_offset: String(builtin * studioPageSize), mine_offset: String(mine * studioPageSize),
+      limit: String(studioPageSize + 1),
+    }), undefined, false,
+  ),
   getDetail: (id: number) => request<AgentView>(`/api/chat/agents/${id}`),
   create: (payload: AgentPayload) =>
     request<AgentView>('/api/chat/agents', { method: 'POST', body: JSON.stringify(payload) }),

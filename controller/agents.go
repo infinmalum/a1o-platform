@@ -106,7 +106,8 @@ func agentNameConflict(err error) error {
 // starts are blocked server-side).
 func GetAgentPlaza(c *gin.Context) {
 	userId := c.GetInt(ctxkey.Id)
-	builtin, mine, err := model.ListPlazaAgents(userId)
+	builtinPage, minePage := studioListPage(c, "builtin_offset"), studioListPage(c, "mine_offset")
+	builtin, mine, err := model.ListPlazaAgentsPage(userId, builtinPage, minePage)
 	if err != nil {
 		chatError(c, err)
 		return
@@ -122,9 +123,23 @@ func GetAgentPlaza(c *gin.Context) {
 		}
 		return result
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"builtin": views(builtin), "mine": views(mine),
-	}})
+	data := gin.H{}
+	if builtinPage.Limit > 0 {
+		more := len(builtin) == builtinPage.Limit
+		data["builtin_more"] = more
+		if more {
+			builtin = builtin[:len(builtin)-1]
+		}
+	}
+	if minePage.Limit > 0 {
+		more := len(mine) == minePage.Limit
+		data["mine_more"] = more
+		if more {
+			mine = mine[:len(mine)-1]
+		}
+	}
+	data["builtin"], data["mine"] = views(builtin), views(mine)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
 // GetAgentDetail returns one visible definition with its latest frozen spec.

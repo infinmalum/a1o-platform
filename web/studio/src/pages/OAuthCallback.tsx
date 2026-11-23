@@ -1,64 +1,61 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import { API } from '@/helpers/api';
-import { showError, showSuccess } from '@/helpers/utils';
+import { safeReturnPath } from '@/helpers/session';
+import { showSuccess } from '@/helpers/utils';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
-// Shared callback page for the OAuth providers the backend supports: the
-// browser lands here with ?code=&state=, we exchange it for a session and
-// store the user payload under the same key the admin console reads.
-const OAuthCallback: React.FC<{
+export default function OAuthCallback({ provider, onSuccess }: {
   provider: 'github' | 'lark';
   onSuccess: (data: unknown) => void;
-}> = ({ provider, onSuccess }) => {
+}) {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [prompt, setPrompt] = useState('处理中...');
-  const attempted = useRef(0);
+  const [failed, setFailed] = useState(false);
+  const exchange = useRef<Promise<{ success: boolean; message: string; data: unknown }> | null>(null);
 
   useEffect(() => {
-    const sendCode = async (code: string | null, state: string | null) => {
-      try {
-        const res = await API.get(`/api/oauth/${provider}?code=${code}&state=${state}`);
-        const { success, message, data } = res.data;
-        if (success) {
-          if (message === 'bind') {
-            showSuccess('绑定成功！');
-            navigate('/', { replace: true });
-          } else {
-            onSuccess(data);
-            showSuccess('登录成功！');
-            navigate('/', { replace: true });
-          }
-          return;
-        }
-        showError(message);
-      } catch {
-        // showError already toasted; fall through to the retry below
-      }
-      attempted.current += 1;
-      if (attempted.current > 3) {
-        setPrompt('操作失败，正在返回首页...');
-        navigate('/', { replace: true });
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    if (!code || !state) {
+      setFailed(true);
+      return;
+    }
+    // A provider code is single-use. Keep the request across effect replays.
+    exchange.current ??= API.get('/api/oauth/' + provider, { params: { code, state } }).then((res) => res.data);
+    let active = true;
+    void exchange.current.then(({ success, message, data }) => {
+      if (!active) return;
+      if (!success) {
+        setFailed(true);
         return;
       }
-      setPrompt(`出现错误，第 ${attempted.current} 次重试中...`);
-      await new Promise((resolve) => setTimeout(resolve, attempted.current * 2000));
-      await sendCode(searchParams.get('code'), searchParams.get('state'));
-    };
-    sendCode(searchParams.get('code'), searchParams.get('state')).then();
-  }, [provider, navigate, searchParams, onSuccess]);
+      const next = sessionStorage.getItem('studio-oauth-return');
+      sessionStorage.removeItem('studio-oauth-return');
+      if (message === 'bind') {
+        showSuccess(t('auth.oauth.bound'));
+        navigate('/', { replace: true });
+      } else {
+        onSuccess(data);
+        showSuccess(t('messages.success.login'));
+        navigate(next ? safeReturnPath(next) : '/', { replace: true });
+      }
+    }).catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [provider, navigate, searchParams, onSuccess, t]);
 
   return (
     <div className='flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6'>
       <Card className='w-full max-w-sm'>
-        <CardContent className='py-10 text-center text-sm text-muted-foreground'>
-          {prompt}
+        <CardContent className='grid justify-items-center gap-4 py-10 text-center text-sm text-muted-foreground'>
+          <p role={failed ? 'alert' : 'status'}>{t(failed ? 'auth.oauth.failed' : 'auth.oauth.processing')}</p>
+          {failed && <Button asChild variant='outline'><Link to='/login'>{t('auth.login.button')}</Link></Button>}
         </CardContent>
       </Card>
     </div>
   );
-};
-
-export default OAuthCallback;
+}

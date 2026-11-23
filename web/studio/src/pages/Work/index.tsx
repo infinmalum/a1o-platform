@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { ListError, ListLoading, ListPages, useStudioPage } from '@/components/StudioList';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Bot, Plus, RefreshCw } from 'lucide-react';
 
+import { formatStudioDate } from '@/helpers/render';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,7 +35,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { agentsApi, type AgentView } from '@/pages/Agents/agentsApi';
-import { statusBadgeVariant, workApi, WorkTaskView } from './workApi';
+import { chatApi, type ChatFile } from '@/pages/Chat/chatApi';
+import { statusBadgeVariant, workApi } from './workApi';
 
 // Work task list (R3): the minimal entry over /api/studio/tasks — creation
 // queues a run, the detail page follows progress and collects results.
@@ -42,31 +45,17 @@ const Work: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tasks, setTasks] = useState<WorkTaskView[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState('');
+  const [referenceImage, setReferenceImage] = useState<ChatFile>();
   const [goal, setGoal] = useState('');
   const [model, setModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [boundAgent, setBoundAgent] = useState<AgentView | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await workApi.listTasks();
-      setTasks(data || []);
-    } catch {
-      // toast already surfaced by the client helper
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const taskList = useStudioPage(workApi.listTasks);
+  const tasks = taskList.items;
 
   // Deep link from the agent plaza: prefill the create dialog with the
   // agent's frozen model and pin its latest version on the created run.
@@ -84,6 +73,26 @@ const Work: React.FC = () => {
       .catch(() => setSearchParams({}, { replace: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentParam]);
+
+  const attachmentParam = Number(searchParams.get('attachment'));
+  useEffect(() => {
+    if (!attachmentParam) return;
+    let cancelled = false;
+    void chatApi.listFiles().then((files) => {
+      if (cancelled) return;
+      const image = files.find((file) => file.id === attachmentParam && file.kind === 'image');
+      if (image) {
+        setReferenceImage(image);
+        setCreateOpen(true);
+      }
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete('attachment');
+        return next;
+      }, { replace: true });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [attachmentParam, setSearchParams]);
 
   useEffect(() => {
     if (!createOpen) return;
@@ -106,10 +115,12 @@ const Work: React.FC = () => {
         input: goal.trim(),
         model,
         agent_version_id: boundAgent?.latest.id,
+        reference_file_id: referenceImage?.id,
       });
       setCreateOpen(false);
       setTitle('');
       setGoal('');
+      setReferenceImage(undefined);
       setBoundAgent(null);
       navigate(`/work/${result.task?.id ?? result.run.task_id}`);
     } catch {
@@ -127,7 +138,7 @@ const Work: React.FC = () => {
           <p className='text-muted-foreground mt-1 text-sm'>{t('work.tagline')}</p>
         </div>
         <div className='flex items-center gap-2'>
-          <Button variant='ghost' size='icon' onClick={load} title={t('work.refresh')}>
+          <Button variant='ghost' size='icon' onClick={taskList.reload} title={t('work.refresh')}>
             <RefreshCw />
           </Button>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -159,6 +170,14 @@ const Work: React.FC = () => {
                   />
                 </div>
                 <div className='grid gap-2'>
+                  {referenceImage && (
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <Badge variant='secondary'>{referenceImage.name}</Badge>
+                      <Button size='sm' variant='ghost' disabled={submitting} onClick={() => setReferenceImage(undefined)}>
+                        {t('images.removeReference')}
+                      </Button>
+                    </div>
+                  )}
                   <Label htmlFor='work-goal'>{t('work.goalLabel')}</Label>
                   <Textarea
                     id='work-goal'
@@ -194,8 +213,10 @@ const Work: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
-        <p className='text-muted-foreground text-sm'>{t('work.loading')}</p>
+      {taskList.loading ? (
+        <ListLoading cards />
+      ) : taskList.failed ? (
+        <ListError retry={taskList.reload} />
       ) : tasks.length === 0 ? (
         <p className='text-muted-foreground text-sm'>{t('work.empty')}</p>
       ) : (
@@ -210,7 +231,7 @@ const Work: React.FC = () => {
                 <CardTitle className='line-clamp-2 text-base'>{task.title}</CardTitle>
                 <CardDescription>
                   {task.updated_time
-                    ? new Date(task.updated_time * 1000).toLocaleString()
+                    ? formatStudioDate(task.updated_time)
                     : ''}
                 </CardDescription>
                 <CardAction>
@@ -230,6 +251,7 @@ const Work: React.FC = () => {
           ))}
         </div>
       )}
+      {!taskList.loading && !taskList.failed && <ListPages page={taskList.page} more={taskList.more} onPage={taskList.setPage} />}
     </div>
   );
 };

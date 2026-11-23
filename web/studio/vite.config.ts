@@ -21,5 +21,5 @@ export default defineConfig({
     },
     build: { outDir: '../build/studio', emptyOutDir: true, cssMinify: false },
     // Dev layout: studio on 3000, admin console on 3001, Go backend on 3002.
-    server: { port: 3000, proxy: { '/api': 'http://localhost:3002', '/v1': 'http://localhost:3002' } },
+    server: { port: 3000, proxy: { '/api': 'http://localhost:3002', '/v1': 'http://localhost:3002', '/v1beta': 'http://localhost:3002' } },
 });

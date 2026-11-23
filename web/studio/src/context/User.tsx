@@ -4,6 +4,10 @@ export interface StudioUser {
   id?: number;
   username?: string;
   role?: number;
+  display_name?: string;
+  status?: number;
+  quota?: number;
+  group?: string;
   [key: string]: unknown;
 }
 
@@ -12,24 +16,31 @@ interface UserContextValue {
   refresh: () => void;
 }
 
-// Studio keeps session state deliberately thin: the login payload is stored
-// under the same `user` key as the admin console, so a same-origin admin
-// session carries over and each page re-reads storage on navigation.
+function readUser(): StudioUser | null {
+  try {
+    return JSON.parse(localStorage.getItem('user') ?? 'null') as StudioUser | null;
+  } catch {
+    return null;
+  }
+}
+
 const UserContext = createContext<UserContextValue>({
   user: null,
   refresh: () => undefined,
 });
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = React.useState<StudioUser | null>(() => {
-    const raw = localStorage.getItem('user');
-    return raw ? (JSON.parse(raw) as StudioUser) : null;
-  });
+  const [user, setUser] = React.useState(readUser);
+  const refresh = React.useCallback(() => setUser(readUser()), []);
 
-  const refresh = () => {
-    const raw = localStorage.getItem('user');
-    setUser(raw ? (JSON.parse(raw) as StudioUser) : null);
-  };
+  React.useEffect(() => {
+    window.addEventListener('user-changed', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('user-changed', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [refresh]);
 
   return <UserContext.Provider value={{ user, refresh }}>{children}</UserContext.Provider>;
 };
@@ -37,7 +48,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useUser = () => useContext(UserContext);
 
 export function storeUser(data: unknown) {
-  localStorage.setItem('user', JSON.stringify(data));
+  if (!data || typeof data !== 'object') return;
+  const { id, username, role, display_name, status, quota, group } = data as StudioUser;
+  localStorage.setItem('user', JSON.stringify({ id, username, role, display_name, status, quota, group }));
   window.dispatchEvent(new Event('user-changed'));
 }
 

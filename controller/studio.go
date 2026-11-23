@@ -50,7 +50,8 @@ type studioRunPayload struct {
 	IdempotencyKey string `json:"idempotency_key"`
 	// AgentVersionId pins an immutable agent configuration on the run; 0
 	// runs the platform's default work behavior.
-	AgentVersionId int `json:"agent_version_id"`
+	AgentVersionId  int `json:"agent_version_id"`
+	ReferenceFileId int `json:"reference_file_id"`
 }
 
 // CreateStudioRun accepts a new work run: creates (or reuses) the task,
@@ -107,13 +108,21 @@ func CreateStudioRun(c *gin.Context) {
 		// request, so the stored value is always more specific.
 		taskMatches := payload.TaskId == 0 || existing.TaskId == payload.TaskId
 		if existing.Kind != payload.Kind || existing.Model != effectiveModel ||
-			existing.AgentVersionId != payload.AgentVersionId ||
+			existing.AgentVersionId != payload.AgentVersionId || existing.ReferenceFileId != payload.ReferenceFileId ||
 			!taskMatches || !runInputMatches(existing, input) {
 			chatError(c, errors.New("幂等键已用于不同的运行请求"))
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"run": existing, "created": false}})
 		return
+	}
+
+	if payload.ReferenceFileId != 0 {
+		file, err := model.GetChatFileById(payload.ReferenceFileId, userId)
+		if err != nil || file.Kind != model.ChatFileKindImage {
+			chatError(c, errors.New("图片附件不存在"))
+			return
+		}
 	}
 
 	queued, err := model.CountQueuedWorkRuns(userId)
@@ -142,8 +151,8 @@ func CreateStudioRun(c *gin.Context) {
 	run := &model.AgentRun{
 		UserId: userId, Kind: "work", Status: model.RunStatusQueued,
 		TaskId: task.Id, IdempotencyKey: payload.IdempotencyKey,
-		AgentVersionId: payload.AgentVersionId,
-		Model:          effectiveModel, InputItems: &frozen, ContextItems: &frozen,
+		AgentVersionId: payload.AgentVersionId, ReferenceFileId: payload.ReferenceFileId,
+		Model: effectiveModel, InputItems: &frozen, ContextItems: &frozen,
 	}
 	if err := model.CreateAgentRun(run); err != nil {
 		if errors.Is(err, model.ErrAgentRunIdempotencyConflict) {
@@ -680,7 +689,7 @@ func ResumeStudioRun(c *gin.Context) {
 // ListStudioTasks lists the caller's tasks with each task's latest run.
 func ListStudioTasks(c *gin.Context) {
 	userId := c.GetInt(ctxkey.Id)
-	tasks, err := model.ListWorkTasks(userId)
+	tasks, err := model.ListWorkTasksPage(userId, studioListPage(c, "offset"))
 	if err != nil {
 		chatError(c, err)
 		return
@@ -706,7 +715,11 @@ func ListStudioRuns(c *gin.Context) {
 			limit = parsed
 		}
 	}
-	runs, err := model.GetRecentAgentRuns(userId, limit)
+	page := studioListPage(c, "offset")
+	if page.Limit == 0 {
+		page.Limit = limit
+	}
+	runs, err := model.GetRecentAgentRunsPage(userId, page)
 	if err != nil {
 		chatError(c, err)
 		return

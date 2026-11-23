@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, Image as ImageIcon, Bot, Wrench, FolderOpen, CircleUserRound, ArrowRight } from 'lucide-react';
+import { MessageCircle, AudioLines, Image as ImageIcon, Bot, Wrench, FolderOpen, CircleUserRound, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ const Home: React.FC = () => {
     { key: 'agent', icon: Bot, onClick: () => navigate('/agents') },
     { key: 'workspace', icon: FolderOpen, onClick: () => navigate('/workspace') },
     { key: 'image', icon: ImageIcon, onClick: () => navigate('/images') },
+    { key: 'audio', icon: AudioLines, onClick: () => navigate('/audio') },
     { key: 'account', icon: CircleUserRound, onClick: () => navigate('/account') },
   ];
 
@@ -57,7 +58,7 @@ const Home: React.FC = () => {
             <CardContent>
               <Button size='sm' variant='outline'>
                 {t(`studio.home.${key}.cta`, { defaultValue: t('studio.home.enter') })}{' '}
-                <ArrowRight />
+                <ArrowRight className='rtl:rotate-180' />
               </Button>
             </CardContent>
           </Card>

@@ -68,6 +68,7 @@ type Request struct {
 	FixedQuota        int64
 	FixedPromptTokens bool
 	ResponseCharge    func(header http.Header, body []byte) (charge int64, promptTokens int64, err error)
+	MaxResponseBytes  int64 // Optional limit when ResponseCharge buffers the response.
 	// OnSettlement, when set, is invoked once after the winning attempt's
 	// reservation settles, carrying the consume log id (0 when consume
 	// logging is disabled) and the usage that drove the charge. It lets a
@@ -535,10 +536,13 @@ func settleFixedQuota(requestCtx, settlementCtx context.Context, dst http.Respon
 	charge := input.FixedQuota
 	promptTokens := int64(0)
 	if input.ResponseCharge != nil {
-		const maxChargedResponse = 64 << 20
+		maxChargedResponse := int64(64 << 20)
+		if input.MaxResponseBytes > 0 {
+			maxChargedResponse = min(maxChargedResponse, input.MaxResponseBytes)
+		}
 		payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxChargedResponse))
 		_ = response.Body.Close()
-		if readErr != nil || len(payload) >= maxChargedResponse {
+		if readErr != nil || int64(len(payload)) >= maxChargedResponse {
 			reservation.Refund(settlementCtx)
 			logger.Errorf(settlementCtx, "fixed-quota response could not be read on channel %d: %v", channel.ID, readErr)
 			return &HTTPError{Status: http.StatusBadGateway, Message: "upstream response could not be read"}
@@ -662,7 +666,7 @@ func selectInitial(input Request, upstreamProtocol native.Protocol, source model
 			switch upstreamProtocol {
 			case native.Anthropic:
 				label = "Anthropic"
-			case native.Gemini:
+			case native.Gemini, native.GeminiInteractions:
 				label = "Gemini"
 			}
 			selectErr.Message = "no compatible " + label + " channel for this model"
@@ -700,6 +704,8 @@ func candidateChannelTypes(protocol native.Protocol) []int {
 		return []int{channeltype.Anthropic, channeltype.AwsClaude, channeltype.VertextAI, channeltype.OpenRouter}
 	case native.Gemini:
 		return []int{channeltype.Gemini, channeltype.VertextAI}
+	case native.GeminiInteractions:
+		return []int{channeltype.Gemini}
 	case native.OpenAIChat:
 		return append(chatCompatibleChannelTypes, channeltype.OpenAIResponses, channeltype.Vercel, channeltype.Cloudflare)
 	case native.OpenAIEmbeddings:
@@ -757,6 +763,8 @@ func channelSupportsProtocol(kind int, protocol native.Protocol) bool {
 		return kind == channeltype.Anthropic || kind == channeltype.AwsClaude || kind == channeltype.VertextAI || kind == channeltype.OpenRouter
 	case native.Gemini:
 		return kind == channeltype.Gemini || kind == channeltype.VertextAI
+	case native.GeminiInteractions:
+		return kind == channeltype.Gemini
 	case native.SystemOne:
 		return kind == channeltype.TypeSafe || kind == channeltype.OpenRouter
 	}

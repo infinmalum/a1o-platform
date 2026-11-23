@@ -222,6 +222,44 @@ func GetChatSessionMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": messages})
 }
 
+// BranchChatTurn starts a new conversation at the last user message.
+func BranchChatTurn(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "retry_unavailable"})
+		return
+	}
+	if _, busy := chatRunningSessions.LoadOrStore(id, true); busy {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "chat_busy"})
+		return
+	}
+	defer chatRunningSessions.Delete(id)
+	var input struct {
+		MessageID int    `json:"message_id"`
+		Title     string `json:"title"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	if c.ShouldBindJSON(&input) != nil || input.MessageID <= 0 || input.Title == "" || len(input.Title) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "code": "retry_unavailable"})
+		return
+	}
+	session, err := model.GetChatSessionById(id, c.GetInt(ctxkey.Id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "retry_unavailable"})
+		return
+	}
+	branch, copiedMessageID, err := model.BranchChatSession(c.Request.Context(), session, input.MessageID, input.Title)
+	if err != nil {
+		if errors.Is(err, model.ErrChatBranchUnavailable) {
+			c.JSON(http.StatusConflict, gin.H{"success": false, "code": "retry_unavailable"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"session": branch, "message_id": copiedMessageID}})
+}
+
 // RunChatTurn persists the user message, records the run, then streams the
 // turn as versioned agent run events over SSE.
 func RunChatTurn(c *gin.Context) {
@@ -237,54 +275,74 @@ func RunChatTurn(c *gin.Context) {
 		return
 	}
 	if _, busy := chatRunningSessions.LoadOrStore(session.Id, true); busy {
-		chatError(c, errors.New("该会话正在回复中"))
+		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "chat_busy", "message": "该会话正在回复中"})
 		return
 	}
 	defer chatRunningSessions.Delete(session.Id)
 
 	var request struct {
-		Content string `json:"content"`
-		FileIds []int  `json:"file_ids"`
+		Content        string `json:"content"`
+		FileIds        []int  `json:"file_ids"`
+		RetryMessageID int    `json:"retry_message_id"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		chatError(c, err)
 		return
 	}
-	if strings.TrimSpace(request.Content) == "" && len(request.FileIds) == 0 {
+	if request.RetryMessageID > 0 {
+		last, err := model.GetLatestChatMessage(session.Id)
+		if err != nil || last.Id != request.RetryMessageID || last.Role != model.ChatRoleUser ||
+			request.Content != "" || len(request.FileIds) > 0 {
+			c.JSON(http.StatusConflict, gin.H{"success": false, "code": "retry_unavailable", "message": "无法重新生成此消息"})
+			return
+		}
+		request.Content = last.Content
+	} else if strings.TrimSpace(request.Content) == "" && len(request.FileIds) == 0 {
 		chatError(c, errors.New("消息内容不能为空"))
 		return
 	}
 
-	var parts []model.ChatMessagePart
-	for _, fileID := range request.FileIds {
-		file, err := model.GetChatFileById(fileID, userId)
+	var knowledge []model.KnowledgeMatch
+	if session.KnowledgeLibraryId != 0 {
+		knowledge, err = model.SearchKnowledge(c.Request.Context(), userId, session.KnowledgeLibraryId, request.Content)
 		if err != nil {
+			chatError(c, fmt.Errorf("检索资料库失败: %w", err))
+			return
+		}
+	}
+
+	if request.RetryMessageID <= 0 {
+		var parts []model.ChatMessagePart
+		for _, fileID := range request.FileIds {
+			file, err := model.GetChatFileById(fileID, userId)
+			if err != nil {
+				chatError(c, err)
+				return
+			}
+			kind := "text"
+			if file.Kind == model.ChatFileKindImage {
+				kind = "image_url"
+			}
+			parts = append(parts, model.ChatMessagePart{Type: kind, FileID: file.Id})
+		}
+		userMessage := &model.ChatMessage{
+			SessionId: session.Id,
+			Role:      model.ChatRoleUser,
+			Content:   request.Content,
+		}
+		if len(parts) > 0 {
+			raw, _ := json.Marshal(parts)
+			encoded := string(raw)
+			userMessage.Parts = &encoded
+		}
+		if err := model.InsertChatMessage(userMessage); err != nil {
 			chatError(c, err)
 			return
 		}
-		kind := "text"
-		if file.Kind == model.ChatFileKindImage {
-			kind = "image_url"
+		if session.Title == "" || session.Title == "新会话" {
+			session.Title = truncateChatTitle(request.Content)
+			_ = model.UpdateChatSession(session)
 		}
-		parts = append(parts, model.ChatMessagePart{Type: kind, FileID: file.Id})
-	}
-	userMessage := &model.ChatMessage{
-		SessionId: session.Id,
-		Role:      model.ChatRoleUser,
-		Content:   request.Content,
-	}
-	if len(parts) > 0 {
-		raw, _ := json.Marshal(parts)
-		encoded := string(raw)
-		userMessage.Parts = &encoded
-	}
-	if err := model.InsertChatMessage(userMessage); err != nil {
-		chatError(c, err)
-		return
-	}
-	if session.Title == "" || session.Title == "新会话" {
-		session.Title = truncateChatTitle(request.Content)
-		_ = model.UpdateChatSession(session)
 	}
 
 	skills, err := sessionSkills(session, userId)
@@ -366,6 +424,7 @@ func RunChatTurn(c *gin.Context) {
 		Skills:         skills,
 		AgentSpec:      agentSpec,
 		ReferenceFiles: referenceFiles,
+		Knowledge:      knowledge,
 		Executor:       &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
 		ContextBudget:  session.ContextBudget,
 	}
@@ -435,12 +494,33 @@ func sessionSkills(session *model.ChatSession, userId int) ([]*model.ChatSkill, 
 
 // GetChatFiles lists the caller's uploaded files.
 func GetChatFiles(c *gin.Context) {
-	files, err := model.GetUserChatFiles(c.GetInt(ctxkey.Id))
+	files, err := model.GetUserChatFilesPage(c.GetInt(ctxkey.Id), studioListPage(c, "offset"))
 	if err != nil {
 		chatError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": files})
+}
+
+func chatUploadError(c *gin.Context, code string, bytes int64) {
+	message := map[string]string{
+		"file_required":      "请选择要上传的文件",
+		"upload_read_failed": "无法读取上传的文件，请重新选择",
+		"upload_save_failed": "文件保存失败，请稍后重试",
+	}[code]
+	result := gin.H{"success": false, "code": code, "message": message}
+	if bytes > 0 {
+		limit := fmt.Sprintf("%.4g KiB", float64(bytes)/1024)
+		if bytes >= 1<<20 {
+			limit = fmt.Sprintf("%.4g MiB", float64(bytes)/(1<<20))
+		}
+		if bytes < 1024 {
+			limit = fmt.Sprintf("%d B", bytes)
+		}
+		result["limit"] = limit
+		result["message"] = "文件大小不能超过 " + limit
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // UploadChatFile accepts one multipart attachment under "file".
@@ -449,22 +529,29 @@ func UploadChatFile(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, config.ChatMaxFileBytes+(64<<10))
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		chatError(c, fmt.Errorf("读取上传失败: %w", err))
+		var limit *http.MaxBytesError
+		if errors.As(err, &limit) {
+			chatUploadError(c, "file_too_large", config.ChatMaxFileBytes)
+		} else if errors.Is(err, http.ErrMissingFile) {
+			chatUploadError(c, "file_required", 0)
+		} else {
+			chatUploadError(c, "upload_read_failed", 0)
+		}
 		return
 	}
 	if fileHeader.Size > config.ChatMaxFileBytes {
-		chatError(c, fmt.Errorf("文件超过大小上限 %d 字节", config.ChatMaxFileBytes))
+		chatUploadError(c, "file_too_large", config.ChatMaxFileBytes)
 		return
 	}
 	file, err := fileHeader.Open()
 	if err != nil {
-		chatError(c, err)
+		chatUploadError(c, "upload_read_failed", 0)
 		return
 	}
 	defer file.Close()
 	payload, err := io.ReadAll(file)
 	if err != nil {
-		chatError(c, err)
+		chatUploadError(c, "upload_read_failed", 0)
 		return
 	}
 	kind := model.ChatFileKindText
@@ -472,12 +559,12 @@ func UploadChatFile(c *gin.Context) {
 	if strings.HasPrefix(contentType, "image/") {
 		kind = model.ChatFileKindImage
 	} else if int64(len(payload)) > maxChatTextFileBytes {
-		chatError(c, fmt.Errorf("文本文件须在 %d 字节以内", maxChatTextFileBytes))
+		chatUploadError(c, "text_file_too_large", maxChatTextFileBytes)
 		return
 	}
 	stored, err := model.SaveChatFilePayload(userId, kind, fileHeader.Filename, payload)
 	if err != nil {
-		chatError(c, err)
+		chatUploadError(c, "upload_save_failed", 0)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": stored})

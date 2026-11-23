@@ -32,6 +32,7 @@ func Login(c *gin.Context) {
 	if !config.PasswordLoginEnabled {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "管理员关闭了密码登录",
+			"code":    "password_login_disabled",
 			"success": false,
 		})
 		return

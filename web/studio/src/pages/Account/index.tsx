@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
 import { storeUser } from '@/context/User';
-import type { UserSelf } from './accountApi';
 import RedeemTab from './RedeemTab';
 import SettingsTab from './SettingsTab';
 import TokensTab from './TokensTab';
@@ -17,7 +17,7 @@ type AccountTab = 'tokens' | 'usage' | 'redeem' | 'settings';
 // page only wires them into the studio.
 const Account: React.FC = () => {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<AccountTab>('tokens');
+  const [params, setParams] = useSearchParams();
 
   const tabs: { key: AccountTab; label: string }[] = [
     { key: 'tokens', label: t('studio.account.tabs.tokens') },
@@ -25,6 +25,8 @@ const Account: React.FC = () => {
     { key: 'redeem', label: t('studio.account.tabs.redeem') },
     { key: 'settings', label: t('studio.account.tabs.settings') },
   ];
+
+  const tab = tabs.find(({ key }) => key === params.get('tab'))?.key ?? 'tokens';
 
   return (
     <div className='mx-auto w-full max-w-4xl px-4 py-10'>
@@ -36,7 +38,12 @@ const Account: React.FC = () => {
             key={entry.key}
             variant={tab === entry.key ? 'default' : 'outline'}
             size='sm'
-            onClick={() => setTab(entry.key)}
+            aria-pressed={tab === entry.key}
+            onClick={() => setParams((current) => {
+              const next = new URLSearchParams(current);
+              next.set('tab', entry.key);
+              return next;
+            })}
           >
             {entry.label}
           </Button>

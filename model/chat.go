@@ -52,11 +52,12 @@ type ChatSession struct {
 	// AgentVersionId pins the immutable agent version this session was
 	// created from; 0 for plain sessions. Editing the agent later never
 	// rewrites this binding — new sessions pick up the new version.
-	AgentVersionId   int    `json:"agent_version_id" gorm:"default:0"`
-	Summary          string `json:"summary" gorm:"type:text"`
-	CompactedThrough int    `json:"compacted_through"`
-	CreatedTime      int64  `json:"created_time" gorm:"bigint"`
-	UpdatedTime      int64  `json:"updated_time" gorm:"bigint"`
+	AgentVersionId     int    `json:"agent_version_id" gorm:"default:0"`
+	KnowledgeLibraryId int    `json:"knowledge_library_id" gorm:"default:0"`
+	Summary            string `json:"summary" gorm:"type:text"`
+	CompactedThrough   int    `json:"compacted_through"`
+	CreatedTime        int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime        int64  `json:"updated_time" gorm:"bigint"`
 }
 
 type ChatMessage struct {
@@ -74,8 +75,9 @@ type ChatMessage struct {
 	// Reasoning holds the assistant turn's opaque native state as JSON
 	// (visible reasoning, vendor signature, encrypted content, per-call
 	// thought signatures) so the next turn replays it to the bound channel.
-	Reasoning   *string `json:"reasoning" gorm:"type:text"`
-	CreatedTime int64   `json:"created_time" gorm:"bigint"`
+	Reasoning   *string             `json:"reasoning" gorm:"type:text"`
+	Sources     []KnowledgeCitation `json:"sources,omitempty" gorm:"serializer:json;type:text"`
+	CreatedTime int64               `json:"created_time" gorm:"bigint"`
 }
 
 // ChatMessagePart is one attachment reference stored in ChatMessage.Parts.
@@ -280,7 +282,7 @@ func InsertChatMessage(message *ChatMessage) error {
 
 // UpdateChatMessage rewrites the mutable fields of one message row.
 func UpdateChatMessage(message *ChatMessage) error {
-	return DB.Model(message).Select("content", "tool_calls", "tokens", "reasoning").Updates(message).Error
+	return DB.Model(message).Select("content", "tool_calls", "tokens", "reasoning", "sources").Updates(message).Error
 }
 
 func GetSessionMessages(sessionId int) ([]*ChatMessage, error) {
@@ -334,11 +336,32 @@ func chatFileRoot() string {
 }
 
 func SaveChatFilePayload(userId int, kind string, rawName string, payload []byte) (*ChatFile, error) {
+	return saveChatFile(userId, kind, rawName, int64(len(payload)), func(path string) error {
+		return os.WriteFile(path, payload, 0600)
+	})
+}
+
+// SaveImageAssetAsChatFile creates a durable attachment without giving either
+// asset path ownership of the other. Deleting either name leaves the other.
+func SaveImageAssetAsChatFile(asset *ImageAsset, name string) (*ChatFile, error) {
+	return saveChatFile(asset.UserId, ChatFileKindImage, name, asset.Size, func(path string) error {
+		if err := os.Link(asset.Path, path); err == nil {
+			return nil
+		}
+		payload, err := ReadImageAssetPayload(asset)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(path, payload, 0600)
+	})
+}
+
+func saveChatFile(userId int, kind, rawName string, size int64, write func(string) error) (*ChatFile, error) {
 	file := &ChatFile{
 		UserId: userId,
 		Name:   filepath.Base(rawName),
 		Kind:   kind,
-		Size:   int64(len(payload)),
+		Size:   size,
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(file).Error; err != nil {
@@ -349,7 +372,7 @@ func SaveChatFilePayload(userId int, kind string, rawName string, payload []byte
 			return err
 		}
 		path := filepath.Join(dir, fmt.Sprintf("%d_%d", userId, file.Id))
-		if err := os.WriteFile(path, payload, 0600); err != nil {
+		if err := write(path); err != nil {
 			return err
 		}
 		file.Path = path
@@ -366,8 +389,12 @@ func ReadChatFilePayload(file *ChatFile) ([]byte, error) {
 }
 
 func GetUserChatFiles(userId int) ([]*ChatFile, error) {
+	return GetUserChatFilesPage(userId, ListPage{})
+}
+
+func GetUserChatFilesPage(userId int, page ListPage) ([]*ChatFile, error) {
 	var files []*ChatFile
-	err := DB.Where("user_id = ?", userId).Order("id desc").Find(&files).Error
+	err := page.Apply(DB.Where("user_id = ?", userId).Order("id desc")).Find(&files).Error
 	return files, err
 }
 

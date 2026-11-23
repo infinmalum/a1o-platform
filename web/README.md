@@ -12,7 +12,7 @@ npm ci --legacy-peer-deps --prefix web/studio
 npm ci --legacy-peer-deps --prefix web/admin
 ```
 
-先将 Go 后端启动在 3002 端口，再分别启动要开发的应用。两个 Vite 服务都将 `/api` 和 `/v1` 代理到 3002。
+先将 Go 后端启动在 3002 端口，再分别启动要开发的应用。两个 Vite 服务都将 `/api` 和 `/v1` 代理到 3002。Studio 也会代理 `/v1beta`，用于开发和验证 Gemini 接口。
 
 ```sh
 npm start --prefix web/studio

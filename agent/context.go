@@ -150,7 +150,7 @@ func referenceFileItems(files []*model.ChatFile) ([]Item, error) {
 	}
 	parts := make([]ContentPart, 0, len(files)+1)
 	parts = append(parts, ContentPart{Type: PartInputText,
-		Text: "[参考文件] 以下是智能体配置携带的参考材料，供本次任务使用。"})
+		Text: "[参考文件] 以下是本次任务的参考材料。"})
 	for _, file := range files {
 		converted, err := fileContentPart(file)
 		if err != nil {
@@ -272,6 +272,10 @@ func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTur
 		toolTokens += estimateText(string(raw), "")
 	}
 	total := systemTokens + toolTokens + estimateText(turn.Session.Summary, "")
+	if turn.Session.KnowledgeLibraryId != 0 {
+		knowledge, _ := knowledgePreamble(turn)
+		total += estimateText(knowledge, turn.Session.Model) + estimateText(knowledgeInstructions, turn.Session.Model)
+	}
 	for _, entry := range entries {
 		total += entry.tokens
 	}

@@ -91,10 +91,15 @@
   background: oklch(0.145 0 0 / 6%);
   border-radius: 0.5rem;
   padding: 0.6em 0.8em;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
   overflow-x: auto;
   margin: 0.4em 0;
 }
 .chat-markdown code {
+  direction: ltr;
+  unicode-bidi: isolate;
   font-size: 0.9em;
 }
 .chat-markdown pre code {
@@ -102,7 +107,7 @@
 }
 .chat-markdown ul,
 .chat-markdown ol {
-  padding-left: 1.4em;
+  padding-inline-start: 1.4em;
   margin: 0.3em 0;
 }
 .chat-markdown ul {

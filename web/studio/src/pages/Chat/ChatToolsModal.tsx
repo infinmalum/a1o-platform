@@ -350,7 +350,7 @@ const ChatToolsModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open
             </button>
           ))}
         </div>
-        <div className='max-h-[60vh] overflow-y-auto pr-1'>
+        <div className='max-h-[60vh] overflow-y-auto pe-1'>
           {tab === 'skills' ? <SkillPane /> : <UserMCPPane />}
         </div>
       </DialogContent>

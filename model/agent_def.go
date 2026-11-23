@@ -316,10 +316,14 @@ func GetLatestAgentVersion(definitionId int) (*AgentVersion, error) {
 // the user's own, archived ones included (they carry the flag and stay
 // readable; only new starts are blocked).
 func ListPlazaAgents(userId int) (builtin []*AgentDefinition, mine []*AgentDefinition, err error) {
-	if err = DB.Where("owner_id = ?", 0).Order("id asc").Find(&builtin).Error; err != nil {
+	return ListPlazaAgentsPage(userId, ListPage{}, ListPage{})
+}
+
+func ListPlazaAgentsPage(userId int, builtinPage, minePage ListPage) (builtin []*AgentDefinition, mine []*AgentDefinition, err error) {
+	if err = builtinPage.Apply(DB.Where("owner_id = ?", 0).Order("id asc")).Find(&builtin).Error; err != nil {
 		return nil, nil, err
 	}
-	if err = DB.Where("owner_id = ?", userId).Order("id desc").Find(&mine).Error; err != nil {
+	if err = minePage.Apply(DB.Where("owner_id = ?", userId).Order("id desc")).Find(&mine).Error; err != nil {
 		return nil, nil, err
 	}
 	return builtin, mine, nil

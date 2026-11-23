@@ -18,9 +18,11 @@ import (
 // captureWriter collects a non-streaming lifecycle response so login-state
 // services can drive billed calls without an HTTP client connection.
 type captureWriter struct {
-	header http.Header
-	body   bytes.Buffer
-	status int
+	header            http.Header
+	body              bytes.Buffer
+	status            int
+	limit             int
+	discardSuccessful bool
 }
 
 func (w *captureWriter) Header() http.Header {
@@ -30,7 +32,15 @@ func (w *captureWriter) Header() http.Header {
 	return w.header
 }
 
-func (w *captureWriter) Write(p []byte) (int, error) { return w.body.Write(p) }
+func (w *captureWriter) Write(p []byte) (int, error) {
+	if w.discardSuccessful && w.status >= 200 && w.status < 300 {
+		return len(p), nil
+	}
+	if w.limit > 0 && len(p) > w.limit-w.body.Len() {
+		return 0, errors.New("upstream response exceeds the capture limit")
+	}
+	return w.body.Write(p)
+}
 
 func (w *captureWriter) WriteHeader(status int) { w.status = status }
 

@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { getQuotaPerUnitRaw, renderQuota } from '@/helpers/render';
+import { formatStudioDate, getQuotaPerUnitRaw, renderQuota } from '@/helpers/render';
 import { showError, showSuccess } from '@/helpers/utils';
 import {
   accountApi,
@@ -68,7 +68,7 @@ const statusVariant = (status: number): 'default' | 'secondary' | 'destructive' 
 
 const formatDate = (ts: number, t: (key: string) => string) => {
   if (ts === NEVER_EXPIRE || ts <= 0) return t('studio.account.tokens.never');
-  return new Date(ts * 1000).toLocaleDateString();
+  return formatStudioDate(ts, true);
 };
 
 // API keys tab: the token CRUD the /v1 gateway authenticates against. The
@@ -199,20 +199,20 @@ const TokensTab: React.FC = () => {
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>
               <thead>
-                <tr className='text-muted-foreground border-b text-left'>
-                  <th className='py-2 pr-3 font-medium'>{t('studio.account.tokens.name')}</th>
-                  <th className='py-2 pr-3 font-medium'>Key</th>
-                  <th className='py-2 pr-3 font-medium'>{t('studio.account.tokens.status')}</th>
-                  <th className='py-2 pr-3 font-medium'>{t('studio.account.tokens.quota')}</th>
-                  <th className='py-2 pr-3 font-medium'>{t('studio.account.tokens.expiry')}</th>
+                <tr className='text-muted-foreground border-b text-start'>
+                  <th className='py-2 pe-3 font-medium'>{t('studio.account.tokens.name')}</th>
+                  <th className='py-2 pe-3 font-medium'>Key</th>
+                  <th className='py-2 pe-3 font-medium'>{t('studio.account.tokens.status')}</th>
+                  <th className='py-2 pe-3 font-medium'>{t('studio.account.tokens.quota')}</th>
+                  <th className='py-2 pe-3 font-medium'>{t('studio.account.tokens.expiry')}</th>
                   <th className='py-2 font-medium'>{t('studio.account.tokens.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {tokens.map((token) => (
                   <tr key={token.id} className='border-b last:border-0'>
-                    <td className='py-2 pr-3 font-medium'>{token.name}</td>
-                    <td className='py-2 pr-3'>
+                    <td className='py-2 pe-3 font-medium'>{token.name}</td>
+                    <td className='py-2 pe-3'>
                       <button
                         type='button'
                         onClick={() => void copyKey(token)}
@@ -227,7 +227,7 @@ const TokensTab: React.FC = () => {
                         )}
                       </button>
                     </td>
-                    <td className='py-2 pr-3'>
+                    <td className='py-2 pe-3'>
                       <Badge variant={statusVariant(token.status)}>
                         {t(
                           token.status === TOKEN_STATUS_ENABLED
@@ -240,12 +240,12 @@ const TokensTab: React.FC = () => {
                         )}
                       </Badge>
                     </td>
-                    <td className='py-2 pr-3'>
+                    <td className='py-2 pe-3'>
                       {token.unlimited_quota
                         ? t('studio.account.tokens.unlimited')
                         : `${t('studio.account.tokens.remaining')} ${renderQuota(token.remain_quota, t)} · ${t('studio.account.tokens.used')} ${renderQuota(token.used_quota, t)}`}
                     </td>
-                    <td className='text-muted-foreground py-2 pr-3'>
+                    <td className='text-muted-foreground py-2 pe-3'>
                       {formatDate(token.expired_time, t)}
                     </td>
                     <td className='py-2'>

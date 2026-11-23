@@ -34,16 +34,19 @@ const (
 var ErrImageGenConflict = errors.New("图像生成幂等键已用于不同的请求")
 
 type ImageGeneration struct {
-	Id        int    `json:"id"`
-	UserId    int    `json:"user_id" gorm:"index;uniqueIndex:idx_imagegen_idem,priority:1"`
-	Model     string `json:"model" gorm:"type:varchar(255)"`
-	Prompt    string `json:"prompt" gorm:"type:text"`
-	Size      string `json:"size" gorm:"type:varchar(32)"`
-	Quality   string `json:"quality" gorm:"type:varchar(16)"`
-	N         int    `json:"n"`
-	Status    string `json:"status" gorm:"type:varchar(24);index"`
-	Error     string `json:"error" gorm:"type:text"`
-	SaveError string `json:"save_error" gorm:"type:text"`
+	Id               int    `json:"id"`
+	UserId           int    `json:"user_id" gorm:"index;uniqueIndex:idx_imagegen_idem,priority:1"`
+	Model            string `json:"model" gorm:"type:varchar(255)"`
+	Prompt           string `json:"prompt" gorm:"type:text"`
+	Size             string `json:"size" gorm:"type:varchar(32)"`
+	Quality          string `json:"quality" gorm:"type:varchar(16)"`
+	N                int    `json:"n"`
+	ReferenceAssetId int    `json:"reference_asset_id" gorm:"default:0"`
+	ReferenceFileId  int    `json:"reference_file_id" gorm:"default:0"`
+	VideoDuration    int    `json:"video_duration,omitempty" gorm:"default:0"`
+	Status           string `json:"status" gorm:"type:varchar(24);index"`
+	Error            string `json:"error" gorm:"type:text"`
+	SaveError        string `json:"save_error" gorm:"type:text"`
 	// Results holds the raw upstream data array JSON so retry-save can
 	// re-attempt persistence without a second billed generation.
 	Results        *string `json:"-" gorm:"type:text"`
@@ -82,6 +85,14 @@ func CreateImageGeneration(gen *ImageGeneration) (existing *ImageGeneration, cre
 	gen.CreatedTime, gen.UpdatedTime = now, now
 	gen.Status = ImageGenStatusQueued
 	gen.InputHash = imageGenInputHash(gen.Model, gen.Prompt, gen.Size, gen.Quality, gen.N)
+	if gen.ReferenceAssetId != 0 || gen.ReferenceFileId != 0 {
+		digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", gen.InputHash, gen.ReferenceAssetId, gen.ReferenceFileId)))
+		gen.InputHash = hex.EncodeToString(digest[:])
+	}
+	if gen.VideoDuration != 0 {
+		digest := sha256.Sum256([]byte(fmt.Sprintf("%s:video:%d", gen.InputHash, gen.VideoDuration)))
+		gen.InputHash = hex.EncodeToString(digest[:])
+	}
 	if gen.IdempotencyKey == "" {
 		return nil, false, errors.New("图像生成请求缺少幂等键")
 	}
@@ -146,7 +157,7 @@ func GetUserImageGenerations(userId int, limit int) ([]*ImageGeneration, error) 
 		limit = 50
 	}
 	var rows []*ImageGeneration
-	err := DB.Where("user_id = ?", userId).Order("id desc").Limit(limit).Find(&rows).Error
+	err := DB.Omit("results").Where("user_id = ?", userId).Order("id desc").Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
@@ -181,9 +192,9 @@ func completeImageGeneration(id int, values map[string]any) error {
 }
 
 // CompleteImageGeneration records a fully succeeded generation.
-func CompleteImageGeneration(id int, results string, consumeLogId int) error {
+func CompleteImageGeneration(id int, consumeLogId int) error {
 	return completeImageGeneration(id, map[string]any{
-		"status": ImageGenStatusCompleted, "results": results,
+		"status": ImageGenStatusCompleted, "results": nil,
 		"consume_log_id": consumeLogId, "error": "", "save_error": "",
 	})
 }
@@ -280,6 +291,62 @@ func GetImageAsset(id, userId int) (*ImageAsset, error) {
 func GetRunImageAssets(runId, userId int) ([]*ImageAsset, error) {
 	var assets []*ImageAsset
 	err := DB.Where("run_id = ? AND user_id = ?", runId, userId).Order("id asc").Find(&assets).Error
+	return assets, err
+}
+
+// GetImageAssetsForRuns groups owned products for the generation list.
+func GetImageAssetsForRuns(userId int, runIDs []int) (map[int][]*ImageAsset, error) {
+	grouped := make(map[int][]*ImageAsset)
+	if len(runIDs) == 0 {
+		return grouped, nil
+	}
+	var assets []*ImageAsset
+	err := DB.Where("user_id = ? AND run_id IN ?", userId, runIDs).
+		Order("slot asc").Find(&assets).Error
+	for _, asset := range assets {
+		grouped[asset.RunId] = append(grouped[asset.RunId], asset)
+	}
+	return grouped, err
+}
+
+// DeleteCompletedImageAsset removes a product whose run no longer needs
+// save retries. The run and its billing history remain available.
+func DeleteCompletedImageAsset(id, userId int) error {
+	imageThumbnailLock.Lock()
+	defer imageThumbnailLock.Unlock()
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var asset ImageAsset
+		if err := tx.Where("id = ? AND user_id = ?", id, userId).First(&asset).Error; err != nil {
+			return err
+		}
+		var run ImageGeneration
+		if err := tx.Select("id", "status").Where("id = ? AND user_id = ?", asset.RunId, userId).First(&run).Error; err != nil {
+			return err
+		}
+		if run.Status != ImageGenStatusCompleted {
+			return errors.New("请先完成图片保存")
+		}
+		if err := os.Remove(asset.Path + ".thumb.jpg"); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Remove(asset.Path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := tx.Model(&run).Update("results", nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&asset).Error
+	})
+}
+
+// GetImageAssetPage returns newest owned products before an optional cursor.
+func GetImageAssetPage(userID, beforeID, limit int) ([]*ImageAsset, error) {
+	var assets []*ImageAsset
+	query := DB.Where("user_id = ?", userID)
+	if beforeID > 0 {
+		query = query.Where("id < ?", beforeID)
+	}
+	err := query.Order("id desc").Limit(limit).Find(&assets).Error
 	return assets, err
 }
 

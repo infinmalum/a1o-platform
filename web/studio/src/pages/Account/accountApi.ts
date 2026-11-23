@@ -4,7 +4,7 @@
 // the endpoints already exist — this client just exposes them to the
 // user-facing studio.
 
-import { showError } from '../../helpers/utils';
+import { studioRequest as request } from '@/helpers/studioRequest';
 
 export interface TokenView {
   id: number;
@@ -58,38 +58,6 @@ export const TOKEN_STATUS_EXHAUSTED = 4;
 
 // Keys are stored bare and every client prefixes them with sk-.
 export const displayKey = (key: string) => `sk-${key}`;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    });
-  } catch (error) {
-    showError(error instanceof Error ? error : String(error));
-    throw error;
-  }
-  let payload: ApiResponse<T>;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch {
-    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
-  }
-  if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
-    showError(error);
-    throw error;
-  }
-  return payload.data;
-}
 
 const get = <T,>(url: string) => request<T>(url);
 const post = <T,>(url: string, body: unknown) =>

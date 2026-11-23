@@ -89,7 +89,15 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 		return toolResult{Content: "任务完成已记录。"}
 	})
 
-	preamble, err := referenceFileItems(req.ReferenceFiles)
+	referenceFiles := req.ReferenceFiles
+	if req.Run.ReferenceFileId != 0 {
+		file, err := model.GetChatFileById(req.Run.ReferenceFileId, req.Run.UserId)
+		if err != nil {
+			return e.workFail(req, err)
+		}
+		referenceFiles = append(append([]*model.ChatFile(nil), referenceFiles...), file)
+	}
+	preamble, err := referenceFileItems(referenceFiles)
 	if err != nil {
 		return e.workFail(req, err)
 	}

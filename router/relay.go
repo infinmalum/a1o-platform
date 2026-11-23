@@ -54,4 +54,29 @@ func SetRelayRouter(router *gin.Engine) {
 		relayV1Router.POST("/audio/speech", controller.RelayAudio)
 		relayV1Router.POST("/moderations", controller.RelayModerations)
 	}
+	setPlaygroundRoutes(router)
+	setStudioAudioRoutes(router)
+}
+
+func setPlaygroundRoutes(router *gin.Engine) {
+	const prefix = "/api/chat/playground"
+	playground := router.Group(prefix, middleware.GlobalAPIRateLimit(), middleware.UserAuth())
+	playground.GET("/usage/:requestId", controller.GetPlaygroundUsage)
+
+	// The fixed aliases use the public relay handlers with the user's
+	// internal Chat billing token. Keep this group free of response gzip
+	// so streamed replies can flush immediately.
+	relay := playground.Group("", middleware.PlaygroundRelay(prefix), middleware.TokenAuth())
+	relay.POST("/v1/chat/completions", middleware.Distribute(), controller.RelayChat)
+	relay.POST("/v1/responses", middleware.Distribute(), controller.NativeOpenAIResponses)
+	relay.POST("/v1/messages", middleware.Distribute(), controller.NativeAnthropic)
+	relay.POST("/v1beta/models/:modelAction", controller.NativeGemini)
+}
+
+func setStudioAudioRoutes(router *gin.Engine) {
+	const prefix = "/api/studio/media"
+	audio := router.Group(prefix, middleware.GlobalAPIRateLimit(), middleware.UserAuth())
+	audio.POST("/v1/audio/speech", middleware.StudioAudioRelay(prefix, false), middleware.TokenAuth(), middleware.Distribute(), controller.RelayAudio)
+	audio.POST("/v1/audio/transcriptions", middleware.StudioAudioRelay(prefix, true), middleware.TokenAuth(), middleware.Distribute(), controller.RelayAudio)
+	audio.POST("/v1/audio/translations", middleware.StudioAudioRelay(prefix, true), middleware.TokenAuth(), middleware.Distribute(), controller.RelayAudio)
 }

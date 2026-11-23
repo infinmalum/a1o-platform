@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { ListError, ListLoading, ListPages } from '@/components/StudioList';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -104,6 +105,12 @@ const Agents: React.FC = () => {
   const [files, setFiles] = useState<ChatFileLite[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listFailed, setListFailed] = useState(false);
+  const [builtinPage, setBuiltinPage] = useState(0);
+  const [minePage, setMinePage] = useState(0);
+  const [more, setMore] = useState({ builtin: false, mine: false });
+  const [pendingAction, setPendingAction] = useState<{ agent: AgentView; copy: boolean }>();
+  const [acting, setActing] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AgentView | null>(null);
   const [form, setForm] = useState<AgentFormState>(emptyForm);
@@ -114,25 +121,27 @@ const Agents: React.FC = () => {
   const [draftModel, setDraftModel] = useState('');
   const [drafting, setDrafting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await agentsApi.listPlaza();
-      setBuiltin(data.builtin || []);
-      setMine(data.mine || []);
-    } catch {
-      // toast already surfaced by the client helper
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((current) => current + 1);
 
   useEffect(() => {
-    load();
+    let active = true;
+    setLoading(true);
+    setListFailed(false);
+    void agentsApi.listPage(builtinPage, minePage).then((data) => {
+      if (!active) return;
+      setBuiltin(data.builtin || []);
+      setMine(data.mine || []);
+      setMore({ builtin: !!data.builtin_more, mine: !!data.mine_more });
+    }).catch(() => { if (active) setListFailed(true); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [builtinPage, minePage, reloadKey]);
+
+  useEffect(() => {
     agentsApi.listSkills().then(setSkills).catch(() => undefined);
     agentsApi.listModels().then(setModels).catch(() => undefined);
     agentsApi.listFiles().then(setFiles).catch(() => undefined);
-  }, [load]);
+  }, []);
 
   const openCreate = (builtin: boolean) => {
     setEditing(null);
@@ -171,7 +180,7 @@ const Agents: React.FC = () => {
         await agentsApi.create(payload);
       }
       setEditorOpen(false);
-      await load();
+      reload();
     } catch {
       // toast already surfaced
     } finally {
@@ -179,21 +188,23 @@ const Agents: React.FC = () => {
     }
   };
 
-  const toggleArchived = async (agent: AgentView) => {
+  const applyAction = async () => {
+    if (!pendingAction || acting) return;
+    setActing(true);
     try {
-      await agentsApi.setArchived(agent.id, !agent.archived);
-      await load();
+      const { agent, copy } = pendingAction;
+      if (copy) {
+        await agentsApi.duplicate(agent.id);
+        setMinePage(0);
+      } else {
+        await agentsApi.setArchived(agent.id, !agent.archived);
+      }
+      setPendingAction(undefined);
+      reload();
     } catch {
-      // toast already surfaced
-    }
-  };
-
-  const duplicate = async (agent: AgentView) => {
-    try {
-      await agentsApi.duplicate(agent.id);
-      await load();
-    } catch {
-      // toast already surfaced by the client helper
+      // The API helper surfaces the error and the confirmation remains open.
+    } finally {
+      setActing(false);
     }
   };
 
@@ -255,7 +266,7 @@ const Agents: React.FC = () => {
           </Button>
         )}
         {!agent.archived && (
-          <Button size='sm' variant='ghost' onClick={() => duplicate(agent)}>
+          <Button size='sm' variant='ghost' onClick={() => setPendingAction({ agent, copy: true })}>
             <Copy /> {t('agents.duplicate')}
           </Button>
         )}
@@ -270,7 +281,7 @@ const Agents: React.FC = () => {
           </Button>
         )}
         {(own || (isAdmin() && agent.owner_id === 0)) && (
-          <Button size='sm' variant='ghost' onClick={() => toggleArchived(agent)}>
+          <Button size='sm' variant='ghost' onClick={() => setPendingAction({ agent, copy: false })}>
             {agent.archived ? <ArchiveRestore /> : <Archive />}
             {agent.archived ? t('agents.unarchive') : t('agents.archive')}
           </Button>
@@ -326,7 +337,9 @@ const Agents: React.FC = () => {
       </div>
 
       {loading ? (
-        <p className='text-muted-foreground text-sm'>{t('agents.loading')}</p>
+        <ListLoading cards />
+      ) : listFailed ? (
+        <ListError retry={reload} />
       ) : (
         <>
           <h2 className='mb-3 text-sm font-medium text-muted-foreground'>{t('agents.builtinSection')}</h2>
@@ -337,6 +350,7 @@ const Agents: React.FC = () => {
               {builtin.map((agent) => renderCard(agent, false))}
             </div>
           )}
+          <ListPages page={builtinPage} more={more.builtin} onPage={setBuiltinPage} />
           <h2 className='mb-3 text-sm font-medium text-muted-foreground'>{t('agents.mineSection')}</h2>
           {mine.length === 0 ? (
             <p className='text-muted-foreground text-sm'>{t('agents.emptyMine')}</p>
@@ -345,8 +359,25 @@ const Agents: React.FC = () => {
               {mine.map((agent) => renderCard(agent, true))}
             </div>
           )}
+          <ListPages page={minePage} more={more.mine} onPage={setMinePage} />
         </>
       )}
+
+      <Dialog open={!!pendingAction} onOpenChange={(open) => { if (!open && !acting) setPendingAction(undefined); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t(pendingAction?.copy ? 'agents.duplicate' : pendingAction?.agent.archived ? 'agents.unarchive' : 'agents.archive')}</DialogTitle>
+            <DialogDescription>
+              {t(pendingAction?.copy ? 'agents.confirmDuplicate' : pendingAction?.agent.archived ? 'agents.confirmUnarchive' : 'agents.confirmArchive', { name: pendingAction?.agent.name })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant='outline' disabled={acting} onClick={() => setPendingAction(undefined)}>{t('chat.cancel')}</Button>
+            <Button variant={!pendingAction?.copy && !pendingAction?.agent.archived ? 'destructive' : 'default'}
+              disabled={acting} onClick={() => void applyAction()}>{t('studio.list.confirm')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-xl'>
@@ -464,7 +495,7 @@ const Agents: React.FC = () => {
                         onCheckedChange={(checked) => toggleFile(file.id, checked === true)}
                       />
                       {file.name}
-                      <span className='text-muted-foreground ml-auto text-xs'>
+                      <span className='text-muted-foreground ms-auto text-xs'>
                         {file.kind === 'image' ? t('agents.fileImage') : t('agents.fileText')}
                       </span>
                     </label>

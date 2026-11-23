@@ -16,15 +16,16 @@ import (
 type Protocol string
 
 const (
-	Anthropic         Protocol = "anthropic"
-	Gemini            Protocol = "gemini"
-	OpenAIChat        Protocol = "openai_chat"
-	OpenAIEmbeddings  Protocol = "openai_embeddings"
-	OpenAIModerations Protocol = "openai_moderations"
-	OpenAIResponses   Protocol = "openai_responses"
-	OpenResponses     Protocol = "openresponses"
-	OpenAIImages      Protocol = "openai_images"
-	OpenAIAudioSpeech Protocol = "openai_audio_speech"
+	Anthropic          Protocol = "anthropic"
+	Gemini             Protocol = "gemini"
+	GeminiInteractions Protocol = "gemini_interactions"
+	OpenAIChat         Protocol = "openai_chat"
+	OpenAIEmbeddings   Protocol = "openai_embeddings"
+	OpenAIModerations  Protocol = "openai_moderations"
+	OpenAIResponses    Protocol = "openai_responses"
+	OpenResponses      Protocol = "openresponses"
+	OpenAIImages       Protocol = "openai_images"
+	OpenAIAudioSpeech  Protocol = "openai_audio_speech"
 	// Audio transcription and translation bodies are multipart forms that the
 	// gateway forwards byte-for-byte; speech is a JSON request.
 	OpenAIAudioTranscriptions Protocol = "openai_audio_transcriptions"
@@ -123,6 +124,15 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		}
 		path = "/v1/messages"
 		body, stream, err = prepareAnthropicBody(body, input.Model, input.SystemPrompt)
+		if err != nil {
+			return nil, err
+		}
+	case GeminiInteractions:
+		if input.ChannelType != channeltype.Gemini || input.Model == "" {
+			return nil, errors.New("Gemini Interactions requires a Google AI channel and model")
+		}
+		path = "/v1beta/interactions"
+		body, err = prepareOpenAIImagesBody(body, input.Model)
 		if err != nil {
 			return nil, err
 		}
@@ -350,7 +360,7 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 				req.Header.Set(name, value)
 			}
 		}
-	case Gemini:
+	case Gemini, GeminiInteractions:
 		if input.ChannelType == channeltype.VertextAI {
 			token, err := VertexAccessToken(ctx, input.ChannelID, input.VertexADC)
 			if err != nil {

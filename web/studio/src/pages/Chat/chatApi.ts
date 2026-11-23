@@ -2,7 +2,9 @@
 // turn endpoint parsed from fetch's ReadableStream (POST cannot use
 // EventSource). Logic mirrors the admin console's copy; the UI around it is
 // the Studio rewrite.
-import { showError } from '../../helpers/utils';
+import { studioRequest as request, studioFetch, requestError } from '@/helpers/studioRequest';
+import i18n from '@/i18n';
+import type { KnowledgeSource } from '@/pages/Workspace/knowledgeApi';
 
 export interface ChatSession {
   id: number;
@@ -16,6 +18,7 @@ export interface ChatSession {
   context_budget: number;
   skill_ids: number[] | null;
   agent_version_id: number;
+  knowledge_library_id?: number;
   updated_time: number;
 }
 
@@ -28,6 +31,7 @@ export interface ChatMessage {
   tool_calls?: string | null;
   tool_call_id?: string;
   name?: string;
+  sources?: KnowledgeSource[];
   created_time: number;
 }
 
@@ -92,42 +96,6 @@ export interface ChatEvent {
   };
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
-
-// request uses fetch because the axios instance's response interceptor is
-// the only other error toaster and streaming POSTs cannot go through it, so
-// request surfaces failures itself: every empty catch on the call sites can
-// rely on the toast having already been shown.
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      credentials: 'same-origin',
-      ...init,
-    });
-  } catch (error) {
-    showError(error instanceof Error ? error : String(error));
-    throw error;
-  }
-  let payload: ApiResponse<T>;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch {
-    // A proxy or error page answered with non-JSON content.
-    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
-  }
-  if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
-    showError(error);
-    throw error;
-  }
-  return payload.data;
-}
-
 export const chatApi = {
   bootstrap: () => request<ChatBootstrap>('/api/chat/bootstrap'),
   listSessions: () => request<ChatSession[]>('/api/chat/sessions'),
@@ -145,6 +113,12 @@ export const chatApi = {
     }),
   deleteSession: (id: number) =>
     request<void>(`/api/chat/sessions/${id}`, { method: 'DELETE' }),
+  branch: (id: number, messageId: number, title: string) =>
+    request<{ session: ChatSession; message_id: number }>(`/api/chat/sessions/${id}/branches`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_id: messageId, title }),
+    }, false),
   listMessages: (id: number) =>
     request<ChatMessage[]>(`/api/chat/sessions/${id}/messages`),
   listFiles: () => request<ChatFile[]>('/api/chat/files'),
@@ -193,51 +167,57 @@ export async function runTurn(
   content: string,
   fileIds: number[],
   onEvent: (event: ChatEvent) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  retryMessageId?: number,
 ): Promise<void> {
-  const response = await fetch(`/api/chat/sessions/${sessionId}/run`, {
+  const response = await studioFetch(`/api/chat/sessions/${sessionId}/run`, {
     method: 'POST',
-    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, file_ids: fileIds }),
+    body: JSON.stringify(retryMessageId ? { retry_message_id: retryMessageId } : { content, file_ids: fileIds }),
     signal,
   });
-  if (!response.ok || !response.body) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const payload = await response.json();
-      if (payload.message) {
-        message = payload.message;
-      }
-    } catch {
-      // keep the status-line message
-    }
-    throw new Error(message);
+  if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('text/event-stream')) {
+    const payload = await response.json().catch(() => null);
+    console.error('Chat turn rejected', response.status, payload?.code);
+    throw requestError(response.status, payload?.code);
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    let boundary = buffer.indexOf('\n');
-    while (boundary >= 0) {
-      const line = buffer.slice(0, boundary).replace(/\r$/, '');
-      buffer = buffer.slice(boundary + 1);
-      if (line.startsWith('data: ')) {
-        const payload = line.slice(6).trim();
-        if (payload) {
+  let data: string[] = [];
+  let complete = false;
+  let damaged = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf('\n');
+      while (boundary >= 0) {
+        const line = buffer.slice(0, boundary).replace(/\r$/, '');
+        buffer = buffer.slice(boundary + 1);
+        if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+        if (!line && data.length) {
           try {
-            onEvent(JSON.parse(payload) as ChatEvent);
-          } catch {
-            // ignore malformed keep-alive fragments
+            const event = JSON.parse(data.join('\n')) as ChatEvent;
+            if (typeof event?.type !== 'string') throw new Error('Missing event type');
+            if (event.type === 'run.completed') complete = true;
+            onEvent(event);
+          } catch (error) {
+            console.error('Invalid Chat stream event', error);
+            damaged = true;
           }
+          data = [];
         }
+        boundary = buffer.indexOf('\n');
       }
-      boundary = buffer.indexOf('\n');
     }
+  } catch (error) {
+    if (signal.aborted) throw error;
+    console.error('Chat stream read failed', error);
+    throw new Error(i18n.t('chat.streamInterrupted'));
+  } finally {
+    reader.releaseLock();
   }
+  if (!complete || damaged || data.length || buffer.trim()) throw new Error(i18n.t('chat.streamInterrupted'));
 }

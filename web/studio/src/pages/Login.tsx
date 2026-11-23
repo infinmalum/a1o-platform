@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { API } from '@/helpers/api';
-import { getLogo, getSystemName, showError, showSuccess } from '@/helpers/utils';
+import { safeReturnPath } from '@/helpers/session';
+import type { StudioStatus } from '@/helpers/studioStatus';
+import { getLogo, getSystemName, showSuccess } from '@/helpers/utils';
 import { storeUser } from '@/context/User';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,52 +18,71 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const Login: React.FC = () => {
+const Login: React.FC<{ status: StudioStatus | null }> = ({ status }) => {
   const { t } = useTranslation();
   const [inputs, setInputs] = useState({ username: '', password: '' });
   const [searchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [oauthBusy, setOAuthBusy] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // PrivateRoute records the page that bounced the visitor to /login, so a
-  // sign-in from /chat returns to /chat instead of the home page.
-  const redirectAfterLogin = () => {
-    const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
-    if (from?.pathname && from.pathname !== '/login') {
-      navigate(`${from.pathname}${from.search ?? ''}`, { replace: true });
-      return;
-    }
-    navigate('/chat');
-  };
+  const from = (location.state as { from?: { pathname: string; search: string; hash: string } } | null)?.from;
+  const returnPath = safeReturnPath(from ? from.pathname + from.search + from.hash : searchParams.get('next'));
 
-  useEffect(() => {
-    if (searchParams.get('expired')) {
-      showError(t('messages.error.login_expired'));
+  const startOAuth = async (provider: 'github' | 'lark', clientId: string) => {
+    if (oauthBusy || submitted) return;
+    setOAuthBusy(true);
+    setError('');
+    try {
+      const { data } = await API.get('/api/oauth/state');
+      if (!data?.success || typeof data.data !== 'string' || !data.data) throw new Error('OAuth state unavailable');
+      sessionStorage.setItem('studio-oauth-return', returnPath);
+      const url = new URL(provider === 'github'
+        ? 'https://github.com/login/oauth/authorize'
+        : 'https://open.feishu.cn/open-apis/authen/v1/index');
+      url.searchParams.set('state', data.data);
+      if (provider === 'github') {
+        url.searchParams.set('client_id', clientId);
+        url.searchParams.set('scope', 'user:email');
+      } else {
+        url.searchParams.set('app_id', clientId);
+        url.searchParams.set('redirect_uri', window.location.origin + '/oauth/lark');
+      }
+      window.location.assign(url);
+    } catch {
+      setError(t('auth.oauth.failed'));
+      setOAuthBusy(false);
     }
-  }, [searchParams, t]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    if (!inputs.username || !inputs.password) {
+    if (submitted || oauthBusy) return;
+    if (!inputs.username.trim() || !inputs.password) {
+      setError(t('auth.login.required'));
       return;
     }
+    setError('');
+    setSubmitted(true);
     try {
       const res = await API.post('/api/user/login', {
         username: inputs.username,
         password: inputs.password,
       });
-      const { success, message, data } = res.data;
+      const { success, data, code } = res.data;
       if (success) {
         storeUser(data);
         showSuccess(t('messages.success.login'));
-        redirectAfterLogin();
+        navigate(returnPath, { replace: true });
       } else {
-        showError(message);
+        setError(t(code === 'password_login_disabled' ? 'auth.login.passwordDisabled' : 'auth.login.rejected'));
       }
     } catch {
-      // the interceptor toasts the error
+      setError(t('auth.login.failed'));
+    } finally {
+      setSubmitted(false);
     }
   };
 
@@ -71,13 +92,16 @@ const Login: React.FC = () => {
         <CardHeader className='text-center'>
           <img
             src={getLogo()}
-            alt='logo'
+            alt=''
             className='mx-auto mb-2 size-16 object-contain'
           />
           <CardTitle className='text-xl'>{t('auth.login.title')}</CardTitle>
           <CardDescription>{getSystemName()}</CardDescription>
         </CardHeader>
         <CardContent>
+          {searchParams.has('expired') && (
+            <p className='text-muted-foreground mb-3 text-sm' role='status'>{t('messages.error.login_expired')}</p>
+          )}
           <form className='grid gap-4' onSubmit={handleSubmit}>
             <div className='grid gap-2'>
               <Label htmlFor='username'>{t('auth.login.username')}</Label>
@@ -100,10 +124,23 @@ const Login: React.FC = () => {
                 onChange={(e) => setInputs({ ...inputs, password: e.target.value })}
               />
             </div>
-            <Button type='submit' disabled={submitted} className='w-full'>
-              {t('auth.login.button')}
+            <Button type='submit' disabled={submitted || oauthBusy} className='w-full'>
+              {t(submitted ? 'auth.login.submitting' : 'auth.login.button')}
             </Button>
+            {error && <p className='text-destructive text-sm' role='alert'>{error}</p>}
           </form>
+          {((status?.github_oauth && status.github_client_id) || status?.lark_client_id) && (
+            <div className='mt-4 grid gap-2 border-t pt-4'>
+              {status.github_oauth && status.github_client_id && (
+                <Button variant='outline' disabled={submitted || oauthBusy}
+                  onClick={() => void startOAuth('github', status.github_client_id!)}>{t('auth.oauth.github')}</Button>
+              )}
+              {status.lark_client_id && (
+                <Button variant='outline' disabled={submitted || oauthBusy}
+                  onClick={() => void startOAuth('lark', status.lark_client_id!)}>{t('auth.oauth.lark')}</Button>
+              )}
+            </div>
+          )}
           <p className='text-muted-foreground mt-4 text-center text-xs'>
             <a className='underline underline-offset-4' href='/admin/register'>
               {t('auth.login.register')}

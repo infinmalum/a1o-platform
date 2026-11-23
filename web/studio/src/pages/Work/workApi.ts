@@ -1,7 +1,8 @@
+import { pageQuery } from '@/components/StudioList';
 // API client for the Studio work runtime (R3): task list, run projection,
 // event observation over EventSource, appended inputs, and cancel. The
 // server contract lives in controller/studio.go.
-import { showError } from '../../helpers/utils';
+import { studioRequest as request } from '@/helpers/studioRequest';
 
 export interface WorkTask {
   id: number;
@@ -83,38 +84,7 @@ export interface StudioRunCreatePayload {
   input: string;
   model: string;
   agent_version_id?: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    });
-  } catch (error) {
-    showError(error instanceof Error ? error : String(error));
-    throw error;
-  }
-  let payload: ApiResponse<T>;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch {
-    payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
-  }
-  if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
-    showError(error);
-    throw error;
-  }
-  return payload.data;
+  reference_file_id?: number;
 }
 
 export function newIdempotencyKey(): string {
@@ -125,7 +95,8 @@ export function newIdempotencyKey(): string {
 }
 
 export const workApi = {
-  listTasks: () => request<WorkTaskView[]>('/api/studio/tasks'),
+  listTasks: (page: number) =>
+    request<WorkTaskView[]>('/api/studio/tasks?' + pageQuery(page), undefined, false),
   getTask: (taskId: number) =>
     request<{ task: WorkTask; runs: AgentRun[] }>(`/api/studio/tasks/${taskId}`),
   getRun: (runId: number) => request<RunProjection>(`/api/studio/runs/${runId}`),

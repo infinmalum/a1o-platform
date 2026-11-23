@@ -22,6 +22,7 @@ func authHelper(c *gin.Context, minRole int) {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
 		if accessToken == "" {
+			c.Header("X-Studio-Session-Required", "1")
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "无权进行此操作，未登录且未提供 access token",
@@ -46,9 +47,11 @@ func authHelper(c *gin.Context, minRole int) {
 		}
 	}
 	if status.(int) == model.UserStatusDisabled || blacklist.IsUserBanned(id.(int)) {
+		c.Header("X-Studio-Session-Required", "1")
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "用户已被封禁",
+			"code":    "studio_account_disabled",
 		})
 		session := sessions.Default(c)
 		session.Clear()

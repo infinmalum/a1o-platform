@@ -1,9 +1,11 @@
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquarePlus, Pencil, Save, Settings2, Trash2, Wrench } from 'lucide-react';
 
 import { API } from '@/helpers/api';
+import { isChatImage, uploadSize } from '@/helpers/uploadLimits';
+import { useUser } from '@/context/User';
 import { renderQuota } from '@/helpers/render';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,7 +36,9 @@ import ChatMessageList, { type DisplayMessage } from './ChatMessageList';
 import ChatComposer from './ChatComposer';
 import ChatSettingsModal, { type ChatSettingsValue } from './ChatSettingsModal';
 import ChatToolsModal from './ChatToolsModal';
+import ChatPlayground from './ChatPlayground';
 import { agentsApi, type AgentView } from '@/pages/Agents/agentsApi';
+import { knowledgeApi, type KnowledgeLibrary } from '@/pages/Workspace/knowledgeApi';
 import {
   chatApi,
   runTurn,
@@ -45,8 +49,16 @@ import {
   type ChatSkill,
 } from './chatApi';
 
+function latestUser(messages: DisplayMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === 'user' && message.id > 0) return message;
+  }
+}
+
 const Chat = () => {
   const { t } = useTranslation();
+  const { user } = useUser();
   const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = React.useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = React.useState<ChatSession | null>(null);
@@ -54,6 +66,9 @@ const Chat = () => {
   const [messages, setMessages] = React.useState<DisplayMessage[]>([]);
   const [input, setInput] = React.useState('');
   const [files, setFiles] = React.useState<ChatFile[]>([]);
+  const [libraries, setLibraries] = React.useState<KnowledgeLibrary[]>([]);
+  const [libraryListFailed, setLibraryListFailed] = React.useState(false);
+  const [settingLibrary, setSettingLibrary] = React.useState(false);
   const [selectedFileIds, setSelectedFileIds] = React.useState<number[]>([]);
   const [skills, setSkills] = React.useState<ChatSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([]);
@@ -64,6 +79,7 @@ const Chat = () => {
   const [bootstrap, setBootstrap] = React.useState<ChatBootstrap | null>(null);
   const [streaming, setStreaming] = React.useState(false);
   const [streamError, setStreamError] = React.useState('');
+  const [turnFailed, setTurnFailed] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [saveAgentOpen, setSaveAgentOpen] = React.useState(false);
   const [saveAgentName, setSaveAgentName] = React.useState('');
@@ -73,24 +89,33 @@ const Chat = () => {
   const [renameTarget, setRenameTarget] = React.useState<ChatSession | null>(null);
   const [renameValue, setRenameValue] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ChatSession | null>(null);
-  const [quota, setQuota] = React.useState(0);
+  const [quota, setQuota] = React.useState(Number(user?.quota) || 0);
+  const [branching, setBranching] = React.useState(false);
+  const [confirmBranch, setConfirmBranch] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
+  const activeSessionRef = React.useRef(0);
+  const lastUser = latestUser(messages);
+  React.useEffect(() => () => abortRef.current?.abort(), []);
 
   // Chat spends the same balance as the API, so show it where the user is
   // rather than making them open a separate page to find out.
-  React.useEffect(() => {
-    const loadQuota = async () => {
-      try {
-        const res = await API.get('/api/user/self');
-        const { success, data } = res.data;
-        if (success && data) {
-          setQuota(data.quota ?? 0);
-        }
-      } catch {
-        // the interceptor toasts the error
+  const loadQuota = React.useCallback(async () => {
+    try {
+      const res = await API.get('/api/user/self');
+      const { success, data } = res.data;
+      if (success && data) {
+        setQuota(data.quota ?? 0);
       }
-    };
-    loadQuota().then();
+    } catch {
+      // the interceptor toasts the error
+    }
+  }, []);
+
+  React.useEffect(() => { void loadQuota(); }, [loadQuota]);
+
+  const reloadLibraries = React.useCallback(() => {
+    setLibraryListFailed(false);
+    void knowledgeApi.list().then(setLibraries).catch(() => setLibraryListFailed(true));
   }, []);
 
   const reloadSessions = React.useCallback(async () => {
@@ -107,6 +132,7 @@ const Chat = () => {
       id: row.id,
       role: row.role,
       content: row.content,
+      sources: row.sources,
       toolResult:
         row.role === 'tool'
           ? { id: row.tool_call_id || '', name: row.name || '', content: row.content, isError: false }
@@ -116,12 +142,17 @@ const Chat = () => {
 
   const openSession = React.useCallback(
     async (session: ChatSession) => {
+      if (abortRef.current) return;
+      activeSessionRef.current = session.id;
       setActiveSession(session);
+      setMessages([]);
       setSelectedSkillIds(session.skill_ids || []);
       setSelectedFileIds([]);
       setStreamError('');
+      setTurnFailed(false);
       try {
-        setMessages(await loadMessages(session.id));
+        const rows = await loadMessages(session.id);
+        if (activeSessionRef.current === session.id) setMessages(rows);
       } catch {
         // chatApi toasts the error
       }
@@ -139,6 +170,7 @@ const Chat = () => {
       .listFiles()
       .then(setFiles)
       .catch(() => undefined);
+    reloadLibraries();
     chatApi
       .listSkills()
       .then(setSkills)
@@ -151,7 +183,7 @@ const Chat = () => {
       .listPlaza()
       .then((data) => setAgents([...(data.builtin || []), ...(data.mine || [])]))
       .catch(() => undefined);
-  }, [reloadSessions]);
+  }, [reloadLibraries, reloadSessions]);
 
   // Deep link from the agent plaza: /chat?agent=<id> creates a session
   // pinned to the agent's latest immutable version, then clears the query.
@@ -169,8 +201,9 @@ const Chat = () => {
           agent_version_id: agent.latest.id,
         });
         if (cancelled) return;
-        setSearchParams({}, { replace: true });
+        setSearchParams({ session: String(session.id) }, { replace: true });
         await reloadSessions();
+        activeSessionRef.current = session.id;
         setActiveSession(session);
         setMessages([]);
         setSelectedSkillIds(session.skill_ids || []);
@@ -191,25 +224,47 @@ const Chat = () => {
     if (!sessionParam || sessions.length === 0) return;
     const target = sessions.find((item) => item.id === Number(sessionParam));
     if (target) {
-      setSearchParams({}, { replace: true });
-      openSession(target);
+      if (activeSessionRef.current !== target.id) void openSession(target);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionParam, sessions]);
 
-  const createSession = async () => {
+  const createSession = React.useCallback(async (attachmentId?: number) => {
+    if (abortRef.current) return false;
     const fallback = defaultModel || models[0] || 'gpt-4o-mini';
     try {
       const session = await chatApi.createSession({ model: fallback });
       await reloadSessions();
+      activeSessionRef.current = session.id;
       setActiveSession(session);
+      setStreamError('');
       setMessages([]);
       setSelectedSkillIds([]);
-      setSelectedFileIds([]);
+      setSelectedFileIds(attachmentId ? [attachmentId] : []);
+      setSearchParams({ session: String(session.id) }, { replace: true });
+      return true;
     } catch {
       // chatApi toasts the error
+      return false;
     }
-  };
+  }, [defaultModel, models, reloadSessions, setSearchParams]);
+
+  const attachmentParam = Number(searchParams.get('attachment'));
+  const openedAttachment = React.useRef(0);
+  React.useEffect(() => {
+    if (!attachmentParam || openedAttachment.current === attachmentParam || !models.length ||
+      !files.some((file) => file.id === attachmentParam)) return;
+    openedAttachment.current = attachmentParam;
+    void createSession(attachmentParam).then((created) => {
+      if (created) {
+        setSearchParams((previous) => {
+          const next = new URLSearchParams(previous);
+          next.delete('attachment');
+          return next;
+        }, { replace: true });
+      }
+    });
+  }, [attachmentParam, files, models, createSession, setSearchParams]);
 
   const toggleFile = (id: number) => {
     setSelectedFileIds((current) =>
@@ -224,6 +279,22 @@ const Chat = () => {
   };
 
   const uploadFile = async (file: File) => {
+    setStreamError('');
+    const fileLimit = bootstrap?.max_file_bytes ?? 20 * 1024 * 1024;
+    const textLimit = bootstrap?.max_text_file_bytes ?? 256 * 1024;
+    if (file.size > fileLimit) {
+      setStreamError(t('studio.errors.fileLimit', { limit: uploadSize(fileLimit) }));
+      return;
+    }
+    try {
+      if (file.size > textLimit && !(await isChatImage(file))) {
+        setStreamError(t('studio.errors.textFileLimit', { limit: uploadSize(textLimit) }));
+        return;
+      }
+    } catch {
+      setStreamError(t('studio.errors.uploadRead'));
+      return;
+    }
     try {
       const stored = await chatApi.uploadFile(file);
       setFiles((current) => [stored, ...current]);
@@ -246,59 +317,113 @@ const Chat = () => {
     await reloadSessions();
   };
 
+  const streamTurn = async (
+    sessionId: number, content: string, fileIds: number[],
+    previousUserId?: number, retryMessageId?: number,
+  ) => {
+    setStreaming(true);
+    setStreamError('');
+    setTurnFailed(false);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let failed = false;
+    try {
+      await runTurn(sessionId, content, fileIds, handleEvent, controller.signal, retryMessageId);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        failed = true;
+        setTurnFailed(true);
+        setStreamError(error instanceof Error ? error.message : t('chat.requestFailed'));
+      }
+    } finally {
+      try {
+        const rows = await loadMessages(sessionId);
+        if (activeSessionRef.current === sessionId) {
+          setMessages(rows);
+          const latest = latestUser(rows);
+          if (failed && !retryMessageId && latest?.id === previousUserId) {
+            setTurnFailed(false);
+            setInput((draft) => draft || content);
+            setSelectedFileIds((draft) => draft.length ? draft : fileIds);
+          }
+        }
+      } catch {
+        // Preserve the visible answer when the follow-up history read fails.
+        setMessages((current) => current.map((message) => message.streaming ? { ...message, streaming: false } : message));
+      }
+      setStreaming(false);
+      abortRef.current = null;
+      void reloadSessions();
+      void loadQuota();
+      void chatApi.listSkills().then(setSkills).catch(() => undefined);
+    }
+  };
+
   const send = async () => {
-    if (!activeSession || streaming) {
-      return;
-    }
+    if (!activeSession || abortRef.current || branching || settingLibrary) return;
     const content = input.trim();
-    if (!content && selectedFileIds.length === 0) {
-      return;
-    }
+    if (!content && selectedFileIds.length === 0) return;
     const attachments = selectedFileIds
       .map((id) => files.find((file) => file.id === id))
       .filter((file): file is ChatFile => !!file);
-    const optimisticId = -Date.now();
-    setMessages((current) => [
-      ...current,
-      {
-        id: optimisticId,
-        role: 'user',
-        content,
-        attachments: attachments.map((file) => ({ id: file.id, name: file.name, kind: file.kind })),
-      },
-    ]);
+    setMessages((current) => [...current, {
+      id: -Date.now(), role: 'user', content,
+      attachments: attachments.map((file) => ({ id: file.id, name: file.name, kind: file.kind })),
+    }]);
     setInput('');
     setSelectedFileIds([]);
-    setStreaming(true);
+    await streamTurn(activeSession.id, content, selectedFileIds, lastUser?.id);
+  };
+
+  const regenerate = async () => {
+    if (!activeSession || !lastUser || abortRef.current || branching) return;
+    setBranching(true);
     setStreamError('');
-    const controller = new AbortController();
-    abortRef.current = controller;
     try {
-      await runTurn(activeSession.id, content, selectedFileIds, handleEvent, controller.signal);
+      const baseTitle = [...(activeSession.title || t('chat.untitled'))].slice(0, 45).join('');
+      const result = await chatApi.branch(activeSession.id, lastUser.id, t('chat.branchTitle', { title: baseTitle }));
+      activeSessionRef.current = result.session.id;
+      setActiveSession(result.session);
+      setSelectedSkillIds(result.session.skill_ids || []);
+      setSelectedFileIds([]);
+      setMessages((current) => current.slice(0, current.findIndex((message) => message.id === lastUser.id) + 1));
+      setSearchParams({ session: String(result.session.id) }, { replace: true });
+      setConfirmBranch(false);
+      await streamTurn(result.session.id, '', [], undefined, result.message_id);
     } catch (error) {
-      if (!controller.signal.aborted) {
-        setStreamError(error instanceof Error ? error.message : String(error));
-      }
+      setConfirmBranch(false);
+      setStreamError(error instanceof Error ? error.message : t('chat.requestFailed'));
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
-      // Reload persisted history: the server owns the tool loop's
-      // intermediate rows.
-      try {
-        setMessages(await loadMessages(activeSession.id));
-      } catch {
-        // keep the optimistic display
-      }
-      await reloadSessions();
-      chatApi
-        .listSkills()
-        .then(setSkills)
-        .catch(() => undefined);
+      setBranching(false);
+    }
+  };
+
+  const selectLibrary = async (libraryId: number) => {
+    if (!activeSession || settingLibrary || streaming) return;
+    const sessionId = activeSession.id;
+    setSettingLibrary(true);
+    setStreamError('');
+    try {
+      await knowledgeApi.selectForChat(sessionId, libraryId);
+      const applyLibrary = (session: ChatSession) => session.id === sessionId
+        ? { ...session, knowledge_library_id: libraryId }
+        : session;
+      setActiveSession((current) => current ? applyLibrary(current) : current);
+      setSessions((current) => current.map(applyLibrary));
+    } catch (error) {
+      setStreamError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSettingLibrary(false);
     }
   };
 
   const handleEvent = (event: ChatEvent) => {
     const payload = event.payload || {};
+    if (event.type === 'run.failed') {
+      console.error('Chat run failed', event.run_id);
+      setTurnFailed(true);
+      setStreamError(t('chat.requestFailed'));
+    }
     setMessages((current) => {
       const next = [...current];
       const last = next[next.length - 1];
@@ -354,7 +479,6 @@ const Chat = () => {
           });
           break;
         case 'run.failed':
-          setStreamError(payload.error || t('chat.requestFailed'));
           if (last && last.role === 'assistant') {
             next[next.length - 1] = { ...last, streaming: false };
           }
@@ -426,6 +550,8 @@ const Chat = () => {
     try {
       await chatApi.deleteSession(deleteTarget.id);
       if (activeSession?.id === deleteTarget.id) {
+        activeSessionRef.current = 0;
+        setSearchParams({}, { replace: true });
         setActiveSession(null);
         setMessages([]);
       }
@@ -467,9 +593,9 @@ const Chat = () => {
   return (
     <div className='mx-auto w-full max-w-6xl px-4 py-4'>
       <div className='flex h-[calc(100vh-7rem)] min-h-[480px] overflow-hidden rounded-xl border'>
-        <div className='flex w-64 flex-col border-r bg-muted/40'>
+        <div className='flex w-64 flex-col border-e bg-muted/40'>
           <div className='p-2.5'>
-            <Button className='w-full' onClick={createSession}>
+            <Button className='w-full' onClick={() => { void createSession(); }}>
               <MessageSquarePlus /> {t('chat.newChat')}
             </Button>
           </div>
@@ -477,7 +603,11 @@ const Chat = () => {
             {sessions.map((session) => (
               <div
                 key={session.id}
-                onClick={() => openSession(session)}
+                onClick={() => {
+                  if (streaming || branching) return;
+                  setSearchParams({ session: String(session.id) }, { replace: true });
+                  void openSession(session);
+                }}
                 className={
                   'group mb-0.5 flex cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-sm ' +
                   (activeSession?.id === session.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60')
@@ -492,6 +622,7 @@ const Chat = () => {
                       variant='ghost'
                       size='icon-sm'
                       className='opacity-0 transition-opacity group-hover:opacity-100'
+                      disabled={streaming || branching}
                       onClick={(event) => event.stopPropagation()}
                     >
                       <Pencil className='size-3.5' />
@@ -553,10 +684,10 @@ const Chat = () => {
             </Button>
           </div>
         </div>
-        <div className='flex flex-1 flex-col'>
-          <div className='flex items-center justify-between border-b px-4 py-2'>
-            <div className='flex items-center gap-2'>
-              <strong className='text-sm'>{activeSession?.title || t('chat.title')}</strong>
+        <div className='flex min-w-0 flex-1 flex-col'>
+          <div className='flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <strong className='truncate text-sm'>{activeSession?.title || t('chat.title')}</strong>
               {activeAgent && (
                 <Badge variant='secondary' className='gap-1'>
                   <Bot className='size-3' />
@@ -564,26 +695,69 @@ const Chat = () => {
                 </Badge>
               )}
             </div>
-            <Select
-              value={activeSession ? activeSession.model : defaultModel || models[0] || ''}
-              onValueChange={changeModel}
-              disabled={models.length === 0}
-            >
-              <SelectTrigger size='sm' className='w-52'>
-                <SelectValue placeholder={t('chat.model')} />
-              </SelectTrigger>
-              <SelectContent className='max-h-72'>
-                {models.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    {model}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className='flex min-w-0 items-center gap-2'>
+              <ChatPlayground
+                onSettled={loadQuota}
+                models={models}
+                currentModel={activeSession?.model || defaultModel}
+                session={activeSession}
+                input={input}
+              />
+              <Select
+                value={activeSession ? activeSession.model : defaultModel || models[0] || ''}
+                onValueChange={changeModel}
+                disabled={models.length === 0}
+              >
+                <SelectTrigger size='sm' className='w-24 sm:w-52'>
+                  <SelectValue placeholder={t('chat.model')} />
+                </SelectTrigger>
+                <SelectContent className='max-h-72'>
+                  {models.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <ChatMessageList messages={messages} emptyHint={emptyHint} />
           {streamError && (
-            <div className='text-destructive px-4 py-1 text-xs'>{streamError}</div>
+            <div className='text-destructive px-4 py-1 text-xs' role='alert'>{streamError}</div>
+          )}
+          {activeSession && lastUser && !streaming && (
+            <div className='px-4 py-1'>
+              <Button variant='ghost' size='sm' disabled={branching || settingLibrary} onClick={() => setConfirmBranch(true)}>
+                {t(turnFailed ? 'chat.retryTurn' : 'chat.regenerate')}
+              </Button>
+            </div>
+          )}
+          {activeSession && (
+            <div className='flex flex-wrap items-center gap-2 px-4 py-1 text-xs'>
+              <Label htmlFor='chat-knowledge-library' className='text-xs'>{t('knowledge.title')}</Label>
+              {libraryListFailed ? (
+                <span className='inline-flex items-center gap-2' role='alert'>
+                  {t('studio.list.failed')}
+                  <Button variant='ghost' size='sm' onClick={reloadLibraries}>{t('studio.list.retry')}</Button>
+                </span>
+              ) : libraries.length > 0 ? (
+                <Select
+                  value={String(activeSession.knowledge_library_id || 0)}
+                  onValueChange={(value) => { void selectLibrary(Number(value)); }}
+                  disabled={streaming || settingLibrary}
+                >
+                  <SelectTrigger id='chat-knowledge-library' size='sm' className='max-w-full'>
+                    <SelectValue placeholder={t('knowledge.noLibrary')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='0'>{t('knowledge.noLibrary')}</SelectItem>
+                    {libraries.map((library) => <SelectItem key={library.id} value={String(library.id)}>{library.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Link to='/workspace' className='text-primary underline underline-offset-2'>{t('knowledge.manage')}</Link>
+              )}
+            </div>
           )}
           <ChatComposer
             value={input}
@@ -601,6 +775,18 @@ const Chat = () => {
           />
         </div>
       </div>
+      <Dialog open={confirmBranch} onOpenChange={(open) => { if (!branching) setConfirmBranch(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t(turnFailed ? 'chat.retryTurn' : 'chat.regenerate')}</DialogTitle>
+            <DialogDescription>{t('chat.branchDescription')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant='outline' disabled={branching} onClick={() => setConfirmBranch(false)}>{t('chat.cancel')}</Button>
+            <Button disabled={branching} onClick={() => void regenerate()}>{t('chat.branchConfirm')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ChatSettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

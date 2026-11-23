@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { ListError, ListLoading, ListPages, useStudioPage } from '@/components/StudioList';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileText, Image as ImageIcon, MessageCircle, Wrench } from 'lucide-react';
 
+import { formatStudioDate } from '@/helpers/render';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -12,34 +14,16 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { statusBadgeVariant } from '@/pages/Work/workApi';
-import { formatBytes, workspaceApi, type WorkspaceFile, type WorkspaceRun } from './workspaceApi';
+import { formatBytes, workspaceApi, type WorkspaceRun } from './workspaceApi';
+import KnowledgeLibraries from './KnowledgeLibraries';
 
-// Workspace (R4): the user's material base — run history across Chat and
-// Work (one run fact source) plus the shared files. Read-only views over
-// existing resources; uploads stay in Chat.
 const Workspace: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [runs, setRuns] = useState<WorkspaceRun[]>([]);
-  const [files, setFiles] = useState<WorkspaceFile[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([workspaceApi.listRuns(), workspaceApi.listFiles()])
-      .then(([runData, fileData]) => {
-        if (cancelled) return;
-        setRuns(runData || []);
-        setFiles(fileData || []);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const runList = useStudioPage(workspaceApi.listRuns);
+  const fileList = useStudioPage(workspaceApi.listFiles);
+  const runs = runList.items;
+  const files = fileList.items;
 
   const runTitle = (run: WorkspaceRun) =>
     run.kind === 'work'
@@ -61,16 +45,20 @@ const Workspace: React.FC = () => {
         <p className='text-muted-foreground mt-1 text-sm'>{t('workspace.tagline')}</p>
       </div>
 
+      <KnowledgeLibraries />
+
       <h2 className='mb-3 text-sm font-medium text-muted-foreground'>{t('workspace.runsSection')}</h2>
-      {loading ? (
-        <p className='text-muted-foreground text-sm'>{t('workspace.loading')}</p>
+      {runList.loading ? (
+        <ListLoading />
+      ) : runList.failed ? (
+        <ListError retry={runList.reload} />
       ) : runs.length === 0 ? (
         <p className='text-muted-foreground mb-8 text-sm'>{t('workspace.emptyRuns')}</p>
       ) : (
-        <div className='mb-8 overflow-hidden rounded-xl border'>
-          <table className='w-full text-sm'>
+        <div className='mb-4 overflow-x-auto rounded-xl border'>
+          <table className='w-full min-w-[38rem] text-sm'>
             <thead>
-              <tr className='border-b bg-muted/40 text-left text-xs text-muted-foreground'>
+              <tr className='border-b bg-muted/40 text-start text-xs text-muted-foreground'>
                 <th className='px-4 py-2 font-medium'>{t('workspace.runName')}</th>
                 <th className='px-4 py-2 font-medium'>{t('workspace.runKind')}</th>
                 <th className='px-4 py-2 font-medium'>{t('workspace.runStatus')}</th>
@@ -104,7 +92,7 @@ const Workspace: React.FC = () => {
                   <td className='px-4 py-2 font-mono text-xs'>{run.model}</td>
                   <td className='px-4 py-2 text-xs text-muted-foreground'>
                     {run.updated_time
-                      ? new Date(run.updated_time * 1000).toLocaleString()
+                      ? formatStudioDate(run.updated_time)
                       : ''}
                   </td>
                 </tr>
@@ -114,8 +102,13 @@ const Workspace: React.FC = () => {
         </div>
       )}
 
-      <h2 className='mb-3 text-sm font-medium text-muted-foreground'>{t('workspace.assetsSection')}</h2>
-      {!loading && files.length === 0 ? (
+      {!runList.loading && !runList.failed && <ListPages page={runList.page} more={runList.more} onPage={runList.setPage} />}
+      <h2 className='mb-3 mt-6 text-sm font-medium text-muted-foreground'>{t('workspace.assetsSection')}</h2>
+      {fileList.loading ? (
+        <ListLoading cards />
+      ) : fileList.failed ? (
+        <ListError retry={fileList.reload} />
+      ) : files.length === 0 ? (
         <p className='text-muted-foreground text-sm'>{t('workspace.emptyAssets')}</p>
       ) : (
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
@@ -131,7 +124,7 @@ const Workspace: React.FC = () => {
                   <span className='max-w-[160px] truncate'>{file.name}</span>
                 </CardTitle>
                 <CardDescription>
-                  {new Date(file.created_time * 1000).toLocaleString()}
+                  {formatStudioDate(file.created_time)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -143,6 +136,7 @@ const Workspace: React.FC = () => {
           ))}
         </div>
       )}
+      {!fileList.loading && !fileList.failed && <ListPages page={fileList.page} more={fileList.more} onPage={fileList.setPage} />}
     </div>
   );
 };

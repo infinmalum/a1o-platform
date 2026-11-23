@@ -196,6 +196,9 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&ChatFile{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&KnowledgeLibrary{}, &KnowledgeDocument{}, &KnowledgeChunk{}); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&ChatSkill{}); err != nil {
 		return err
 	}
