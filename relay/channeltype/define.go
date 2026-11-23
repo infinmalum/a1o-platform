@@ -36,8 +36,11 @@ const (
 	// Gateway API key; models carry the gateway's provider/model names.
 	Vercel = 55
 
+	// VolcengineArk serves Studio image and video generation.
+	VolcengineArk = 56
+
 	// Dummy is the exclusive upper bound of valid kind IDs, not a kind.
-	Dummy = 56
+	Dummy = 57
 )
 
 // IsValid reports whether kind names a channel kind that actually exists.
@@ -48,7 +51,7 @@ func IsValid(kind int) bool {
 	switch kind {
 	case OpenAI, Azure, Anthropic, Gemini, AwsClaude,
 		Cloudflare, VertextAI, Replicate,
-		TypeSafe, OpenAIResponses, OpenRouter, Vercel:
+		TypeSafe, OpenAIResponses, OpenRouter, Vercel, VolcengineArk:
 		return true
 	}
 	return false

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { renderQuota } from '@/helpers/render';
 import { showSuccess } from '@/helpers/utils';
+import PaymentPackages from './PaymentPackages';
 import { accountApi, type UserSelf } from './accountApi';
 
 // Redemption tab: the user-facing end of the operator's quota distribution.
@@ -38,41 +39,44 @@ const RedeemTab: React.FC<{ onSelfUpdated: (self: UserSelf) => void }> = ({ onSe
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className='flex items-center gap-2'>
-          <Gift className='size-4' />
-          {t('studio.account.redeem.title')}
-        </CardTitle>
-        <CardDescription>{t('studio.account.redeem.description')}</CardDescription>
-      </CardHeader>
-      <CardContent className='space-y-4'>
-        <div className='space-y-1.5'>
-          <Label htmlFor='redeem-key'>{t('studio.account.redeem.codeLabel')}</Label>
-          <Input
-            id='redeem-key'
-            value={key}
-            placeholder={t('studio.account.redeem.codePlaceholder')}
-            onChange={(e) => {
-              setKey(e.target.value);
-              setGranted(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && key.trim() && !submitting) void submit();
-            }}
-          />
-        </div>
-        {granted !== null && (
-          <p className='text-sm'>
-            {t('studio.account.redeem.granted', { quota: renderQuota(granted, t) })}
-          </p>
-        )}
-        <Button onClick={() => void submit()} disabled={!key.trim() || submitting}>
-          {submitting && <Loader2 className='size-4 animate-spin' />}
-          {t('studio.account.redeem.submit')}
-        </Button>
-      </CardContent>
-    </Card>
+    <div className='space-y-4'>
+      <PaymentPackages onSelfUpdated={onSelfUpdated} />
+      <Card>
+        <CardHeader>
+          <CardTitle className='flex items-center gap-2'>
+            <Gift className='size-4' />
+            {t('studio.account.redeem.title')}
+          </CardTitle>
+          <CardDescription>{t('studio.account.redeem.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <div className='space-y-1.5'>
+            <Label htmlFor='redeem-key'>{t('studio.account.redeem.codeLabel')}</Label>
+            <Input
+              id='redeem-key'
+              value={key}
+              placeholder={t('studio.account.redeem.codePlaceholder')}
+              onChange={(e) => {
+                setKey(e.target.value);
+                setGranted(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && key.trim() && !submitting) void submit();
+              }}
+            />
+          </div>
+          {granted !== null && (
+            <p className='text-sm'>
+              {t('studio.account.redeem.granted', { quota: renderQuota(granted, t) })}
+            </p>
+          )}
+          <Button onClick={() => void submit()} disabled={!key.trim() || submitting}>
+            {submitting && <Loader2 className='size-4 animate-spin' />}
+            {t('studio.account.redeem.submit')}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

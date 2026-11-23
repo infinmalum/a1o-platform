@@ -30,6 +30,11 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), auth.GenerateOAuthCode)
 		apiRouter.GET("/oauth/email/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), controller.EmailBind)
 		apiRouter.POST("/topup", middleware.AdminAuth(), controller.AdminTopUp)
+		apiRouter.POST("/payments/webhook/stripe", controller.StripePaymentWebhook)
+		apiRouter.POST("/payments/webhook/nowpayments", controller.NowPaymentWebhook)
+		apiRouter.GET("/payments/packages", middleware.UserAuth(), controller.ListPaymentPackages)
+		apiRouter.GET("/payments/orders", middleware.UserAuth(), controller.ListPaymentOrders)
+		apiRouter.POST("/payments/orders", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.CreatePaymentOrder)
 
 		userRoute := apiRouter.Group("/user")
 		{

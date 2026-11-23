@@ -352,6 +352,20 @@
         "noAccessToken": "Noch kein System-Zugriffstoken erstellt.",
         "regenerateToken": "Erstellen / neu erstellen",
         "tokenGenerated": "System-Zugriffstoken erstellt"
+      },
+      "payment": {
+        "cryptoCurrency": "NOWPayments · Währung und Netzwerk",
+        "title": "Kontingentpaket kaufen",
+        "orders": "Zahlungsbestellungen",
+        "refresh": "Status aktualisieren",
+        "retry": "Zahlungsoptionen erneut laden",
+        "opening": "Zahlungsseite wird geöffnet…",
+        "returned": "Sie sind von der Zahlungsseite zurück. Aktualisieren Sie den Status, um die Gutschrift zu prüfen.",
+        "credited": "Gutgeschrieben",
+        "pending": "Zahlung ausstehend",
+        "closed": "Geschlossen",
+        "review": "Prüfung erforderlich",
+        "continue": "Zur Zahlung"
       }
     },
     "list": {
@@ -600,6 +614,7 @@
     "generationFailed": "Generierung fehlgeschlagen. Prüfen Sie die Modelleinstellungen und versuchen Sie es erneut.",
     "saveFailedHint": "Die Generierung ist abgeschlossen, aber das Speichern ist fehlgeschlagen. Sie können das Speichern des Ergebnisses erneut versuchen.",
     "activeLimit": "Alle Generierungs-Slots sind belegt. Warten Sie, bis eine Aufgabe fertig ist, und versuchen Sie es erneut.",
-    "invalidSettings": "Prüfen Sie Prompt, Abmessungen und Modelleinstellungen, bevor Sie es erneut versuchen."
+    "invalidSettings": "Prüfen Sie Prompt, Abmessungen und Modelleinstellungen, bevor Sie es erneut versuchen.",
+    "firstFrame": "Erstes Bild (optional)"
   }
 }

@@ -77,5 +77,6 @@ export const CHANNEL_OPTIONS = [
   },
   { key: 37, text: 'Cloudflare', value: 37, color: 'orange' },
   { key: 42, text: 'Google Vertex', value: 42, color: 'blue' },
+  { key: 56, text: 'Volcengine Ark · Seedream / Seedance', value: 56, color: 'blue' },
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
 ];

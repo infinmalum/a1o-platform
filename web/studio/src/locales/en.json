@@ -352,6 +352,20 @@
         "noAccessToken": "No system access token generated yet.",
         "regenerateToken": "Generate / regenerate",
         "tokenGenerated": "System access token generated"
+      },
+      "payment": {
+        "cryptoCurrency": "NOWPayments · Currency and network",
+        "title": "Buy a quota package",
+        "orders": "Payment orders",
+        "refresh": "Refresh status",
+        "retry": "Try loading payment options again",
+        "opening": "Opening checkout…",
+        "returned": "Back from checkout. Refresh the status to check whether your quota has been credited.",
+        "credited": "Credited",
+        "pending": "Awaiting payment",
+        "closed": "Closed",
+        "review": "Needs review",
+        "continue": "Continue to checkout"
       }
     },
     "list": {
@@ -600,6 +614,7 @@
     "generationFailed": "Generation failed. Check the model settings and try again.",
     "saveFailedHint": "Generation finished, but saving failed. You can retry saving the result.",
     "activeLimit": "All generation slots are in use. Wait for a task to finish and try again.",
-    "invalidSettings": "Check the prompt, dimensions, and model settings before trying again."
+    "invalidSettings": "Check the prompt, dimensions, and model settings before trying again.",
+    "firstFrame": "First frame (optional)"
   }
 }

@@ -352,6 +352,20 @@
         "noAccessToken": "尚未生成系统访问令牌。",
         "regenerateToken": "生成 / 重新生成",
         "tokenGenerated": "系统访问令牌已生成"
+      },
+      "payment": {
+        "cryptoCurrency": "NOWPayments · 币种与网络",
+        "title": "购买额度套餐",
+        "orders": "支付订单",
+        "refresh": "刷新状态",
+        "retry": "重新加载支付选项",
+        "opening": "正在打开收银台…",
+        "returned": "已返回站点，刷新状态可查看额度是否到账。",
+        "credited": "已到账",
+        "pending": "待支付",
+        "closed": "已关闭",
+        "review": "待核对",
+        "continue": "继续付款"
       }
     },
     "list": {
@@ -600,6 +614,7 @@
     "generationFailed": "生成未完成，请检查模型设置后重试。",
     "saveFailedHint": "生成已完成，但结果保存失败。可以重试保存。",
     "activeLimit": "当前生成任务已满，请等其中一项完成后再试。",
-    "invalidSettings": "生成参数无效，请检查提示词、尺寸和模型设置。"
+    "invalidSettings": "生成参数无效，请检查提示词、尺寸和模型设置。",
+    "firstFrame": "首帧图片（可选）"
   }
 }

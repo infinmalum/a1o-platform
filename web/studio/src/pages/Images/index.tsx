@@ -38,6 +38,8 @@ const STATUS_VARIANT: Record<ImageGenStatus, 'default' | 'secondary' | 'destruct
   needs_reconciliation: 'destructive',
 };
 
+const GEMINI_VIDEO_DURATIONS = [3, 4, 5, 6, 7, 8];
+const ARK_VIDEO_DURATIONS = [5, 6, 7, 8];
 const DEFAULT_SIZES = ['1024x1024', '1792x1024', '1024x1792', '512x512'];
 
 // Image workbench: prompt → queued persistent run → products. Leaving the
@@ -53,6 +55,7 @@ const Images: React.FC = () => {
   });
   const [model, setModel] = useState('');
   const [videoMode, setVideoMode] = useState(false);
+  const [videoModel, setVideoModel] = useState('');
   const [duration, setDuration] = useState(4);
   const [prompt, setPrompt] = useState('');
   const [size, setSize] = useState('1024x1024');
@@ -77,10 +80,15 @@ const Images: React.FC = () => {
   const referenceLimit = meta.max_reference_bytes ?? 5 * 1024 * 1024;
   const referenceUploadLimit = Math.min(referenceLimit, meta.max_upload_bytes ?? referenceLimit);
   const modelOptions = [...meta.known_models, ...meta.other_models];
-  const supportsReference = !videoMode && (meta.reference_models?.includes(model) ?? false);
   const imageModel = modelOptions.includes(model) ? model : modelOptions[0] || '';
-  const activeModel = videoMode ? meta.video_models?.[0] || '' : imageModel;
-  const qualities = supportsReference && !model.startsWith('gemini-2.5-')
+  const activeVideoModel = meta.video_models?.includes(videoModel) ? videoModel : meta.video_models?.[0] || '';
+  const arkVideo = meta.ark_video_models?.includes(activeVideoModel) ?? false;
+  const videoDurations = arkVideo ? ARK_VIDEO_DURATIONS : GEMINI_VIDEO_DURATIONS;
+  const videoDuration = videoDurations.includes(duration) ? duration : videoDurations[0];
+  const activeModel = videoMode ? activeVideoModel : imageModel;
+  const supportsReference = videoMode ? arkVideo : (meta.reference_models?.includes(imageModel) ?? false);
+  const arkImage = meta.ark_image_models?.includes(imageModel) ?? false;
+  const qualities = supportsReference && !arkImage && !model.startsWith('gemini-2.5-')
     ? ['1K', '2K', '4K']
     : model === 'dall-e-3' ? ['standard', 'hd'] : [];
   const maxImages = supportsReference || ['dall-e-3', 'step-1x-medium', 'cogview-3'].includes(model) ? 1 : 4;
@@ -162,23 +170,21 @@ const Images: React.FC = () => {
   }, [activeRunIds, reload]);
 
   const submit = useCallback(async () => {
-    if (!activeModel || !prompt.trim() || submitting || (!videoMode && reference && !supportsReference)) return;
+    if (!activeModel || !prompt.trim() || submitting || (reference && !supportsReference)) return;
     setSubmitting(true);
     try {
-      if (videoMode) {
-        await imagesApi.create({ model: activeModel, prompt, size, quality: '360p', n: 1, video_duration: duration });
-      } else {
-        let fileId = reference?.fileId;
-        if (reference?.file) {
-          const stored = await chatApi.uploadFile(reference.file);
-          fileId = stored.id;
-          setReference((current) => current === reference ? { fileId: stored.id, name: stored.name } : current);
-        }
-        await imagesApi.create({
-          model: activeModel, prompt, size, n, quality: quality || undefined,
-          reference_asset_id: reference?.asset?.id, reference_file_id: fileId,
-        });
+      let fileId = reference?.fileId;
+      if (reference?.file) {
+        const stored = await chatApi.uploadFile(reference.file);
+        fileId = stored.id;
+        setReference((current) => current === reference ? { fileId: stored.id, name: stored.name } : current);
       }
+      await imagesApi.create({
+        model: activeModel, prompt, size, n: videoMode ? 1 : n,
+        quality: videoMode ? (arkVideo ? '720p' : '360p') : quality || undefined,
+        video_duration: videoMode ? videoDuration : undefined,
+        reference_asset_id: reference?.asset?.id, reference_file_id: fileId,
+      });
       setPrompt('');
       await reload();
     } catch {
@@ -186,7 +192,7 @@ const Images: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [activeModel, prompt, size, n, quality, reference, submitting, supportsReference, videoMode, duration, reload]);
+  }, [activeModel, prompt, size, n, quality, reference, submitting, supportsReference, videoMode, videoDuration, arkVideo, reload]);
 
   const retrySave = async (id: number) => {
     try {
@@ -209,6 +215,8 @@ const Images: React.FC = () => {
   const restore = (row: ImageGenerationView) => {
     if (row.video_duration) {
       setVideoMode(true);
+      setVideoModel(row.model);
+      setReference(undefined);
       setDuration(row.video_duration);
       setSize(row.size);
     } else {
@@ -242,17 +250,18 @@ const Images: React.FC = () => {
   );
 
   const useReference = () => {
-    const imageModel = supportsReference ? model : meta.reference_models?.[0];
-    if (!preview || !imageModel) return;
-    setVideoMode(false);
+    const referenceModel = !videoMode && supportsReference ? model : meta.reference_models?.[0];
+    const useInVideo = videoMode && supportsReference;
+    if (!preview || (!useInVideo && !referenceModel)) return;
+    setVideoMode(useInVideo);
     if (preview.size > referenceLimit || !['image/jpeg', 'image/png', 'image/webp'].includes(preview.mime)) {
       setReferenceError(t('images.referenceFileLimit', { limit: uploadSize(referenceLimit) }));
       setPreview(undefined);
       return;
     }
-    if (imageModel !== model || videoMode) {
-      setModel(imageModel);
-      setSize(meta.known_sizes[imageModel]?.[0] || '1:1');
+    if (!useInVideo && referenceModel && (referenceModel !== model || videoMode)) {
+      setModel(referenceModel);
+      setSize(meta.known_sizes[referenceModel]?.[0] || '1:1');
       setQuality('');
     }
     setN(1);
@@ -330,11 +339,15 @@ const Images: React.FC = () => {
               <Button size='sm' variant={videoMode ? 'outline' : 'default'} aria-pressed={!videoMode}
                 disabled={submitting} onClick={() => {
                   setVideoMode(false);
+                  setReference(undefined);
+                  setReferenceError('');
                   setSize(meta.known_sizes[imageModel]?.[0] || DEFAULT_SIZES[0]);
                 }}>{t('images.imageMode')}</Button>
               <Button size='sm' variant={videoMode ? 'default' : 'outline'} aria-pressed={videoMode}
                 disabled={submitting} onClick={() => {
                   setVideoMode(true);
+                  setReference(undefined);
+                  setReferenceError('');
                   setSize('16:9');
                 }}>{t('images.videoMode')}</Button>
             </div>
@@ -343,8 +356,23 @@ const Images: React.FC = () => {
         <CardContent className='grid gap-4'>
           {videoMode ? (
             <>
-              <p className='text-muted-foreground text-sm'>{t('images.videoLimits', { model: activeModel })}</p>
-              <div className='grid gap-4 sm:grid-cols-2'>
+              <p className='text-muted-foreground text-sm'>
+                {arkVideo ? '720p · MP4' : t('images.videoLimits', { model: activeModel })}
+              </p>
+              <div className='grid gap-4 sm:grid-cols-3'>
+                <div className='grid gap-2'>
+                  <Label htmlFor='video-model'>{t('images.modelLabel')}</Label>
+                  <Select value={activeVideoModel} onValueChange={(next) => {
+                    setVideoModel(next);
+                    setReference(undefined);
+                    setReferenceError('');
+                  }}>
+                    <SelectTrigger id='video-model'><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {meta.video_models?.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className='grid gap-2'>
                   <Label htmlFor='video-ratio'>{t('images.aspectRatio')}</Label>
                   <Select value={size} onValueChange={setSize}>
@@ -357,10 +385,10 @@ const Images: React.FC = () => {
                 </div>
                 <div className='grid gap-2'>
                   <Label htmlFor='video-duration'>{t('images.duration')}</Label>
-                  <Select value={String(duration)} onValueChange={(value) => setDuration(Number(value))}>
+                  <Select value={String(videoDuration)} onValueChange={(value) => setDuration(Number(value))}>
                     <SelectTrigger id='video-duration'><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {[3, 4, 5, 6, 7, 8].map((seconds) => (
+                      {videoDurations.map((seconds) => (
                         <SelectItem key={seconds} value={String(seconds)}>{t('images.seconds', { seconds })}</SelectItem>
                       ))}
                     </SelectContent>
@@ -407,7 +435,7 @@ const Images: React.FC = () => {
                 </Select>
               </div>
               <div className='grid gap-2'>
-                <Label>{t(supportsReference ? 'images.aspectRatio' : 'images.sizeLabel')}</Label>
+                <Label>{t(supportsReference && !arkImage ? 'images.aspectRatio' : 'images.sizeLabel')}</Label>
                 <Select value={size} onValueChange={setSize}>
                   <SelectTrigger className='w-full'>
                     <SelectValue />
@@ -453,11 +481,11 @@ const Images: React.FC = () => {
               </Select>
             </div>
           )}
-          {!videoMode && (supportsReference || reference || referenceError) && (
+          {(supportsReference || reference || referenceError) && (
             <div className='grid gap-2'>
               {supportsReference && (
                 <>
-                  <Label htmlFor='image-reference'>{t('images.reference')}</Label>
+                  <Label htmlFor='image-reference'>{t(arkVideo && videoMode ? 'images.firstFrame' : 'images.reference')}</Label>
                   <Input id='image-reference' type='file' accept='image/png,image/jpeg,image/webp'
                     disabled={submitting} onChange={(event) => {
                       const file = event.target.files?.[0];
@@ -497,7 +525,7 @@ const Images: React.FC = () => {
             />
           </div>
           <div>
-            <Button onClick={submit} disabled={!activeModel || !prompt.trim() || submitting || (!videoMode && !!reference && !supportsReference)}>
+            <Button onClick={submit} disabled={!activeModel || !prompt.trim() || submitting || (!!reference && !supportsReference)}>
               {submitting ? <Loader2 className='animate-spin' /> : <ImageIcon />}
               {t('images.submit')}
             </Button>
@@ -602,7 +630,7 @@ const Images: React.FC = () => {
                 </Button>
                 {preview.mime !== 'video/mp4' && (
                   <>
-                    {!!meta.reference_models?.length && (
+                    {(supportsReference || !!meta.reference_models?.length) && (
                       <Button variant='outline' onClick={useReference}>{t('images.continueEdit')}</Button>
                     )}
                     <Button variant='outline' disabled={attaching || deleting} onClick={() => attachPreview('chat')}>

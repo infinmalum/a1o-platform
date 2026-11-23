@@ -10,7 +10,7 @@
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
-  [English](README.md) · [简体中文](README.zh-CN.md) · 日本語
+  [English](README.md) · [简体中文](README.zh-CN.md) · 日本語 · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md)
 </div>
 
 ---
@@ -24,7 +24,7 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 
 - 🔌 **4 つのネイティブ API 形式** — OpenAI Chat Completions、OpenAI Responses（照会・キャンセル可能なバックグラウンド実行を含む）、Anthropic Messages、Gemini `generateContent`。同じトークンで embeddings・画像・音声・モデレーションも利用可能。
 - 🌉 **プロトコル間ブリッジ** — クライアントと上流の形式が異なっても、リクエストとレスポンスを相互変換します（ストリーミング対応）。OpenAI クライアントは Anthropic・Gemini・Responses の上流へ、Anthropic クライアントは OpenAI chat・Gemini の上流へ接続できます。
-- 🔀 **スマートルーティング** — 15 種類のチャネル種別と 9 つのプロバイダーアダプター、チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
+- 🔀 **スマートルーティング** — チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
 - 🤖 **内蔵チャットランタイム** — Chat と Work で [Lapua](https://github.com/infinmalum/Lapua) のツールループを共有。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
 - 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
 - 🖥️ **Web アプリ** — `/` の Studio でマルチプロトコル Playground 付きチャット、バックグラウンドタスク、エージェント、非公開の資料ライブラリ、画像・動画・音声ツールを利用できます。`/admin/` の管理コンソールではチャネル、上流アカウント、ユーザー、トークン、ログ、設定を管理します。
@@ -41,8 +41,11 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 | --- | --- |
 | **Chat → Playground** | OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini のネイティブ形式でリクエストを送信できます。JSON やストリーミングイベントの確認、同じリクエストでの 2 モデルの比較、cURL サンプルのコピーが可能です。 |
 | **Workspace → Knowledge libraries** | 非公開の UTF-8 TXT や Markdown をアップロードし、Chat でライブラリを選択して、回答に引用された箇所を開けます。既存のデータベースでキーワード検索を行うため、埋め込みやベクトルデータベースは不要です。1 ファイルあたり 256 KiB、1 ライブラリあたり 64 ファイルかつ合計 2 MiB までです。 |
-| **画像生成 → 画像／動画** | 画像を生成・プレビュー・ダウンロードし、Chat や Work に添付できます。対応する Gemini 画像モデルには PNG、JPEG、WebP の参照画像を指定できます。Gemini チャネルで `gemini-omni-1.2-flash` を有効にして料金を設定すると、テキストから 360p、3～8 秒の縦向きまたは横向き動画を生成できます。 |
+| **画像生成 → 画像／動画** | Volcengine Ark Seedream や対応する Gemini モデルなどで画像を生成し、プレビュー、原本のダウンロード、Chat や Work への添付ができます。Seedream と対応する Gemini 画像モデルでは PNG、JPEG、WebP の参照画像を指定できます。Ark の Seedance ではテキストから 720p、5～8 秒の動画を生成でき、先頭フレームも指定できます。Gemini の `gemini-omni-1.2-flash` はテキストから 360p、3～8 秒の動画を生成します。 |
 | **音声** | 対応モデルで読み上げ音声の生成、文字起こし、音声から英語への翻訳が可能です。生成音声の再生とダウンロード、文字起こしのテキスト出力に対応します。 |
+| **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout または NOWPayments で買い切りの利用枠を購入できます。暗号資産で支払う場合は、サイト運営者が有効にした通貨とネットワークを選びます。 |
+
+運営者は `ARK_MEDIA_PRICES` で Ark モデルの利用単価を設定し、`PAYMENT_PACKAGES` で米ドル建ての定額パッケージを定義します。暗号資産決済を提供するには、決済サービスの認証情報を設定し、`NOWPAYMENTS_PAY_CURRENCIES` で 1 つ以上の選択肢を有効にします。たとえば `usdtsol,usdcmatic,btc` は Solana の USDT、Polygon の USDC、Bitcoin の BTC です。設定手順、最低決済額、対応する組み合わせの一覧は[メディアと決済の運用ガイド](docs/media-and-payments.md)を参照してください。
 
 Studio のヘッダーで 10 種類の表示言語を選択できます。アラビア語とペルシア語では右から左に表示します。管理コンソールでは中国語または英語を別に設定できます。
 

@@ -1,0 +1,58 @@
+# Studio media and online top-ups
+
+This guide is for self-hosted a1o-platform operators. The media channel and each payment method are optional. They use the existing application database and data volume.
+
+## Volcengine Ark
+
+1. In the admin console, add a **Volcengine Ark · Seedream / Seedance** channel. Enter your Ark API key, the exact model IDs your Ark account has enabled, and the user groups allowed to use them. This channel uses Ark’s Beijing API. To route through an Ark inference endpoint, keep the model ID in the channel's model list and map it to the endpoint ID.
+2. Set `ARK_MEDIA_PRICES` to a JSON object keyed by the model names shown in Studio, then restart the app. The value is the base quota for one Seedream image or one requested Seedance video second. The user's group multiplier applies. Set prices for your deployment. These example values are site quota units and do not represent Volcengine's retail prices.
+
+   ```dotenv
+   ARK_MEDIA_PRICES='{"doubao-seedream-5-5-261028":10000,"doubao-seedance-2-5-260628":25000}'
+   ```
+
+3. Sign in to Studio with a user in an enabled group. In **Image generation**, select Seedream for one image with an optional reference, or Seedance for a 720p, 5–8 second video with an optional first frame. Both accept PNG, JPEG, and WebP reference images up to 5 MiB. Ark also applies model-specific input limits.
+4. Run a small generation. Verify that the result is visible, downloads correctly, and draws the configured amount from your account quota. Seedance status checks resume after a server restart for tasks with a saved upstream ID. The app streams completed Seedance videos to disk with a 64 MiB per-file limit. Back up the database together with its media files.
+
+The worker reserves quota before generation. Confirmed upstream failures release the reservation. If the initial request was interrupted before Ark confirmed its outcome, the task requires reconciliation. Compare its record and the original channel with the Ark console before adjusting quota. A saved Seedance task ID keeps the worker on the original channel for subsequent checks. Keep that channel and its credentials available until the tasks have settled.
+
+[Ark image API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en) · [Ark video tutorial](https://docs.volcengine.com/docs/ark/video-generation-tutorial?lang=zh)
+
+## Online quota packages
+
+1. Set `PAYMENT_PUBLIC_URL` to the public HTTPS origin of Studio, without a path, query string, or fragment.
+2. Set `PAYMENT_PACKAGES` to a JSON array with up to 24 fixed-price packages. Give each package a unique ID, label, price in USD cents, and quota in site units. The minimum configurable price is 50 cents. Gateways can require higher minimums. The example below sells a one-time grant of 7,500,000 site quota units for USD 15.
+
+   ```dotenv
+   PAYMENT_PUBLIC_URL=https://studio.example.com
+   PAYMENT_PACKAGES='[{"id":"standard","name":"Standard","amount":1500,"quota":7500000}]'
+   ```
+
+3. Configure one or both gateways using the settings below, then start the app with the new environment. With Docker Compose, set the variables in the project's environment or Compose `.env` file and run `docker compose up -d a1o-platform` to apply the configuration. For a direct container run, pass the variables when creating the container and retain the existing data mount when replacing it. Use Stripe test credentials on a separate test deployment or database. The NOWPayments adapter uses the production API.
+
+   | Gateway | Setup |
+   | --- | --- |
+   | Stripe | Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Register `POST /api/payments/webhook/stripe` at the public origin for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.expired`. |
+   | NOWPayments | Set `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, and `NOWPAYMENTS_PAY_CURRENCIES`. Enable the same payment currencies in the NOWPayments merchant dashboard and check its minimum for each enabled currency and package. Invoices send notifications to `POST /api/payments/webhook/nowpayments` at the public origin. |
+
+   Set `NOWPAYMENTS_PAY_CURRENCIES` to one code or a comma-separated list. Studio shows the enabled options in this order and selects the first one by default. For example, the setting below enables USDT on Solana, USDC on Polygon, and BTC on Bitcoin.
+
+   ```dotenv
+   NOWPAYMENTS_PAY_CURRENCIES=usdtsol,usdcmatic,btc
+   ```
+
+   | Asset | Network and configuration code |
+   | --- | --- |
+   | USDT | TRON `usdttrc20`, Ethereum `usdterc20`, BNB Smart Chain `usdtbsc`, Solana `usdtsol`, Polygon `usdtmatic` |
+   | USDC | Ethereum `usdc`, Solana `usdcsol`, Polygon `usdcmatic` |
+   | BTC | Bitcoin `btc` |
+   | ETH | Ethereum `eth`, Arbitrum `etharb` |
+   | SOL | Solana `sol` |
+
+   An unset or empty list disables new NOWPayments checkouts. An unsupported code also disables new NOWPayments checkouts and is reported in the server log when the payment catalog is requested. To keep offering USDT on TRON after upgrading from the single-network version, include `usdttrc20`. Keep the merchant API key and IPN secret configured until open orders settle, even after disabling their payment currency for new orders.
+
+4. Open **Account → Redeem** in Studio. Verify that the correct packages, gateways, and enabled currencies appear. Use a Stripe test payment to check that the order shows as credited and the account gains the configured quota. Replay its notification and verify that the balance stays the same. For each enabled NOWPayments option, select its currency and network and verify the same flow in a controlled merchant checkout before offering it to users.
+
+Each order keeps its original price and quota even if you edit the catalog. NOWPayments orders also keep their original payment currency and network. Orders created before the currency setting was introduced are still verified as USDT on TRON. The gateway's verified notification triggers credit. A successful browser redirect can arrive before the notification. Underpaid or mismatched orders require manual review against the provider's records. Handle refunds and chargebacks in the provider dashboard and reconcile site quota manually. Existing redemption codes and administrator top-ups continue to work. Online packages grant quota once and have no renewal or periodic quota reset.
+
+[Stripe Checkout](https://docs.stripe.com/checkout/fulfillment) · [NOWPayments invoice API](https://nowpayments.zendesk.com/hc/en-us/articles/21345824322717-API-and-endpoint-description) · [NOWPayments supported currencies](https://nowpayments.io/supported-coins)

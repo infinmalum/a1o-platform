@@ -44,6 +44,10 @@ type ImageGeneration struct {
 	ReferenceAssetId int    `json:"reference_asset_id" gorm:"default:0"`
 	ReferenceFileId  int    `json:"reference_file_id" gorm:"default:0"`
 	VideoDuration    int    `json:"video_duration,omitempty" gorm:"default:0"`
+	ArkTaskID        string `json:"-" gorm:"size:128;default:''"`
+	ArkChannelID     int    `json:"-" gorm:"default:0"`
+	ArkQuota         int64  `json:"-" gorm:"default:0"`
+	ArkNextPoll      int64  `json:"-" gorm:"default:0"`
 	Status           string `json:"status" gorm:"type:varchar(24);index"`
 	Error            string `json:"error" gorm:"type:text"`
 	SaveError        string `json:"save_error" gorm:"type:text"`
@@ -219,7 +223,7 @@ func FailImageGeneration(id int, message string) error {
 // billed the call, so it is never silently retried.
 func ReconcileStuckImageGenerations() (int64, error) {
 	claim := DB.Model(&ImageGeneration{}).
-		Where("status = ?", ImageGenStatusRunning).
+		Where("status = ? AND (ark_task_id = ? OR ark_task_id IS NULL)", ImageGenStatusRunning, "").
 		Updates(map[string]any{"status": ImageGenStatusNeedsReconciliation, "updated_time": helper.GetTimestamp()})
 	return claim.RowsAffected, claim.Error
 }

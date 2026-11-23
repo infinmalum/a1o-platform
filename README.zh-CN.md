@@ -10,12 +10,12 @@
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
-  [English](README.md) · 简体中文 · [日本語](README.ja.md)
+  [English](README.md) · 简体中文 · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md)
 </div>
 
 ---
 
-A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它以一套部署原生支持 OpenAI（Chat Completions 与 Responses）、Anthropic Messages、Gemini generateContent 三种 API 协议，连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；A1O Platform 建立在他们的工作之上。
+A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](https://github.com/songquanpeng/one-api)。它以一套部署原生支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini `generateContent` 四种 API 格式，连接多个模型服务，并提供渠道、用户、令牌、额度和用量日志的管理界面。One API 由 JustSong 及其他贡献者创建；A1O Platform 建立在他们的工作之上。
 
 > [!NOTE]
 > 本仓库独立维护。原项目的版本、Docker 镜像、演示站点和 issue 列表不代表 A1O Platform 的发布与支持渠道。
@@ -24,7 +24,7 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 
 - 🔌 **四种原生 API 协议** —— OpenAI Chat Completions、OpenAI Responses（支持可查询、可取消的后台任务）、Anthropic Messages、Gemini `generateContent`，同一个令牌还能调用 embeddings、图像、音频和内容审核接口。
 - 🌉 **跨协议桥接** —— 请求与响应会在客户端协议和上游协议之间自动转换，流式同样支持：OpenAI 客户端可以打到 Anthropic、Gemini、Responses 上游，Anthropic 客户端可以打到 OpenAI chat 和 Gemini 上游。
-- 🔀 **智能路由** —— 15 种渠道类型、9 个服务商适配器，渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
+- 🔀 **智能路由** —— 渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
 - 🤖 **内置 chat 运行时** —— Chat 和 Work 共用 [Lapua](https://github.com/infinmalum/Lapua) 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
 - 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
 - 🖥️ **双前端** —— `/` 的 Studio 提供聊天与多协议 Playground、后台任务、智能体广场、私有资料库，以及图像、视频和音频工具。`/admin/` 的控制台管理渠道、上游账号、用户、令牌、日志和设置。
@@ -41,8 +41,11 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 | --- | --- |
 | **对话 → Playground** | 发送原生 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 或 Gemini 请求。查看原始 JSON 或流式事件，用同一份请求对比两个模型，并复制 cURL 示例。 |
 | **工作区 → 资料库** | 上传私有 UTF-8 TXT 或 Markdown 文件，在对话中选择资料库，并打开回复引用的原文。关键词检索使用现有数据库，无需嵌入模型或向量库。单份文件上限为 256 KiB，每库最多 64 份且总量不超过 2 MiB。 |
-| **图像生成 → 图像／视频** | 生成、预览和下载图片，并将图片附到对话或 Work 任务。兼容的 Gemini 图像模型支持 PNG、JPEG、WebP 参考图。在 Gemini 渠道启用并定价 `gemini-omni-1.2-flash` 后，可生成 360p、3–8 秒的横屏或竖屏文生视频。 |
+| **图像生成 → 图片／视频** | 通过火山引擎方舟 Seedream、兼容的 Gemini 等已支持模型生成图片，可预览、下载原图，并将图片附到对话或 Work。Seedream 和兼容的 Gemini 图像模型支持 PNG、JPEG 和 WebP 参考图。方舟 Seedance 支持文生视频及可选首帧，输出 720p、5–8 秒视频。Gemini `gemini-omni-1.2-flash` 支持生成 360p、3–8 秒的文生视频。 |
 | **音频** | 使用兼容模型合成语音、转写音频或将语音翻译成英文。可试听、下载生成的音频，也可导出转写文本。 |
+| **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout 或 NOWPayments 购买一次性额度套餐。使用加密货币付款时，选择站长已启用的币种和网络。 |
+
+站长使用 `ARK_MEDIA_PRICES` 设置方舟模型的额度费率，通过 `PAYMENT_PACKAGES` 定义以美元定价的固定额度套餐。启用加密货币付款时，需配置网关凭据，并通过 `NOWPAYMENTS_PAY_CURRENCIES` 启用一种或多种选项。例如 `usdtsol,usdcmatic,btc` 对应 Solana 上的 USDT、Polygon 上的 USDC 和比特币主网的 BTC。配置步骤、网关最低金额和完整的币种与网络组合见[媒体与支付部署指南](docs/media-and-payments.md)。
 
 Studio 顶栏提供 10 种界面语言，阿拉伯语和波斯语支持从右到左布局。管理控制台独立保存中英文偏好。
 

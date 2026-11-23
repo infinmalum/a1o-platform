@@ -45,6 +45,8 @@ export interface ImageMeta {
   other_models: string[];
   reference_models?: string[];
   video_models?: string[];
+  ark_image_models?: string[];
+  ark_video_models?: string[];
   known_sizes: Record<string, string[]>;
   max_active: number;
   max_reference_bytes?: number;

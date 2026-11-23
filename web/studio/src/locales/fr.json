@@ -352,6 +352,20 @@
         "noAccessToken": "Aucun jeton d'accès système généré pour le moment.",
         "regenerateToken": "Générer / régénérer",
         "tokenGenerated": "Jeton d'accès système généré"
+      },
+      "payment": {
+        "cryptoCurrency": "NOWPayments · Devise et réseau",
+        "title": "Acheter un forfait de quota",
+        "orders": "Commandes de paiement",
+        "refresh": "Actualiser le statut",
+        "retry": "Recharger les options de paiement",
+        "opening": "Ouverture de la page de paiement…",
+        "returned": "Vous êtes de retour sur le site. Actualisez le statut pour vérifier si le quota a été crédité.",
+        "credited": "Crédité",
+        "pending": "En attente de paiement",
+        "closed": "Fermé",
+        "review": "À vérifier",
+        "continue": "Poursuivre le paiement"
       }
     },
     "list": {
@@ -600,6 +614,7 @@
     "generationFailed": "Échec de la génération. Vérifiez les paramètres du modèle et réessayez.",
     "saveFailedHint": "La génération est terminée, mais l'enregistrement a échoué. Vous pouvez réessayer d'enregistrer le résultat.",
     "activeLimit": "Tous les créneaux de génération sont utilisés. Attendez la fin d'une tâche et réessayez.",
-    "invalidSettings": "Vérifiez le prompt, les dimensions et les paramètres du modèle avant de réessayer."
+    "invalidSettings": "Vérifiez le prompt, les dimensions et les paramètres du modèle avant de réessayer.",
+    "firstFrame": "Première image (facultative)"
   }
 }

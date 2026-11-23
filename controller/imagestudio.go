@@ -16,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/infinmalum/a1o-platform/common/client"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -71,6 +70,13 @@ func GetImageMeta(c *gin.Context) {
 	other := make([]string, 0, len(models))
 	referenceModels := make([]string, 0)
 	videoModels := make([]string, 0)
+	arkImages := make([]string, 0)
+	arkVideos := make([]string, 0)
+	group, err := model.CacheGetUserGroup(c.GetInt(ctxkey.Id))
+	if err != nil {
+		imageError(c, err)
+		return
+	}
 	sizes := map[string][]string{}
 	for _, name := range models {
 		if name == studioVideoModel {
@@ -82,6 +88,21 @@ func GetImageMeta(c *gin.Context) {
 						videoModels = append(videoModels, name)
 					}
 				}
+			}
+		} else if arkImageName(name) || arkVideoName(name) {
+			if arkVideoName(name) {
+				if _, _, err := selectArkMedia(name, group, 5); err == nil {
+					videoModels = append(videoModels, name)
+					arkVideos = append(arkVideos, name)
+				}
+			} else if _, _, err := selectArkMedia(name, group, 1); err == nil {
+				known = append(known, name)
+				referenceModels = append(referenceModels, name)
+				arkImages = append(arkImages, name)
+				sizes[name] = arkImageSizes
+			} else if _, err := lifecycle.SelectForRequest(lifecycle.Request{Model: name,
+				Principal: lifecycle.Principal{UserID: c.GetInt(ctxkey.Id)}}, native.OpenAIImages); err == nil {
+				other = append(other, name)
 			}
 		} else if isGeminiImageModel(name) {
 			request := lifecycle.Request{Model: name, Principal: lifecycle.Principal{UserID: c.GetInt(ctxkey.Id)}}
@@ -108,6 +129,7 @@ func GetImageMeta(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"known_models": known, "reference_models": referenceModels, "video_models": videoModels,
+		"ark_image_models": arkImages, "ark_video_models": arkVideos,
 		"other_models":        other,
 		"known_sizes":         sizes,
 		"max_active":          imageMaxActivePerUser,
@@ -151,14 +173,31 @@ func CreateImageGeneration(c *gin.Context) {
 	if req.N == 0 {
 		req.N = 1
 	}
+	var arkChannel *model.Channel
+	if arkImageName(req.Model) || arkVideoName(req.Model) {
+		group, err := model.CacheGetUserGroup(userId)
+		if err != nil {
+			imageError(c, err)
+			return
+		}
+		arkChannel, _, err = selectArkMedia(req.Model, group, max(1, req.VideoDuration))
+		if err != nil && arkVideoName(req.Model) {
+			imageError(c, err)
+			return
+		}
+	}
+	ark := arkChannel != nil
 	if req.Size == "" {
 		req.Size = "1024x1024"
+		if ark && arkImageName(req.Model) {
+			req.Size = arkImageSizes[0]
+		}
 	}
 	if isGeminiImageModel(req.Model) && req.Size == "1024x1024" && (req.ReferenceAssetId != 0 || req.ReferenceFileId != 0) {
 		req.Size = "1:1"
 	}
 	if req.ReferenceAssetId != 0 || req.ReferenceFileId != 0 {
-		if !isGeminiImageModel(req.Model) || geminiImageRatios[req.Size] == "" {
+		if !ark && (!isGeminiImageModel(req.Model) || geminiImageRatios[req.Size] == "") {
 			imageError(c, errors.New("该模型不支持工作台参考图"))
 			return
 		}
@@ -175,7 +214,11 @@ func CreateImageGeneration(c *gin.Context) {
 		}
 	}
 	var validationErr error
-	if req.VideoDuration != 0 {
+	if ark {
+		if !validateArkMedia(req) {
+			validationErr = errors.New("invalid Ark media settings")
+		}
+	} else if req.VideoDuration != 0 {
 		validationErr = validateStudioVideo(req)
 	} else {
 		validationErr = validateImageGeneration(req.Model, req.Prompt, req.Size, req.Quality, req.N)
@@ -185,7 +228,7 @@ func CreateImageGeneration(c *gin.Context) {
 		return
 	}
 	apiRequest := lifecycle.Request{Model: req.Model, Principal: lifecycle.Principal{UserID: userId}}
-	if req.VideoDuration != 0 {
+	if !ark && req.VideoDuration != 0 {
 		channel, selectionErr := lifecycle.SelectForRequest(apiRequest, native.GeminiInteractions)
 		if selectionErr != nil {
 			imageError(c, errors.New(selectionErr.Message))
@@ -220,6 +263,9 @@ func CreateImageGeneration(c *gin.Context) {
 		ReferenceAssetId: req.ReferenceAssetId, ReferenceFileId: req.ReferenceFileId, VideoDuration: req.VideoDuration,
 		Size: req.Size, Quality: req.Quality, N: req.N,
 		IdempotencyKey: req.IdempotencyKey,
+	}
+	if ark {
+		gen.ArkChannelID = arkChannel.Id
 	}
 	existing, created, err := model.CreateImageGeneration(gen)
 	if err != nil {
@@ -531,6 +577,11 @@ func StartImageWorker() {
 
 func imageWorkerLoop() {
 	for {
+		if job, err := model.ClaimArkVideoPoll(); err != nil {
+			logger.SysError("Ark video poll claim failed: " + err.Error())
+		} else if job != nil {
+			pollArkVideo(context.Background(), job)
+		}
 		gen, err := model.ClaimQueuedImageGeneration()
 		if err != nil {
 			logger.SysError("image worker claim failed: " + err.Error())
@@ -554,6 +605,16 @@ func executeImageGeneration(ctx context.Context, gen *model.ImageGeneration) {
 			_ = model.FailImageGeneration(gen.Id, "图像生成执行异常，请重试")
 		}
 	}()
+	if gen.ArkChannelID != 0 {
+		if err := startArkMedia(ctx, gen); err != nil {
+			if gen.ArkQuota > 0 {
+				_ = arkMediaUncertain(gen, err)
+			} else {
+				_ = model.FailImageGeneration(gen.Id, err.Error())
+			}
+		}
+		return
+	}
 	responseJSON, consumeLogId, herr := runImageUpstream(ctx, gen)
 	if herr != nil {
 		_ = model.FailImageGeneration(gen.Id, herr.Message)
@@ -722,6 +783,10 @@ func persistImageProducts(gen *model.ImageGeneration, items []imageResultItem) e
 			failures = append(failures, fmt.Sprintf("第 %d 项: 文件格式无效或超出上限", index+1))
 			continue
 		}
+		if gen.VideoDuration == 0 && !strings.HasPrefix(http.DetectContentType(payload), "image/") {
+			failures = append(failures, fmt.Sprintf("第 %d 项: 内容不是图像", index+1))
+			continue
+		}
 		if _, err := model.SaveImageAssetPayload(gen.UserId, gen.Id, index, payload); err != nil {
 			failures = append(failures, fmt.Sprintf("第 %d 张: %s", index+1, err.Error()))
 		}
@@ -750,12 +815,11 @@ func loadImageProductPayload(item imageResultItem) ([]byte, error) {
 		}
 		return payload, nil
 	case item.URL != "":
-		fetcher := client.NewPublicContentClient()
 		request, err := http.NewRequest(http.MethodGet, item.URL, http.NoBody)
 		if err != nil {
 			return nil, fmt.Errorf("图像地址无效: %w", err)
 		}
-		response, err := fetcher.Do(request)
+		response, err := studioMediaDownloadClient.Do(request)
 		if err != nil {
 			return nil, fmt.Errorf("图像下载失败: %w", err)
 		}

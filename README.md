@@ -10,7 +10,7 @@
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
-  English · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+  English · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Español](README.es.md)
 </div>
 
 ---
@@ -24,7 +24,7 @@ A1O Platform is an independently maintained AI gateway, originally derived from 
 
 - 🔌 **Four native API formats** — OpenAI Chat Completions, OpenAI Responses (including background runs you can poll or cancel), Anthropic Messages, and Gemini `generateContent`, plus embeddings, images, audio, and moderations endpoints under the same token.
 - 🌉 **Cross-protocol bridging** — requests and responses are converted between client and upstream formats, streaming included: OpenAI clients reach Anthropic, Gemini, and Responses upstreams, and Anthropic clients reach OpenAI-chat and Gemini upstreams.
-- 🔀 **Smart routing** — 15 channel kinds behind 9 provider adapters, channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
+- 🔀 **Smart routing** — channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
 - 🤖 **Built-in chat runtime** — a [Lapua](https://github.com/infinmalum/Lapua) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
 - 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
 - 🖥️ **Web apps** — Studio at `/` includes Chat with a multi-protocol Playground, background Work tasks, an agent library, private document libraries, and image, video, and audio tools. The console at `/admin/` manages channels, upstream accounts, users, tokens, logs, and settings.
@@ -41,8 +41,11 @@ Configure a provider channel and enable the model for your group in the admin co
 | --- | --- |
 | **Chat → Playground** | Send native OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini requests. Inspect raw JSON or streaming events, compare two models with the same request, and copy a cURL example. |
 | **Workspace → Knowledge libraries** | Upload private UTF-8 TXT or Markdown files, select a library in Chat, and open cited passages from replies. Keyword search runs against the existing database without embeddings or a vector store. Each library holds up to 64 documents and 2 MiB total, with a 256 KiB limit per document. |
-| **Image generation → Image / Video** | Generate images, preview or download originals, and attach images to Chat or Work. Compatible Gemini image models accept PNG, JPEG, and WebP references. Enable and price `gemini-omni-1.2-flash` on a Gemini channel to unlock 360p text-to-video clips of 3–8 seconds in landscape or portrait. |
+| **Image generation → Image / Video** | Generate images with supported models, including Volcengine Ark Seedream and compatible Gemini models. Preview or download originals and attach images to Chat or Work. Seedream and compatible Gemini image models accept PNG, JPEG, and WebP references. Seedance on Ark generates 720p clips of 5–8 seconds from text with an optional first frame. Gemini `gemini-omni-1.2-flash` generates 360p text-to-video clips of 3–8 seconds. |
 | **Audio** | Select a compatible model to generate speech, transcribe an audio file, or translate speech into English. Play and download generated audio or export the transcript. |
+| **Account → Redeem** | Redeem a code or buy a one-time quota package through Stripe Checkout or NOWPayments when enabled. For crypto, select a currency and network enabled by the site operator. |
+
+The operator sets Ark model rates with `ARK_MEDIA_PRICES` and defines fixed-price USD packages with `PAYMENT_PACKAGES`. To offer crypto payments, configure the gateway credentials and explicitly enable one or more options with `NOWPAYMENTS_PAY_CURRENCIES`. For example, `usdtsol,usdcmatic,btc` enables USDT on Solana, USDC on Polygon, and BTC on Bitcoin. The [media and payments guide](docs/media-and-payments.md) covers setup, gateway minimums, and the full list of supported combinations.
 
 The Studio header lets you choose from ten interface languages, including right-to-left layouts for Arabic and Persian. The admin console has its own Chinese and English preference.
 

@@ -172,7 +172,7 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Option{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Redemption{}); err != nil {
+	if err = DB.AutoMigrate(&Redemption{}, &PaymentOrder{}); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&Ability{}); err != nil {

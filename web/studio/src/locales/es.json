@@ -352,6 +352,20 @@
         "noAccessToken": "Aún no se ha generado un token de acceso del sistema.",
         "regenerateToken": "Generar / regenerar",
         "tokenGenerated": "Token de acceso del sistema generado"
+      },
+      "payment": {
+        "cryptoCurrency": "NOWPayments · Moneda y red",
+        "title": "Comprar un paquete de cuota",
+        "orders": "Pedidos de pago",
+        "refresh": "Actualizar estado",
+        "retry": "Volver a cargar las opciones de pago",
+        "opening": "Abriendo la página de pago…",
+        "returned": "Has vuelto de la página de pago. Actualiza el estado para comprobar si se ha acreditado la cuota.",
+        "credited": "Acreditado",
+        "pending": "Pendiente de pago",
+        "closed": "Cerrado",
+        "review": "Requiere revisión",
+        "continue": "Continuar al pago"
       }
     },
     "list": {
@@ -600,6 +614,7 @@
     "generationFailed": "La generación falló. Revisa los ajustes del modelo e inténtalo de nuevo.",
     "saveFailedHint": "La generación terminó, pero el guardado falló. Puedes reintentar guardar el resultado.",
     "activeLimit": "Todos los huecos de generación están en uso. Espera a que termine una tarea e inténtalo de nuevo.",
-    "invalidSettings": "Revisa el prompt, las dimensiones y los ajustes del modelo antes de reintentar."
+    "invalidSettings": "Revisa el prompt, las dimensiones y los ajustes del modelo antes de reintentar.",
+    "firstFrame": "Primer fotograma (opcional)"
   }
 }
