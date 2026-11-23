@@ -1,26 +1,34 @@
 package agent
 
 import (
-	"path/filepath"
-	"strconv"
+	"context"
+	"encoding/json"
 
 	"github.com/infinmalum/Lapua/memory"
-
-	"github.com/infinmalum/a1o-platform/common/config"
+	lapuatool "github.com/infinmalum/Lapua/tool"
+	"github.com/infinmalum/a1o-platform/model"
 )
 
-// userMemoryStore roots one agent memory directory per user under the
-// shared data root, mirroring the image-asset layout. The SDK keeps plain
-// markdown files there, so admins can inspect or prune them on disk.
-func userMemoryStore(userId int) *memory.Store {
-	return memory.NewStore(filepath.Join("data", "memory", "users", strconv.Itoa(userId)))
+type userMemoryTool struct {
+	lapuatool.CoreTool
+	userID int
 }
 
-func addMemoryTools(set *toolSet, userId int) {
-	if !config.ChatMemoryEnabled {
+func (tool userMemoryTool) Call(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
+	var result lapuatool.Result
+	err := model.WithEnabledMemory(ctx, tool.userID, func() error {
+		var runErr error
+		result, runErr = tool.CoreTool.Call(ctx, input, tc)
+		return runErr
+	})
+	return result, err
+}
+
+func addMemoryTools(ctx context.Context, set *toolSet, userId int) {
+	if !model.MemoryEnabled(ctx, userId) {
 		return
 	}
-	for _, core := range memory.Tools(userMemoryStore(userId)) {
-		set.addSDK(core)
+	for _, core := range memory.Tools(model.UserMemoryStore(userId)) {
+		set.addSDK(userMemoryTool{CoreTool: core, userID: userId})
 	}
 }

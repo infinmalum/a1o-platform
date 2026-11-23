@@ -4,17 +4,16 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
 import { storeUser } from '@/context/User';
+import PrivacyTab from './PrivacyTab';
 import RedeemTab from './RedeemTab';
 import SettingsTab from './SettingsTab';
 import TokensTab from './TokensTab';
 import UsageTab from './UsageTab';
 
-type AccountTab = 'tokens' | 'usage' | 'redeem' | 'settings';
+type AccountTab = 'tokens' | 'usage' | 'redeem' | 'settings' | 'privacy';
 
 // Account area: the user-facing account surface the split decision promised
 // — API keys, personal usage, redemption-code top-up, and profile settings.
-// Everything runs through owner-scoped endpoints that already existed; this
-// page only wires them into the studio.
 const Account: React.FC = () => {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
@@ -24,6 +23,7 @@ const Account: React.FC = () => {
     { key: 'usage', label: t('studio.account.tabs.usage') },
     { key: 'redeem', label: t('studio.account.tabs.redeem') },
     { key: 'settings', label: t('studio.account.tabs.settings') },
+    { key: 'privacy', label: t('studio.privacy.title') },
   ];
 
   const tab = tabs.find(({ key }) => key === params.get('tab'))?.key ?? 'tokens';
@@ -53,6 +53,7 @@ const Account: React.FC = () => {
       {tab === 'usage' && <UsageTab />}
       {tab === 'redeem' && <RedeemTab onSelfUpdated={storeUser} />}
       {tab === 'settings' && <SettingsTab onSelfUpdated={storeUser} />}
+      {tab === 'privacy' && <PrivacyTab />}
     </div>
   );
 };

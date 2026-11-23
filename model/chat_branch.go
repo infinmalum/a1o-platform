@@ -6,6 +6,7 @@ import (
 
 	"github.com/infinmalum/a1o-platform/common/helper"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrChatBranchUnavailable = errors.New("只能从当前会话的最后一条用户消息重新生成")
@@ -25,6 +26,12 @@ func BranchChatSession(ctx context.Context, session *ChatSession, messageID int,
 
 	var copiedMessageID int
 	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var active ChatSession
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").
+			Where("id = ? AND user_id = ? AND privacy_purge_at = 0", session.Id, session.UserId).Take(&active).Error; err != nil {
+			return err
+		}
+
 		var latest ChatMessage
 		res := tx.Select("id").Where("session_id = ? AND role = ?", session.Id, ChatRoleUser).Order("id DESC").Take(&latest)
 		if errors.Is(res.Error, gorm.ErrRecordNotFound) || (res.Error == nil && latest.Id != messageID) {

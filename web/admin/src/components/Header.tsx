@@ -17,6 +17,7 @@ import {
   getSystemName,
   isAdmin,
   isMobile,
+  isRoot,
   showSuccess,
 } from '../helpers';
 import '../index.css';
@@ -30,6 +31,7 @@ let headerButtons: {
   to: string;
   icon: IconProps['name'];
   admin?: boolean;
+  root?: boolean;
 }[] = [
   {
     name: 'header.channel',
@@ -67,6 +69,12 @@ let headerButtons: {
     icon: 'book',
   },
   {
+    name: 'privacyReview.title',
+    to: '/privacy-review',
+    icon: 'shield',
+    root: true,
+  },
+  {
     name: 'header.setting',
     to: '/setting',
     icon: 'setting',
@@ -102,7 +110,7 @@ const Header = () => {
 
   const renderButtons = (isMobile) => {
     return headerButtons.map((button) => {
-      if (button.admin && !isAdmin()) return <></>;
+      if ((button.admin && !isAdmin()) || (button.root && !isRoot())) return null;
       if (isMobile) {
         return (
           <Menu.Item

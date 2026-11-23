@@ -1,0 +1,20 @@
+# Account privacy, memory, and deleted-chat review
+
+This guide describes the A1O Platform features for users and site operators. It covers the primary database and the application's files. Model providers and separately configured tools may keep their own copies. Deployment backups and infrastructure logs have separate retention.
+
+## Users
+
+- In **Account → Privacy**, download a ZIP of your own profile, active chats and their messages, attachments, knowledge documents, Work task metadata and transcripts, agents, skills, media, memory, usage and payment orders. The archive omits deleted chats, stored API and access keys, password hashes, and saved MCP authentication settings. Text you typed into a conversation is included verbatim. Metadata uses JSON or JSON Lines. Folders contain original file bytes named by their record IDs. `manifest.json` lists missing file payloads, if any.
+- Long-term memory starts off for each account, including existing accounts. Enable it in **Account → Privacy** to let Chat and Work recall and record notes when the operator also enables memory for the site. Turning it off blocks recall and recording on subsequent tool calls. Existing notes remain available in the privacy page, where you can remove one or clear the store. Clearing memory does not rewrite previous chats that already contain a recalled fact.
+- Deleting a chat hides it immediately from the ordinary interface and account export. Its user and assistant text is available to authorized reviewers during the next 15 days. Standalone attachment files are independently managed in Workspace and may be reused in other chats.
+- Download your data before deleting your account. Account deletion revokes access, removes profile identifiers, and clears long-term memory. If removing memory files fails, automated cleanup retries. Existing chats enter the same 15-day review window unless they are already scheduled for earlier deletion. Account-related messages, Work records, uploaded files, knowledge libraries, saved memory and generated media are removed by automatic cleanup. Financial records may remain associated with a pseudonymous account ID. The root operator account cannot be deleted from the app.
+
+## Site operators
+
+1. Sign in to the admin console as the root operator and open **Chat abuse review**. The list shows retained session IDs, account IDs, and expiry times. This list covers deleted conversations.
+2. Choose a session and enter the reason for reviewing it. Use a case reference without copying private message text or personal details into the reason. Each page read records the reviewer ID, conversation ID, time and reason. The response contains user and assistant message text. Attachments, credentials and internal traces are outside this review view.
+3. Inspect **Access log** to verify the review actions. The application retains review-access records for 90 days. There is no option to extend a chat's review deadline in the console.
+4. The primary application process (a node without `NODE_TYPE=slave`) runs the cleanup at startup and once per minute. The review API closes access when the deadline elapses, even during a cleanup delay. Check the server log for cleanup errors. In a multi-node deployment, the cleanup process needs access to the application's shared attachment, media and memory directories.
+5. Apply an independent retention policy to backups and infrastructure logs. Before restoring a backup taken before a deletion, restore or reconcile newer deletion records so the restored deployment cannot expose chat content that has already expired.
+
+The delete and retention behavior applies to deletion actions after the feature is installed. The app cannot reconstruct earlier deletion dates. Previously deleted accounts with no recorded deletion time need separate operator review before any cleanup.

@@ -221,6 +221,25 @@
     "branchConfirm": "Antwort generieren"
   },
   "studio": {
+    "privacy": {
+      "title": "Datenschutz",
+      "memory": "Langzeitgedächtnis",
+      "memoryDescription": "Wenn aktiviert, können Chat und Work Informationen über Unterhaltungen hinweg speichern und abrufen. Beim Ausschalten bleiben vorhandene Einträge bis zur Löschung erhalten.",
+      "enableMemory": "Langzeitgedächtnis aktivieren",
+      "memoryUnavailable": "Der Betreiber hat das Langzeitgedächtnis deaktiviert.",
+      "deleteMemory": "Erinnerung löschen",
+      "clearMemory": "Alle Erinnerungen löschen",
+      "noMemory": "Keine gespeicherten Erinnerungen.",
+      "data": "Personenbezogene Daten",
+      "export": "Meine Daten herunterladen (ZIP)",
+      "retention": "Berechtigte Prüfer können gelöschte Chats 15 Tage lang auf Missbrauch prüfen. Zahlungsdaten können gesondert aufbewahrt werden.",
+      "deleteAccount": "Konto löschen",
+      "confirmAccount": "Konto und API-Schlüssel werden sofort deaktiviert. Berechtigte Prüfer können gelöschte Chattexte 15 Tage lang prüfen. Lade deine Daten vorher herunter.",
+      "confirmMemory": "Gespeicherte Erinnerung löschen?",
+      "memoryPermanent": "Gelöschte Erinnerungen lassen sich nicht wiederherstellen.",
+      "confirmDelete": "Löschen bestätigen",
+      "retentionChat": "Berechtigte Prüfer können diese Unterhaltung 15 Tage lang auf Missbrauch prüfen."
+    },
     "home": {
       "tagline": "Ein Arbeitsplatz für die Nutzung, Erstellung und Wiederverwendung von KI.",
       "open": "Verfügbar",

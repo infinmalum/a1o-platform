@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -57,8 +59,21 @@ func TestAddLapuaToolsWebToggle(t *testing.T) {
 
 func TestAddMemoryTools(t *testing.T) {
 	setMemoryTools(t, true)
+	setupExecutorDB(t)
+	user := model.User{Username: "memory-opt-in", Password: "unused", AccessToken: "memory-opt-in-key", AffCode: "memory-opt-in-aff"}
+	if err := model.DB.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { model.DB.Delete(&user) })
 	set := newToolSet()
-	addMemoryTools(set, 42)
+	addMemoryTools(t.Context(), set, user.Id)
+	if len(set.sdk) != 0 {
+		t.Fatal("memory must be off until enabled by the user")
+	}
+	if err := model.SetUserMemory(t.Context(), user.Id, true); err != nil {
+		t.Fatal(err)
+	}
+	addMemoryTools(t.Context(), set, user.Id)
 	if !defsContain(set.defs, "RecallMemory") || !defsContain(set.defs, "RecordMemory") {
 		t.Fatalf("memory tools missing: %v", set.defs)
 	}
@@ -66,17 +81,24 @@ func TestAddMemoryTools(t *testing.T) {
 		t.Fatalf("memory sdk tools not registered: %v", set.sdk)
 	}
 
+	if err := model.SetUserMemory(t.Context(), user.Id, false); err != nil {
+		t.Fatal(err)
+	}
+	_, err := set.sdk["RecordMemory"].Call(t.Context(), json.RawMessage(`{"name":"test","content":"disabled"}`), nil)
+	if !errors.Is(err, model.ErrMemoryDisabled) {
+		t.Fatalf("stale memory tool: %v", err)
+	}
 	setMemoryTools(t, false)
 	set = newToolSet()
-	addMemoryTools(set, 42)
+	addMemoryTools(t.Context(), set, user.Id)
 	if len(set.defs) != 0 || len(set.sdk) != 0 {
 		t.Fatalf("memory tools present with toggle off: %v", set.defs)
 	}
 }
 
 func TestUserMemoryStoreIsolation(t *testing.T) {
-	a := userMemoryStore(1)
-	b := userMemoryStore(2)
+	a := model.UserMemoryStore(1)
+	b := model.UserMemoryStore(2)
 	if a.Dir == b.Dir {
 		t.Fatalf("memory stores must be per-user: %s", a.Dir)
 	}

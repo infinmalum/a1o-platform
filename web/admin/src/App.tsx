@@ -11,7 +11,7 @@ import NotFound from './pages/NotFound';
 import Setting from './pages/Setting';
 import EditUser from './pages/User/EditUser';
 import AddUser from './pages/User/AddUser';
-import { API, getLogo, getSystemName, showError, showNotice } from './helpers';
+import { API, getLogo, getSystemName, isRoot, showError, showNotice } from './helpers';
 import PasswordResetForm from './components/PasswordResetForm';
 import GitHubOAuth from './components/GitHubOAuth';
 import PasswordResetConfirm from './components/PasswordResetConfirm';
@@ -25,6 +25,7 @@ import Log from './pages/Log';
 import LarkOAuth from './components/LarkOAuth';
 import Dashboard from './pages/Dashboard';
 
+const PrivacyReview = lazy(() => import('./pages/PrivacyReview'));
 const About = lazy(() => import('./pages/About'));
 
 function App() {
@@ -273,6 +274,13 @@ function App() {
             <About />
           </Suspense>
         }
+      />
+      <Route
+        path='/privacy-review'
+        element={<PrivateRoute>{isRoot()
+          ? <Suspense fallback={<Loading />}><PrivacyReview /></Suspense>
+          : <Navigate to='/' replace />}
+        </PrivateRoute>}
       />
       <Route
         path='/dashboard'

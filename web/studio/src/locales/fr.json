@@ -221,6 +221,25 @@
     "branchConfirm": "Générer la réponse"
   },
   "studio": {
+    "privacy": {
+      "title": "Confidentialité",
+      "memory": "Mémoire à long terme",
+      "memoryDescription": "Une fois activés, Chat et Work peuvent enregistrer et rappeler des informations entre les conversations. Les entrées existantes restent accessibles après désactivation jusqu’à leur suppression.",
+      "enableMemory": "Activer la mémoire à long terme",
+      "memoryUnavailable": "Le site a désactivé la mémoire à long terme.",
+      "deleteMemory": "Supprimer ce souvenir",
+      "clearMemory": "Effacer toute la mémoire",
+      "noMemory": "Aucun souvenir enregistré.",
+      "data": "Données personnelles",
+      "export": "Télécharger mes données (ZIP)",
+      "retention": "Les conversations supprimées restent accessibles pendant 15 jours aux personnes chargées de vérifier les abus. Les données de paiement peuvent être conservées séparément.",
+      "deleteAccount": "Supprimer le compte",
+      "confirmAccount": "Votre compte et vos clés API seront désactivés immédiatement. Les personnes autorisées peuvent examiner le texte supprimé pendant 15 jours. Téléchargez vos données avant de continuer.",
+      "confirmMemory": "Supprimer la mémoire enregistrée ?",
+      "memoryPermanent": "Les souvenirs supprimés ne peuvent pas être restaurés.",
+      "confirmDelete": "Confirmer la suppression",
+      "retentionChat": "Les personnes autorisées peuvent examiner la conversation supprimée pendant 15 jours pour vérifier les abus."
+    },
     "home": {
       "tagline": "Un espace de travail centré sur l'utilisation, la création et la réutilisation de l'IA.",
       "open": "Disponible",

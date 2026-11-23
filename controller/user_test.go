@@ -25,7 +25,7 @@ func setupDeleteUserTest(t *testing.T) *gorm.DB {
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.ChatSession{}, &model.AgentRun{}, &model.ImageGeneration{}))
 	model.DB, model.LOG_DB = db, db
 	t.Cleanup(func() {
 		model.DB, model.LOG_DB = previousDB, previousLogDB
@@ -51,6 +51,7 @@ func callDeleteUser(t *testing.T, id string) map[string]any {
 // delete used to report success:true, and a successful one returned no body at
 // all, so clients could never tell whether the deletion happened.
 func TestDeleteUserReportsSuccessAndFailure(t *testing.T) {
+	t.Chdir(t.TempDir())
 	db := setupDeleteUserTest(t)
 	require.NoError(t, db.Create(&model.User{Id: 5, Username: "victim", Password: "password123", Role: model.RoleCommonUser, Status: model.UserStatusEnabled}).Error)
 

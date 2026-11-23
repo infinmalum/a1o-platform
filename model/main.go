@@ -166,7 +166,7 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Token{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&User{}); err != nil {
+	if err = DB.AutoMigrate(&User{}, &PrivacyReviewAccess{}); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&Option{}); err != nil {

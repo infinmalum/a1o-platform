@@ -1,4 +1,26 @@
 {
+  "privacyReview": {
+    "title": "Chat abuse review",
+    "description": "Review deleted chat text within the 15-day retention window. Opening each page requires a reason and is logged.",
+    "queue": "Retained chats",
+    "audit": "Access log",
+    "failed": "The review request failed.",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "session": "Conversation ID",
+    "user": "User",
+    "reviewer": "Reviewer ID",
+    "until": "Available until",
+    "viewed": "Viewed at",
+    "action": "Review",
+    "reason": "Review reason",
+    "open": "Open messages",
+    "close": "Close",
+    "empty": "No records to display.",
+    "next": "Next page",
+    "first": "First page",
+    "assistant": "Assistant"
+  },
   "header": {
     "channel": "Channel",
     "upstreamAccount": "Upstream Accounts",

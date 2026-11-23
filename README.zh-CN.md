@@ -28,7 +28,7 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 - 🤖 **内置 chat 运行时** —— Chat 和 Work 共用 [Lapua](https://github.com/infinmalum/Lapua) 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
 - 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
 - 🖥️ **双前端** —— `/` 的 Studio 提供聊天与多协议 Playground、后台任务、智能体广场、私有资料库，以及图像、视频和音频工具。`/admin/` 的控制台管理渠道、上游账号、用户、令牌、日志和设置。
-- 💾 **灵活存储** —— 开箱即用 SQLite；共享存储支持 MySQL / PostgreSQL；缓存与同步可配合 Redis；支持 master/slave 多节点部署。
+- 💾 **灵活存储** —— Docker Compose 默认使用 PostgreSQL，也支持 SQLite 和 MySQL；缓存与同步可配合 Redis；支持 master/slave 多节点部署。
 - 🛠️ **现代技术栈** —— Go 后端搭配 TypeScript + Vite 前端，每次前端构建都会先做类型检查。
 
 不同渠道对模型和功能的支持并不完全相同。正式使用前，请在渠道设置中确认并测试目标模型。
@@ -43,9 +43,9 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 | **工作区 → 资料库** | 上传私有 UTF-8 TXT 或 Markdown 文件，在对话中选择资料库，并打开回复引用的原文。关键词检索使用现有数据库，无需嵌入模型或向量库。单份文件上限为 256 KiB，每库最多 64 份且总量不超过 2 MiB。 |
 | **图像生成 → 图片／视频** | 通过火山引擎方舟 Seedream、兼容的 Gemini 等已支持模型生成图片，可预览、下载原图，并将图片附到对话或 Work。Seedream 和兼容的 Gemini 图像模型支持 PNG、JPEG 和 WebP 参考图。方舟 Seedance 支持文生视频及可选首帧，输出 720p、5–8 秒视频。Gemini `gemini-omni-1.2-flash` 支持生成 360p、3–8 秒的文生视频。 |
 | **音频** | 使用兼容模型合成语音、转写音频或将语音翻译成英文。可试听、下载生成的音频，也可导出转写文本。 |
-| **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout 或 NOWPayments 购买一次性额度套餐。使用加密货币付款时，选择站长已启用的币种和网络。 |
+| **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout、NOWPayments 或易支付购买一次性额度套餐。使用加密货币付款时，选择站长已启用的币种和网络。 |
 
-站长使用 `ARK_MEDIA_PRICES` 设置方舟模型的额度费率，通过 `PAYMENT_PACKAGES` 定义以美元定价的固定额度套餐。启用加密货币付款时，需配置网关凭据，并通过 `NOWPAYMENTS_PAY_CURRENCIES` 启用一种或多种选项。例如 `usdtsol,usdcmatic,btc` 对应 Solana 上的 USDT、Polygon 上的 USDC 和比特币主网的 BTC。配置步骤、网关最低金额和完整的币种与网络组合见[媒体与支付部署指南](docs/media-and-payments.md)。
+站长使用 `ARK_MEDIA_PRICES` 设置方舟模型的额度费率，通过 `PAYMENT_PACKAGES` 配置固定额度套餐。Stripe 和 NOWPayments 使用美元美分，易支付的人民币价格用分单独设置。启用加密货币付款时，需配置网关凭据，并通过 `NOWPAYMENTS_PAY_CURRENCIES` 启用一种或多种选项。例如 `usdtsol,usdcmatic,btc` 对应 Solana 上的 USDT、Polygon 上的 USDC 和比特币主网的 BTC。配置步骤、网关最低金额和完整的币种与网络组合见[媒体与支付部署指南](docs/media-and-payments.md)。
 
 Studio 顶栏提供 10 种界面语言，阿拉伯语和波斯语支持从右到左布局。管理控制台独立保存中英文偏好。
 
@@ -53,18 +53,22 @@ Studio 顶栏提供 10 种界面语言，阿拉伯语和波斯语支持从右到
 
 ## 使用 Docker 快速启动
 
-在本仓库根目录构建本项目的镜像：
+新部署请在已安装 Docker Compose 和 OpenSSL 的环境中运行以下命令。
 
 ```sh
 git clone https://github.com/infinmalum/a1o-platform.git
 cd a1o-platform
-docker build -t a1o-platform:local .
-docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
+umask 077
+cp .env.example .env
+printf 'POSTGRES_PASSWORD=%s\nSESSION_SECRET=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
+docker compose up -d
 ```
 
 首次启动后打开 <http://localhost:3000/admin/setup> 创建 root 账号。无人值守部署时，可在首次启动前给容器传入 `INITIAL_ROOT_PASSWORD`。初始化后，从 <http://localhost:3000/> 打开 Studio，从 <http://localhost:3000/admin/> 打开管理控制台。更换容器时保留数据卷。对外提供服务时，配置 HTTPS 和固定的 `SESSION_SECRET`。
 
-仓库的 `docker-compose.yml` 会在本地构建本项目，镜像标记为 `a1o-platform:local`，数据库与数据目录均使用 `a1o-platform` 命名。如果你沿用了早期继承 `one-api` 命名的 compose 文件，切换前需要先迁移数据库和 `data/` 目录。
+默认 Compose 部署使用 PostgreSQL，数据保存在 `./data/postgres`。如需 SQLite 或连接已有 PostgreSQL、MySQL，使用 `docker compose -f docker-compose.external.yml up -d`，外部数据库通过 `SQL_DSN` 配置。Redis 可选。
+
+升级原来内置 MySQL 的站点时，保留原项目目录与凭据，并运行 `docker compose -f docker-compose.mysql.yml up -d`。已有站点改用其他数据库前，先备份、迁移并验证原有数据。切换和回退步骤见[数据库部署指南](docs/database-deployment.md)。
 
 ## 从源码构建
 
@@ -124,6 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## 文档
 
 - [前端开发说明](web/README.md)
+- [账号隐私、长期记忆和已删除聊天审查](docs/privacy.md)
 
 ## 开发
 

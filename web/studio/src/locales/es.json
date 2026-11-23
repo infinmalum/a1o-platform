@@ -221,6 +221,25 @@
     "branchConfirm": "Generar respuesta"
   },
   "studio": {
+    "privacy": {
+      "title": "Privacidad",
+      "memory": "Memoria a largo plazo",
+      "memoryDescription": "Al activarla, Chat y Work pueden guardar y consultar datos entre conversaciones. Al desactivarla, las entradas existentes se conservan hasta que las elimines.",
+      "enableMemory": "Activar la memoria a largo plazo",
+      "memoryUnavailable": "El sitio ha desactivado la memoria a largo plazo.",
+      "deleteMemory": "Eliminar este recuerdo",
+      "clearMemory": "Borrar toda la memoria",
+      "noMemory": "No hay recuerdos guardados.",
+      "data": "Datos personales",
+      "export": "Descargar mis datos (ZIP)",
+      "retention": "El personal autorizado puede revisar las conversaciones eliminadas durante 15 días para investigar abusos. Los registros de pago pueden conservarse por separado.",
+      "deleteAccount": "Eliminar cuenta",
+      "confirmAccount": "Tu cuenta y tus claves de API se desactivarán de inmediato. El personal autorizado puede revisar el texto eliminado durante 15 días. Descarga tus datos antes de continuar.",
+      "confirmMemory": "¿Eliminar la memoria guardada?",
+      "memoryPermanent": "Los recuerdos eliminados no se pueden recuperar.",
+      "confirmDelete": "Confirmar eliminación",
+      "retentionChat": "El personal autorizado puede revisar la conversación eliminada durante 15 días para investigar abusos."
+    },
     "home": {
       "tagline": "Un espacio de trabajo para usar, crear y reutilizar IA.",
       "open": "Disponible",

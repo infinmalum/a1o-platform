@@ -1,59 +1,26 @@
-version: '3.4'
-
 services:
   a1o-platform:
-    build: .
-    image: a1o-platform:local
-    container_name: a1o-platform
-    restart: always
-    command: --log-dir /app/logs
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./data/a1o-platform:/data
-      - ./logs:/app/logs
+    extends:
+      file: docker-compose.external.yml
+      service: a1o-platform
     environment:
-      - SQL_DSN=a1o:${MYSQL_PASSWORD:-a1o}@tcp(db:3306)/a1o-platform  # 修改此行，或注释掉以使用 SQLite 作为数据库
-      - REDIS_CONN_STRING=redis://redis
-      - SESSION_SECRET=random_string  # 修改为随机字符串
-      - TZ=Asia/Shanghai
-      - ARK_MEDIA_PRICES=${ARK_MEDIA_PRICES:-}
-      - PAYMENT_PUBLIC_URL=${PAYMENT_PUBLIC_URL:-}
-      - PAYMENT_PACKAGES=${PAYMENT_PACKAGES:-}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
-      - NOWPAYMENTS_API_KEY=${NOWPAYMENTS_API_KEY:-}
-      - NOWPAYMENTS_IPN_SECRET=${NOWPAYMENTS_IPN_SECRET:-}
-      - NOWPAYMENTS_PAY_CURRENCIES=${NOWPAYMENTS_PAY_CURRENCIES:-}
-#      - INITIAL_ROOT_PASSWORD=change-me  # 不设置时首次打开控制台会进入 /setup 向导创建管理员；无头部署必须设置该变量
-#      - NODE_TYPE=slave  # 多机部署时从节点取消注释该行
-#      - SYNC_FREQUENCY=60  # 需要定期从数据库加载数据时取消注释该行
-#      - FRONTEND_BASE_URL=https://your-domain.com  # 多机部署时从节点取消注释该行
+      SQL_DSN: postgres://a1o@postgres:5432/a1o_platform?sslmode=disable
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting bundled PostgreSQL}
     depends_on:
-      - redis
-      - db
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' | awk -F: '{print $2}'" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      postgres:
+        condition: service_healthy
 
-  redis:
-    image: "${REGISTRY:-docker.io}/redis:latest"
-    container_name: redis
+  postgres:
+    image: ${REGISTRY:-docker.io}/postgres:17-alpine
     restart: always
-
-  db:
-    image: "${REGISTRY:-docker.io}/mysql:8.2.0"
-    restart: always
-    container_name: mysql
-    volumes:
-      - ./data/mysql:/var/lib/mysql  # 挂载目录，持久化存储
-    ports:
-      - '3306:3306'
     environment:
-      TZ: Asia/Shanghai   # 设置时区
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-a1o_root} # 设置 root 用户的密码，生产环境务必通过环境变量覆盖
-      MYSQL_USER: a1o   # 创建专用用户
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-a1o}    # 专用用户密码，需与上方 SQL_DSN 一致
-      MYSQL_DATABASE: a1o-platform   # 自动创建数据库
+      POSTGRES_USER: a1o
+      POSTGRES_DB: a1o_platform
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting bundled PostgreSQL}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "a1o", "-d", "a1o_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 12

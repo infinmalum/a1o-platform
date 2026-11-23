@@ -32,9 +32,17 @@ func CreditPaymentOrder(ctx context.Context, order PaymentOrder, providerID stri
 	}
 	var credited bool
 	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		update := tx.Model(&PaymentOrder{}).
-			Where("id = ? AND provider = ? AND provider_id = ? AND credited_at = 0", order.ID, order.Provider, providerID).
-			Updates(map[string]any{"credited_at": helper.GetTimestamp(), "state": "credited", "checkout_url": ""})
+		query := tx.Model(&PaymentOrder{}).
+			Where("id = ? AND provider = ? AND credited_at = 0", order.ID, order.Provider)
+		updates := map[string]any{"credited_at": helper.GetTimestamp(), "state": "credited", "checkout_url": ""}
+		if order.ProviderID == nil {
+			// Hosted checkouts can receive the gateway's trade ID for the first time at settlement.
+			query = query.Where("provider_id IS NULL AND checkout_url <> ''")
+			updates["provider_id"] = providerID
+		} else {
+			query = query.Where("provider_id = ?", providerID)
+		}
+		update := query.Updates(updates)
 		if update.Error != nil || update.RowsAffected == 0 {
 			return update.Error
 		}

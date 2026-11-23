@@ -815,6 +815,7 @@ const Chat = () => {
         <DialogContent className='sm:max-w-sm'>
           <DialogHeader>
             <DialogTitle>{t('chat.deleteConfirm')}</DialogTitle>
+            <DialogDescription>{t('studio.privacy.retentionChat')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant='outline' onClick={() => setDeleteTarget(null)}>

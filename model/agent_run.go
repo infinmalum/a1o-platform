@@ -187,6 +187,11 @@ func GetAgentRun(id, userId int) (*AgentRun, error) {
 	if err := DB.Where("id = ? AND user_id = ?", id, userId).First(&run).Error; err != nil {
 		return nil, err
 	}
+	if run.SessionId > 0 {
+		if _, err := GetChatSessionById(run.SessionId, userId); err != nil {
+			return nil, err
+		}
+	}
 	return &run, nil
 }
 
@@ -322,7 +327,9 @@ func GetRecentAgentRuns(userId int, limit int) ([]AgentRun, error) {
 
 func GetRecentAgentRunsPage(userId int, page ListPage) ([]AgentRun, error) {
 	var runs []AgentRun
-	err := page.Apply(DB.Where("user_id = ?", userId).Order("id desc")).Find(&runs).Error
+	sessions := DB.Model(&ChatSession{}).Select("id").Where("user_id = ? AND privacy_purge_at = 0", userId)
+	query := DB.Where("user_id = ? AND (COALESCE(session_id, 0) = 0 OR session_id IN (?))", userId, sessions)
+	err := page.Apply(query.Order("id desc")).Find(&runs).Error
 	return runs, err
 }
 
@@ -349,7 +356,7 @@ func GetChatSessionTitles(userId int, ids []int) (map[int]string, error) {
 		return titles, nil
 	}
 	var sessions []ChatSession
-	if err := DB.Select("id, title").Where("user_id = ? AND id IN ?", userId, ids).
+	if err := DB.Select("id, title").Where("user_id = ? AND privacy_purge_at = 0 AND id IN ?", userId, ids).
 		Find(&sessions).Error; err != nil {
 		return nil, err
 	}

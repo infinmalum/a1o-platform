@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -58,6 +59,7 @@ type ChatSession struct {
 	CompactedThrough   int    `json:"compacted_through"`
 	CreatedTime        int64  `json:"created_time" gorm:"bigint"`
 	UpdatedTime        int64  `json:"updated_time" gorm:"bigint"`
+	PrivacyPurgeAt     int64  `json:"-" gorm:"not null;default:0;index"`
 }
 
 type ChatMessage struct {
@@ -242,7 +244,7 @@ func GetChatSessionById(id int, userId int) (*ChatSession, error) {
 		return nil, errors.New("会话不存在")
 	}
 	var session ChatSession
-	err := DB.First(&session, "id = ? and user_id = ?", id, userId).Error
+	err := DB.First(&session, "id = ? AND user_id = ? AND privacy_purge_at = 0", id, userId).Error
 	if err != nil {
 		return nil, errors.New("会话不存在")
 	}
@@ -251,7 +253,7 @@ func GetChatSessionById(id int, userId int) (*ChatSession, error) {
 
 func GetUserChatSessions(userId int) ([]*ChatSession, error) {
 	var sessions []*ChatSession
-	err := DB.Where("user_id = ?", userId).Order("updated_time desc").Find(&sessions).Error
+	err := DB.Where("user_id = ? AND privacy_purge_at = 0", userId).Order("updated_time desc").Find(&sessions).Error
 	return sessions, err
 }
 
@@ -263,16 +265,12 @@ func UpdateChatSession(session *ChatSession) error {
 }
 
 func DeleteChatSession(id int, userId int) error {
-	session, err := GetChatSessionById(id, userId)
-	if err != nil {
-		return err
+	result := DB.Model(&ChatSession{}).Where("id = ? AND user_id = ? AND privacy_purge_at = 0", id, userId).
+		Update("privacy_purge_at", privacyDeadline(time.Now()))
+	if result.Error == nil && result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("session_id = ?", session.Id).Delete(&ChatMessage{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(session).Error
-	})
+	return result.Error
 }
 
 func InsertChatMessage(message *ChatMessage) error {

@@ -28,7 +28,7 @@ A1O Platform is an independently maintained AI gateway, originally derived from 
 - 🤖 **Built-in chat runtime** — a [Lapua](https://github.com/infinmalum/Lapua) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
 - 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
 - 🖥️ **Web apps** — Studio at `/` includes Chat with a multi-protocol Playground, background Work tasks, an agent library, private document libraries, and image, video, and audio tools. The console at `/admin/` manages channels, upstream accounts, users, tokens, logs, and settings.
-- 💾 **Flexible storage** — SQLite out of the box; MySQL or PostgreSQL for shared storage; Redis for caching and synchronization; master/slave multi-node deployments.
+- 💾 **Flexible storage** — PostgreSQL by default in Docker Compose; SQLite and MySQL are also supported; Redis for caching and synchronization; master/slave multi-node deployments.
 - 🛠️ **Modern stack** — a Go backend with TypeScript and Vite frontends; every frontend build runs its type check first.
 
 Provider and model support varies by channel implementation. Check the channel settings and test a model before relying on it in production.
@@ -43,9 +43,9 @@ Configure a provider channel and enable the model for your group in the admin co
 | **Workspace → Knowledge libraries** | Upload private UTF-8 TXT or Markdown files, select a library in Chat, and open cited passages from replies. Keyword search runs against the existing database without embeddings or a vector store. Each library holds up to 64 documents and 2 MiB total, with a 256 KiB limit per document. |
 | **Image generation → Image / Video** | Generate images with supported models, including Volcengine Ark Seedream and compatible Gemini models. Preview or download originals and attach images to Chat or Work. Seedream and compatible Gemini image models accept PNG, JPEG, and WebP references. Seedance on Ark generates 720p clips of 5–8 seconds from text with an optional first frame. Gemini `gemini-omni-1.2-flash` generates 360p text-to-video clips of 3–8 seconds. |
 | **Audio** | Select a compatible model to generate speech, transcribe an audio file, or translate speech into English. Play and download generated audio or export the transcript. |
-| **Account → Redeem** | Redeem a code or buy a one-time quota package through Stripe Checkout or NOWPayments when enabled. For crypto, select a currency and network enabled by the site operator. |
+| **Account → Redeem** | Redeem a code or buy a one-time quota package through Stripe Checkout, NOWPayments, or EPay when enabled. For crypto, select a currency and network enabled by the site operator. |
 
-The operator sets Ark model rates with `ARK_MEDIA_PRICES` and defines fixed-price USD packages with `PAYMENT_PACKAGES`. To offer crypto payments, configure the gateway credentials and explicitly enable one or more options with `NOWPAYMENTS_PAY_CURRENCIES`. For example, `usdtsol,usdcmatic,btc` enables USDT on Solana, USDC on Polygon, and BTC on Bitcoin. The [media and payments guide](docs/media-and-payments.md) covers setup, gateway minimums, and the full list of supported combinations.
+The operator sets Ark model rates with `ARK_MEDIA_PRICES` and defines package prices with `PAYMENT_PACKAGES`. Stripe and NOWPayments use USD cents. EPay uses a separately configured CNY price in fen. To offer crypto payments, configure the gateway credentials and explicitly enable one or more options with `NOWPAYMENTS_PAY_CURRENCIES`. For example, `usdtsol,usdcmatic,btc` enables USDT on Solana, USDC on Polygon, and BTC on Bitcoin. The [media and payments guide](docs/media-and-payments.md) covers setup, gateway minimums, and the full list of supported combinations.
 
 The Studio header lets you choose from ten interface languages, including right-to-left layouts for Arabic and Persian. The admin console has its own Chinese and English preference.
 
@@ -53,18 +53,22 @@ A single instance can use SQLite without running Redis or a vector database. Kee
 
 ## Quick start with Docker
 
-Build the image from the repository root:
+For a new installation, run the following from a shell with Docker Compose and OpenSSL.
 
 ```sh
 git clone https://github.com/infinmalum/a1o-platform.git
 cd a1o-platform
-docker build -t a1o-platform:local .
-docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
+umask 077
+cp .env.example .env
+printf 'POSTGRES_PASSWORD=%s\nSESSION_SECRET=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
+docker compose up -d
 ```
 
 Open <http://localhost:3000/admin/setup> on first launch to create the root account. For unattended setup, pass `INITIAL_ROOT_PASSWORD` to the container before its first start. Once initialized, open Studio at <http://localhost:3000/> or the admin console at <http://localhost:3000/admin/>. Keep the data volume when replacing the container. For a public deployment, configure HTTPS and a persistent `SESSION_SECRET`.
 
-The checked-in `docker-compose.yml` builds the image locally, tags it `a1o-platform:local`, and stores data under `a1o-platform`-named database and volume paths. If you deployed an earlier compose file that used the inherited `one-api` names, migrate your database and `data/` directory before switching.
+The default Compose deployment starts PostgreSQL and stores its data in `./data/postgres`. For SQLite or an existing PostgreSQL or MySQL database, use `docker compose -f docker-compose.external.yml up -d` and set `SQL_DSN` for external databases. Redis is optional.
+
+If upgrading the previous bundled MySQL deployment, keep the same project directory and credentials and run `docker compose -f docker-compose.mysql.yml up -d`. Back up and transfer existing data before changing databases. See the [database deployment guide](docs/database-deployment.md) for the checks and rollback procedure.
 
 ## Build from source
 
@@ -124,6 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## Documentation
 
 - [Frontend development](web/README.md)
+- [Account privacy, memory, and deleted-chat review](docs/privacy.md)
 
 ## Development
 

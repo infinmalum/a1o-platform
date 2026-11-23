@@ -566,7 +566,11 @@ func DeleteUser(c *gin.Context) {
 
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false})
+		return
+	}
 
 	if user.Role == model.RoleRootUser {
 		c.JSON(http.StatusOK, gin.H{
@@ -576,7 +580,7 @@ func DeleteSelf(c *gin.Context) {
 		return
 	}
 
-	err := model.DeleteUserById(id)
+	err = model.DeleteUserById(id)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -584,6 +588,9 @@ func DeleteSelf(c *gin.Context) {
 		})
 		return
 	}
+	session := sessions.Default(c)
+	session.Clear()
+	_ = session.Save()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -663,7 +670,7 @@ func ManageUser(c *gin.Context) {
 	}
 	// Fill attributes
 	model.DB.Where(&user).First(&user)
-	if user.Id == 0 {
+	if user.Id == 0 || user.Status == model.UserStatusDeleted {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "用户不存在",
@@ -705,6 +712,8 @@ func ManageUser(c *gin.Context) {
 			})
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": model.User{Role: user.Role, Status: user.Status}})
+		return
 	case "promote":
 		if myRole != model.RoleRootUser {
 			c.JSON(http.StatusOK, gin.H{

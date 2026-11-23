@@ -1,0 +1,32 @@
+# Standalone Compose file for existing bundled MySQL and Redis deployments.
+services:
+  a1o-platform:
+    extends:
+      file: docker-compose.external.yml
+      service: a1o-platform
+    environment:
+      SQL_DSN: a1o:${MYSQL_PASSWORD:-a1o}@tcp(db:3306)/a1o-platform
+      REDIS_CONN_STRING: redis://redis
+    depends_on:
+      - redis
+      - db
+
+  redis:
+    image: "${REGISTRY:-docker.io}/redis:latest"
+    container_name: redis
+    restart: always
+
+  db:
+    image: "${REGISTRY:-docker.io}/mysql:8.2.0"
+    restart: always
+    container_name: mysql
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    ports:
+      - '3306:3306'
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-a1o_root}
+      MYSQL_USER: a1o
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-a1o}
+      MYSQL_DATABASE: a1o-platform

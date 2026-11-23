@@ -28,7 +28,7 @@ A1O Platform es una pasarela de IA derivada de [One API](https://github.com/song
 - 🤖 **Motor conversacional integrado** — Chat y Work comparten el ciclo de herramientas de [Lapua](https://github.com/infinmalum/Lapua), con sesiones persistentes, ejecución aislada de código Python y Node (límites de recursos con rlimits y aislamiento de red) y servidores de herramientas MCP (Model Context Protocol).
 - 🧮 **Cuotas y facturación** — cuotas por token, registros de uso, códigos de canje, recargas y cálculo del coste de cada solicitud según las tarifas configuradas.
 - 🖥️ **Aplicaciones web** — Studio en `/` incluye Chat con un Playground multiprotocolo, tareas Work en segundo plano, una biblioteca de agentes, bibliotecas privadas de documentos y herramientas de imagen, vídeo y audio. La consola en `/admin/` gestiona canales, cuentas de proveedores, usuarios, tokens, registros y ajustes.
-- 💾 **Almacenamiento flexible** — SQLite por defecto, MySQL o PostgreSQL para el almacenamiento compartido y Redis para la caché y la sincronización. Admite despliegues con un nodo principal y nodos secundarios.
+- 💾 **Almacenamiento flexible** — PostgreSQL por defecto en Docker Compose, con soporte para SQLite y MySQL y Redis para la caché y la sincronización. Admite despliegues con un nodo principal y nodos secundarios.
 - 🛠️ **Tecnologías** — servidor en Go e interfaces en TypeScript con Vite. Cada compilación de las interfaces comienza con una comprobación de tipos.
 
 La disponibilidad de modelos y funciones depende del tipo de canal. Revisa su configuración y prueba el modelo antes de usarlo en producción.
@@ -43,9 +43,9 @@ Configura un canal de proveedor y habilita los modelos para tu grupo en la conso
 | **Espacio de trabajo → Bibliotecas de conocimiento** | Sube archivos privados TXT o Markdown en UTF-8, selecciona una biblioteca en Chat y abre los fragmentos citados. La búsqueda por palabras clave usa la base existente sin embeddings ni base vectorial. Cada archivo admite hasta 256 KiB y cada biblioteca hasta 64 archivos y 2 MiB en total. |
 | **Generación de imágenes → Imagen / Vídeo** | Genera imágenes con modelos compatibles, incluidos Seedream en Volcengine Ark y Gemini. Previsualiza o descarga los originales y adjúntalos a Chat o Work. Seedream y los modelos de imagen Gemini compatibles aceptan referencias PNG, JPEG y WebP. Seedance en Ark genera vídeos de 5 a 8 segundos en 720p a partir de texto, con un primer fotograma opcional. Gemini `gemini-omni-1.2-flash` genera vídeos de 3 a 8 segundos en 360p a partir de texto. |
 | **Audio** | Usa un modelo compatible para sintetizar voz, transcribir audio o traducir voz al inglés. Reproduce y descarga el audio o exporta la transcripción. |
-| **Cuenta → Canjear** | Canjea un código o compra un paquete de cuota de pago único mediante Stripe Checkout o NOWPayments, según los métodos habilitados. Para pagar con criptomonedas, elige una moneda y una red activadas por el administrador del sitio. |
+| **Cuenta → Canjear** | Canjea un código o compra un paquete de cuota de pago único mediante Stripe Checkout, NOWPayments o EPay, según los métodos habilitados. Para pagar con criptomonedas, elige una moneda y una red activadas por el administrador del sitio. |
 
-El administrador fija las tarifas de los modelos de Ark con `ARK_MEDIA_PRICES` y define paquetes de precio fijo en dólares estadounidenses con `PAYMENT_PACKAGES`. Para aceptar criptomonedas, configura las credenciales de la pasarela y habilita una o más opciones con `NOWPAYMENTS_PAY_CURRENCIES`. Por ejemplo, `usdtsol,usdcmatic,btc` habilita USDT en Solana, USDC en Polygon y BTC en Bitcoin. La [guía multimedia y de pagos](docs/media-and-payments.md) incluye la configuración, los importes mínimos de la pasarela y todas las combinaciones admitidas.
+El administrador fija las tarifas de los modelos de Ark con `ARK_MEDIA_PRICES` y define los precios con `PAYMENT_PACKAGES`. Stripe y NOWPayments usan centavos de dólar. EPay usa un precio independiente en fen de yuan. Para aceptar criptomonedas, configura las credenciales de la pasarela y habilita una o más opciones con `NOWPAYMENTS_PAY_CURRENCIES`. Por ejemplo, `usdtsol,usdcmatic,btc` habilita USDT en Solana, USDC en Polygon y BTC en Bitcoin. La [guía multimedia y de pagos](docs/media-and-payments.md) incluye la configuración, los importes mínimos de la pasarela y todas las combinaciones admitidas.
 
 El encabezado de Studio permite elegir entre diez idiomas de interfaz, con escritura de derecha a izquierda para árabe y persa. La consola de administración permite elegir entre chino e inglés de forma independiente.
 
@@ -53,18 +53,22 @@ Una sola instancia puede usar SQLite sin Redis ni una base vectorial. Conserva l
 
 ## Inicio rápido con Docker
 
-Construye la imagen desde la raíz del repositorio.
+Para una instalación nueva, ejecuta estos comandos en un entorno con Docker Compose y OpenSSL.
 
 ```sh
 git clone https://github.com/infinmalum/a1o-platform.git
 cd a1o-platform
-docker build -t a1o-platform:local .
-docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
+umask 077
+cp .env.example .env
+printf 'POSTGRES_PASSWORD=%s\nSESSION_SECRET=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
+docker compose up -d
 ```
 
 En el primer arranque, abre <http://localhost:3000/admin/setup> para crear la cuenta root. Para una instalación desatendida, pasa `INITIAL_ROOT_PASSWORD` al contenedor antes de iniciarlo por primera vez. Tras la inicialización, abre Studio en <http://localhost:3000/> o la consola en <http://localhost:3000/admin/>. Conserva el volumen de datos al sustituir el contenedor. Para un despliegue público, configura HTTPS y un valor persistente de `SESSION_SECRET`.
 
-El archivo `docker-compose.yml` construye la imagen localmente y le asigna la etiqueta `a1o-platform:local`. La base de datos y el directorio de datos de la aplicación usan el nombre `a1o-platform`. Si tu archivo Compose antiguo usa los nombres heredados de `one-api`, migra la base de datos y el directorio `data/` antes de cambiar la configuración.
+El despliegue predeterminado de Compose inicia PostgreSQL y guarda sus datos en `./data/postgres`. Para SQLite o una base PostgreSQL o MySQL existente, ejecuta `docker compose -f docker-compose.external.yml up -d` y configura `SQL_DSN` para una base externa. Redis es opcional.
+
+Para actualizar una instalación anterior con MySQL incluido, conserva el directorio del proyecto y las credenciales y ejecuta `docker compose -f docker-compose.mysql.yml up -d`. Haz una copia de seguridad, transfiere y verifica los datos antes de cambiar de base. Consulta las instrucciones y el procedimiento de reversión en la [guía de bases de datos](docs/database-deployment.md).
 
 ## Compilar desde el código fuente
 
@@ -124,6 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## Documentación
 
 - [Desarrollo de las interfaces web](web/README.md)
+- [Privacidad de la cuenta, memoria y revisión de conversaciones eliminadas](docs/privacy.md)
 
 ## Desarrollo
 

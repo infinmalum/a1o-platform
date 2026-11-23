@@ -6,8 +6,8 @@ import { renderQuota } from '@/helpers/render';
 import { studioRequest as request } from '@/helpers/studioRequest';
 import { accountApi, type UserSelf } from './accountApi';
 
-type Provider = 'stripe' | 'nowpayments';
-type Package = { id: string; name: string; amount: number; quota: number };
+type Provider = 'stripe' | 'nowpayments' | 'epay';
+type Package = { id: string; name: string; amount: number; cny_amount?: number; quota: number };
 type CryptoCurrency = { code: string; label: string };
 type Catalog = { packages: Package[]; providers: Provider[]; nowpayments_currencies: CryptoCurrency[] };
 type Order = {
@@ -15,6 +15,7 @@ type Order = {
   package_name: string;
   provider: Provider;
   amount: number;
+  currency: string;
   quota: number;
   checkout_url?: string;
   credited_at: number;
@@ -26,7 +27,12 @@ type Order = {
 const providerNames: Record<Provider, string> = {
   stripe: 'Stripe',
   nowpayments: 'NOWPayments',
+  epay: '易支付 · EPay',
 };
+
+function packagePrice(pack: Package, provider: Provider) {
+  return provider === 'epay' ? (pack.cny_amount ?? 0) : pack.amount;
+}
 
 export default function PaymentPackages({ onSelfUpdated }: { onSelfUpdated: (self: UserSelf) => void }) {
   const { t, i18n } = useTranslation();
@@ -39,7 +45,11 @@ export default function PaymentPackages({ onSelfUpdated }: { onSelfUpdated: (sel
   const currencies = catalog?.nowpayments_currencies ?? [];
   const currency = currencies.find(({ code }) => code === selectedCurrency) ?? currencies[0];
   const returned = new URLSearchParams(window.location.search).get('payment') === 'return';
-  const formatPrice = new Intl.NumberFormat(i18n.resolvedLanguage, { style: 'currency', currency: 'USD' });
+  const formatPrice = (amount: number, currency: string) =>
+    new Intl.NumberFormat(i18n.resolvedLanguage, { style: 'currency', currency }).format(amount / 100);
+  const purchasable = catalog?.packages.filter((pack) =>
+    catalog.providers.some((provider) => packagePrice(pack, provider) > 0),
+  ) ?? [];
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -100,14 +110,14 @@ export default function PaymentPackages({ onSelfUpdated }: { onSelfUpdated: (sel
   if (loadFailed && !catalog) {
     return <Button variant='outline' onClick={() => void refresh()} disabled={refreshing}>{t('studio.account.payment.retry')}</Button>;
   }
-  if (!catalog || ((!catalog.packages.length || !catalog.providers.length) && !orders.length)) return null;
+  if (!catalog || (!purchasable.length && !orders.length)) return null;
 
   return (
     <Card>
       <CardHeader><CardTitle>{t('studio.account.payment.title')}</CardTitle></CardHeader>
       <CardContent className='space-y-4'>
         {returned && <p className='text-sm text-muted-foreground' role='status'>{t('studio.account.payment.returned')}</p>}
-        {catalog.packages.length > 0 && currencies.length > 1 && (
+        {purchasable.some((pack) => pack.amount > 0) && currencies.length > 1 && (
           <label className='flex w-fit flex-col gap-1.5 text-sm font-medium'>
             {t('studio.account.payment.cryptoCurrency')}
             <select
@@ -120,18 +130,21 @@ export default function PaymentPackages({ onSelfUpdated }: { onSelfUpdated: (sel
             </select>
           </label>
         )}
-        {!!catalog.providers.length && (
+        {purchasable.length > 0 && (
           <ul className='grid gap-3 sm:grid-cols-2'>
-            {catalog.packages.map((pack) => (
+            {purchasable.map((pack) => (
               <li key={pack.id} className='space-y-2 rounded-md border p-3'>
                 <h3 className='font-medium'>{pack.name}</h3>
-                <p className='text-sm'>{formatPrice.format(pack.amount / 100)} · {renderQuota(pack.quota, t)}</p>
+                <p className='text-sm'>{renderQuota(pack.quota, t)}</p>
                 <div className='flex flex-wrap gap-2'>
-                  {catalog.providers.map((provider) => (
+                  {catalog.providers.filter((provider) => packagePrice(pack, provider) > 0).map((provider) => (
                     <Button key={provider} size='sm' variant='outline'
                       disabled={busy !== null || (provider === 'nowpayments' && !currency)}
                       onClick={() => void buy(pack, provider)}>
                       {busy === pack.id + ':' + provider ? t('studio.account.payment.opening') : providerNames[provider]}
+                      {busy !== pack.id + ':' + provider && (
+                        <bdi>· {formatPrice(packagePrice(pack, provider), provider === 'epay' ? 'CNY' : 'USD')}</bdi>
+                      )}
                       {provider === 'nowpayments' && busy !== pack.id + ':' + provider && currency && (
                         <span dir='ltr'>· {currency.label}</span>
                       )}
@@ -156,7 +169,7 @@ export default function PaymentPackages({ onSelfUpdated }: { onSelfUpdated: (sel
                 <li key={order.id} className='flex flex-wrap justify-between gap-2 py-2 text-sm'>
                   <div>
                     <div>
-                      {order.package_name} · {formatPrice.format(order.amount / 100)} · {providerNames[order.provider]}
+                      {order.package_name} · {formatPrice(order.amount, order.currency)} · {providerNames[order.provider]}
                       {order.pay_currency && <bdi> · {order.pay_currency_label ?? order.pay_currency.toUpperCase()}</bdi>}
                     </div>
                     <code className='text-xs text-muted-foreground' dir='ltr'>{order.id}</code>

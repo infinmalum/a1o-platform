@@ -1,0 +1,41 @@
+# Use this file for SQLite or an existing PostgreSQL/MySQL server.
+services:
+  a1o-platform:
+    build: .
+    image: a1o-platform:local
+    container_name: a1o-platform
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data/a1o-platform:/data
+      - ./logs:/app/logs
+    environment:
+      SQL_DSN: ${SQL_DSN:-}
+      SQLITE_PATH: ${SQLITE_PATH:-}
+      LOG_SQL_DSN: ${LOG_SQL_DSN:-}
+      REDIS_CONN_STRING: ${REDIS_CONN_STRING:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      INITIAL_ROOT_PASSWORD: ${INITIAL_ROOT_PASSWORD:-}
+      TZ: Asia/Shanghai
+      ARK_MEDIA_PRICES: ${ARK_MEDIA_PRICES:-}
+      PAYMENT_PUBLIC_URL: ${PAYMENT_PUBLIC_URL:-}
+      PAYMENT_PACKAGES: ${PAYMENT_PACKAGES:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      NOWPAYMENTS_API_KEY: ${NOWPAYMENTS_API_KEY:-}
+      NOWPAYMENTS_IPN_SECRET: ${NOWPAYMENTS_IPN_SECRET:-}
+      NOWPAYMENTS_PAY_CURRENCIES: ${NOWPAYMENTS_PAY_CURRENCIES:-}
+      EPAY_GATEWAY_URL: ${EPAY_GATEWAY_URL:-}
+      EPAY_MERCHANT_ID: ${EPAY_MERCHANT_ID:-}
+      EPAY_MERCHANT_KEY: ${EPAY_MERCHANT_KEY:-}
+      EPAY_PAYMENT_TYPE: ${EPAY_PAYMENT_TYPE:-}
+#      NODE_TYPE: slave
+#      SYNC_FREQUENCY: "60"
+#      FRONTEND_BASE_URL: https://your-domain.com
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' | awk -F: '{print $2}'" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3

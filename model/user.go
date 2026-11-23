@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"gorm.io/gorm"
@@ -50,6 +51,8 @@ type User struct {
 	Group            string `json:"group" gorm:"type:varchar(32);default:'default'"`
 	AffCode          string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	InviterId        int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	MemoryEnabled    bool   `json:"-" gorm:"not null;default:false"`
+	PrivacyPurgeAt   int64  `json:"-" gorm:"not null;default:0;index"`
 }
 
 func GetMaxUserId() int {
@@ -183,7 +186,7 @@ func (user *User) Update(updatePassword bool) error {
 	} else if user.Status == UserStatusEnabled {
 		blacklist.UnbanUser(user.Id)
 	}
-	err = DB.Model(user).Updates(user).Error
+	err = DB.Model(user).Where("status != ?", UserStatusDeleted).Updates(user).Error
 	return err
 }
 
@@ -200,18 +203,19 @@ func (user *User) UpdateProfile(updatePassword bool) error {
 	if updatePassword {
 		columns = append(columns, "password")
 	}
-	return DB.Model(user).Select(columns).Updates(user).Error
+	return DB.Model(user).Where("status != ?", UserStatusDeleted).Select(columns).Updates(user).Error
 }
 
 func (user *User) Delete() error {
-	if user.Id == 0 {
-		return errors.New("id 为空！")
+	if err := markAccountDeleted(context.Background(), user.Id); err != nil {
+		return err
 	}
-	blacklist.BanUser(user.Id)
-	user.Username = fmt.Sprintf("deleted_%s", random.GetUUID())
 	user.Status = UserStatusDeleted
-	err := DB.Model(user).Updates(user).Error
-	return err
+	blacklist.BanUser(user.Id)
+	if err := os.RemoveAll(UserMemoryStore(user.Id).Dir); err != nil {
+		logger.SysError(fmt.Sprintf("privacy cleanup: memory removal for account %d will be retried", user.Id))
+	}
+	return nil
 }
 
 // ValidateAndFill check password & user status

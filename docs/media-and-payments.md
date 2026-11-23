@@ -21,19 +21,20 @@ The worker reserves quota before generation. Confirmed upstream failures release
 ## Online quota packages
 
 1. Set `PAYMENT_PUBLIC_URL` to the public HTTPS origin of Studio, without a path, query string, or fragment.
-2. Set `PAYMENT_PACKAGES` to a JSON array with up to 24 fixed-price packages. Give each package a unique ID, label, price in USD cents, and quota in site units. The minimum configurable price is 50 cents. Gateways can require higher minimums. The example below sells a one-time grant of 7,500,000 site quota units for USD 15.
+2. Set `PAYMENT_PACKAGES` to a JSON array with up to 24 fixed-price packages. Give each package a unique ID, label, at least one price, and quota in site units. Set `amount` in USD cents for Stripe and NOWPayments, and `cny_amount` in Chinese fen for EPay. Enter both prices to offer the same package through all enabled gateways, or omit a price to hide those gateways for that package. The configurable minimums are USD 0.50 and CNY 0.01. Gateways can require higher minimums. This example sells a one-time grant of 7,500,000 site quota units for USD 15 or CNY 99.
 
    ```dotenv
    PAYMENT_PUBLIC_URL=https://studio.example.com
-   PAYMENT_PACKAGES='[{"id":"standard","name":"Standard","amount":1500,"quota":7500000}]'
+   PAYMENT_PACKAGES='[{"id":"standard","name":"Standard","amount":1500,"cny_amount":9900,"quota":7500000}]'
    ```
 
-3. Configure one or both gateways using the settings below, then start the app with the new environment. With Docker Compose, set the variables in the project's environment or Compose `.env` file and run `docker compose up -d a1o-platform` to apply the configuration. For a direct container run, pass the variables when creating the container and retain the existing data mount when replacing it. Use Stripe test credentials on a separate test deployment or database. The NOWPayments adapter uses the production API.
+3. Configure the gateways you want to offer, then start the app with the new environment. With Docker Compose, set the variables in the project's environment or Compose `.env` file. Run `docker compose up -d a1o-platform` for the bundled PostgreSQL deployment, or add the same `-f` option you selected in the [database deployment guide](database-deployment.md) before `up`. For a direct container run, pass the variables when creating the container and retain the existing data mount when replacing it. Use Stripe test credentials on a separate test deployment or database. The NOWPayments adapter uses the production API.
 
    | Gateway | Setup |
    | --- | --- |
    | Stripe | Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Register `POST /api/payments/webhook/stripe` at the public origin for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.expired`. |
    | NOWPayments | Set `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, and `NOWPAYMENTS_PAY_CURRENCIES`. Enable the same payment currencies in the NOWPayments merchant dashboard and check its minimum for each enabled currency and package. Invoices send notifications to `POST /api/payments/webhook/nowpayments` at the public origin. |
+   | EPay (易支付) | Use a 彩虹易支付 V1-compatible gateway. Set `EPAY_GATEWAY_URL` to its HTTPS base URL without `/submit.php`, query, or fragment. Set `EPAY_MERCHANT_ID` and `EPAY_MERCHANT_KEY` from the merchant console. The hosted cashier lets users choose among the channels enabled by your gateway. If your gateway requires a channel or you want to use a single channel, set `EPAY_PAYMENT_TYPE` to its code, such as `alipay` or `wxpay`. |
 
    Set `NOWPAYMENTS_PAY_CURRENCIES` to one code or a comma-separated list. Studio shows the enabled options in this order and selects the first one by default. For example, the setting below enables USDT on Solana, USDC on Polygon, and BTC on Bitcoin.
 
@@ -51,8 +52,10 @@ The worker reserves quota before generation. Confirmed upstream failures release
 
    An unset or empty list disables new NOWPayments checkouts. An unsupported code also disables new NOWPayments checkouts and is reported in the server log when the payment catalog is requested. To keep offering USDT on TRON after upgrading from the single-network version, include `usdttrc20`. Keep the merchant API key and IPN secret configured until open orders settle, even after disabling their payment currency for new orders.
 
-4. Open **Account → Redeem** in Studio. Verify that the correct packages, gateways, and enabled currencies appear. Use a Stripe test payment to check that the order shows as credited and the account gains the configured quota. Replay its notification and verify that the balance stays the same. For each enabled NOWPayments option, select its currency and network and verify the same flow in a controlled merchant checkout before offering it to users.
+4. Open **Account → Redeem** in Studio. Verify the packages, gateways, prices, and enabled currencies. Use a Stripe test payment to check that the order shows as credited and the account gains the configured quota. Replay its notification and verify that the balance stays the same. Repeat those checks in a controlled merchant checkout for each enabled NOWPayments option and EPay channel before offering them to users.
+
+EPay sends signed notifications to `/api/payments/webhook/epay` at the public origin. Allow unauthenticated GET requests to that path through your proxy. The app also accepts URL-encoded POST bodies at the same path. Its app logs omit the EPay notification and return query strings. Configure your reverse proxy to omit them for `/api/payments/webhook/epay` and `/api/payments/return/epay` as well. To stop offering new EPay checkouts, unset `EPAY_GATEWAY_URL`. Keep the same merchant ID and key configured until outstanding notifications have settled.
 
 Each order keeps its original price and quota even if you edit the catalog. NOWPayments orders also keep their original payment currency and network. Orders created before the currency setting was introduced are still verified as USDT on TRON. The gateway's verified notification triggers credit. A successful browser redirect can arrive before the notification. Underpaid or mismatched orders require manual review against the provider's records. Handle refunds and chargebacks in the provider dashboard and reconcile site quota manually. Existing redemption codes and administrator top-ups continue to work. Online packages grant quota once and have no renewal or periodic quota reset.
 
-[Stripe Checkout](https://docs.stripe.com/checkout/fulfillment) · [NOWPayments invoice API](https://nowpayments.zendesk.com/hc/en-us/articles/21345824322717-API-and-endpoint-description) · [NOWPayments supported currencies](https://nowpayments.io/supported-coins)
+[Stripe Checkout](https://docs.stripe.com/checkout/fulfillment) · [NOWPayments invoice API](https://nowpayments.zendesk.com/hc/en-us/articles/21345824322717-API-and-endpoint-description) · [NOWPayments supported currencies](https://nowpayments.io/supported-coins) · [EPay V1 API reference](https://pay.myzfw.com/doc/v1_legacy_api.html)

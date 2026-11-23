@@ -448,6 +448,14 @@ func StreamStudioRunEvents(c *gin.Context) {
 				return
 			}
 		case <-poll.C:
+			enabled, err := model.IsUserEnabled(userId)
+			if err != nil || !enabled {
+				return
+			}
+			fresh, err := model.GetAgentRun(run.Id, userId)
+			if err != nil {
+				return
+			}
 			persisted, err := model.GetRunEventsAfter(run.Id, lastSequence)
 			if err != nil {
 				return
@@ -461,10 +469,6 @@ func StreamStudioRunEvents(c *gin.Context) {
 					return
 				}
 				lastSequence = event.Sequence
-			}
-			fresh, err := model.GetAgentRunById(run.Id)
-			if err != nil {
-				return
 			}
 			if studioRunTerminal(fresh.Status) && len(persisted) == 0 {
 				return

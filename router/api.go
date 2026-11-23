@@ -32,6 +32,9 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/topup", middleware.AdminAuth(), controller.AdminTopUp)
 		apiRouter.POST("/payments/webhook/stripe", controller.StripePaymentWebhook)
 		apiRouter.POST("/payments/webhook/nowpayments", controller.NowPaymentWebhook)
+		apiRouter.GET("/payments/webhook/epay", controller.EPayPaymentWebhook)
+		apiRouter.POST("/payments/webhook/epay", controller.EPayPaymentWebhook)
+		apiRouter.GET("/payments/return/epay", controller.EPayPaymentReturn)
 		apiRouter.GET("/payments/packages", middleware.UserAuth(), controller.ListPaymentPackages)
 		apiRouter.GET("/payments/orders", middleware.UserAuth(), controller.ListPaymentOrders)
 		apiRouter.POST("/payments/orders", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.CreatePaymentOrder)
@@ -49,6 +52,11 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
+				selfRoute.GET("/privacy/memory", controller.GetUserMemory)
+				selfRoute.PUT("/privacy/memory", controller.SetUserMemory)
+				selfRoute.DELETE("/privacy/memory", controller.DeleteUserMemory)
+				selfRoute.DELETE("/privacy/memory/:entry", controller.DeleteUserMemory)
+
 				selfRoute.GET("/token", controller.GenerateAccessToken)
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.POST("/topup", controller.TopUp)
@@ -68,6 +76,11 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 			}
 		}
+		privacyReview := apiRouter.Group("/privacy/review", middleware.RootAuth())
+		privacyReview.GET("/chats", controller.ListRetainedChats)
+		privacyReview.GET("/access", controller.ListPrivacyReviewAccess)
+		privacyReview.POST("/chats/:id", controller.ReviewRetainedChat)
+
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
@@ -216,6 +229,9 @@ func SetApiRouter(router *gin.Engine) {
 			groupRoute.GET("/", controller.GetGroups)
 		}
 	}
+	router.GET("/api/user/privacy/export", middleware.GlobalAPIRateLimit(), middleware.UserAuth(),
+		middleware.CriticalRateLimit(), controller.ExportUserPrivacyData)
+
 	// Already-compressed media uses the same account checks outside API gzip
 	// so browsers can seek through partial MP4 responses.
 	router.GET("/api/studio/images/assets/:id/content",

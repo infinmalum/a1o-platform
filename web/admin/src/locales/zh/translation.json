@@ -1,4 +1,26 @@
 {
+  "privacyReview": {
+    "title": "聊天滥用审查",
+    "description": "可在 15 天留存期内审查已删除的聊天正文。每次打开一页正文都需要填写理由，并记入审查日志。",
+    "queue": "留存会话",
+    "audit": "审查日志",
+    "failed": "审查请求失败。",
+    "retry": "重试",
+    "loading": "加载中…",
+    "session": "会话 ID",
+    "user": "用户",
+    "reviewer": "审查员 ID",
+    "until": "可审查至",
+    "viewed": "查看时间",
+    "action": "审查",
+    "reason": "审查理由",
+    "open": "查看正文",
+    "close": "关闭",
+    "empty": "暂无记录。",
+    "next": "下一页",
+    "first": "首页",
+    "assistant": "助手"
+  },
   "header": {
     "channel": "渠道",
     "upstreamAccount": "订阅账号",

@@ -1,24 +1,36 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/a1o-platform/common/blacklist"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/network"
 	"github.com/infinmalum/a1o-platform/model"
-	"net/http"
-	"strings"
+	"gorm.io/gorm"
 )
 
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
-	username := session.Get("username")
-	role := session.Get("role")
-	id := session.Get("id")
-	status := session.Get("status")
-	if username == nil {
+	id, _ := session.Get("id").(int)
+	var user *model.User
+	if id > 0 {
+		// Cookies can outlive account deletion or an admin role change.
+		var account model.User
+		err := model.DB.WithContext(c.Request.Context()).Select("id", "username", "role", "status").Take(&account, id).Error
+		if err == nil {
+			user = &account
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Authentication unavailable"})
+			return
+		}
+	}
+	if id == 0 {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
 		if accessToken == "" {
@@ -30,36 +42,24 @@ func authHelper(c *gin.Context, minRole int) {
 			c.Abort()
 			return
 		}
-		user := model.ValidateAccessToken(accessToken)
-		if user != nil && user.Username != "" {
-			// Token is valid
-			username = user.Username
-			role = user.Role
-			id = user.Id
-			status = user.Status
-		} else {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无权进行此操作，access token 无效",
-			})
-			c.Abort()
-			return
-		}
+		user = model.ValidateAccessToken(accessToken)
 	}
-	if status.(int) == model.UserStatusDisabled || blacklist.IsUserBanned(id.(int)) {
+
+	if user == nil || user.Status != model.UserStatusEnabled || blacklist.IsUserBanned(user.Id) {
+		if id > 0 {
+			session.Clear()
+			_ = session.Save()
+		}
 		c.Header("X-Studio-Session-Required", "1")
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": "用户已被封禁",
+			"message": "账户不可用",
 			"code":    "studio_account_disabled",
 		})
-		session := sessions.Default(c)
-		session.Clear()
-		_ = session.Save()
 		c.Abort()
 		return
 	}
-	if role.(int) < minRole {
+	if user.Role < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，权限不足",
@@ -67,9 +67,9 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	c.Set("username", username)
-	c.Set("role", role)
-	c.Set("id", id)
+	c.Set("username", user.Username)
+	c.Set("role", user.Role)
+	c.Set("id", user.Id)
 	c.Next()
 }
 
@@ -128,7 +128,7 @@ func TokenAuth() func(c *gin.Context) {
 				return
 			}
 		}
-		userEnabled, err := model.CacheIsUserEnabled(token.UserId)
+		userEnabled, err := model.IsUserEnabled(token.UserId)
 		if err != nil {
 			abortWithMessage(c, http.StatusInternalServerError, err.Error())
 			return

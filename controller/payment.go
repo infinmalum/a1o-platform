@@ -41,10 +41,18 @@ var paymentHTTP = &http.Client{
 }
 
 type quotaPackage struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Amount int64  `json:"amount"`
-	Quota  int64  `json:"quota"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Amount    int64  `json:"amount"`
+	CNYAmount int64  `json:"cny_amount,omitempty"`
+	Quota     int64  `json:"quota"`
+}
+
+func (p quotaPackage) price(provider string) (int64, string) {
+	if provider == epayProvider {
+		return p.CNYAmount, "cny"
+	}
+	return p.Amount, "usd"
 }
 
 type paymentConfig struct {
@@ -52,6 +60,7 @@ type paymentConfig struct {
 	packages                                         []quotaPackage
 	providers                                        []string
 	nowCurrencies                                    []nowCurrencyOption
+	epay                                             epayConfig
 }
 
 type nowCurrencyOption struct {
@@ -116,7 +125,10 @@ func loadPaymentConfig() (paymentConfig, error) {
 	ids := map[string]bool{}
 	for _, pack := range cfg.packages {
 		if !paymentIdentifier.MatchString(pack.ID) || ids[pack.ID] || strings.TrimSpace(pack.Name) == "" ||
-			len(pack.Name) > 100 || pack.Amount < 50 || pack.Amount > 99999999 || pack.Quota < 1 || pack.Quota > 1_000_000_000_000 {
+			len(pack.Name) > 100 || (pack.Amount == 0 && pack.CNYAmount == 0) ||
+			(pack.Amount != 0 && (pack.Amount < 50 || pack.Amount > 99999999)) ||
+			(pack.CNYAmount != 0 && (pack.CNYAmount < 1 || pack.CNYAmount > 99999999)) ||
+			pack.Quota < 1 || pack.Quota > 1_000_000_000_000 {
 			return cfg, fmt.Errorf("invalid payment package %q", pack.ID)
 		}
 		ids[pack.ID] = true
@@ -132,6 +144,10 @@ func loadPaymentConfig() (paymentConfig, error) {
 			cfg.nowCurrencies = options
 			cfg.providers = append(cfg.providers, nowProvider)
 		}
+	}
+	cfg.epay = loadEPayConfig()
+	if cfg.epay.checkoutEnabled() {
+		cfg.providers = append(cfg.providers, epayProvider)
 	}
 	return cfg, nil
 }
@@ -164,7 +180,8 @@ func presentPaymentOrder(order model.PaymentOrder) paymentOrderResponse {
 
 func ListPaymentOrders(c *gin.Context) {
 	rows := []model.PaymentOrder{}
-	if err := model.DB.WithContext(c.Request.Context()).Where("user_id = ? AND provider_id IS NOT NULL", c.GetInt(ctxkey.Id)).
+	if err := model.DB.WithContext(c.Request.Context()).
+		Where("user_id = ? AND (provider_id IS NOT NULL OR (provider = ? AND checkout_url <> ''))", c.GetInt(ctxkey.Id), epayProvider).
 		Order("created_at desc, id desc").Limit(20).Find(&rows).Error; err != nil {
 		paymentError(c, err)
 		return
@@ -199,7 +216,8 @@ func CreatePaymentOrder(c *gin.Context) {
 			break
 		}
 	}
-	if selected.ID == "" || !slices.Contains(cfg.providers, input.Provider) {
+	amount, currency := selected.price(input.Provider)
+	if selected.ID == "" || amount == 0 || !slices.Contains(cfg.providers, input.Provider) {
 		paymentError(c, errors.New("payment package or provider unavailable"))
 		return
 	}
@@ -221,9 +239,18 @@ func CreatePaymentOrder(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 20*time.Second)
 	defer cancel()
 	order := model.PaymentOrder{ID: uuid.NewString(), UserID: c.GetInt(ctxkey.Id),
-		PackageName: selected.Name, Amount: selected.Amount, Currency: "usd",
+		PackageName: selected.Name, Amount: amount, Currency: currency,
 		Quota: selected.Quota, Provider: input.Provider, PayCurrency: payCurrency}
 	db := model.DB.WithContext(ctx)
+	if order.Provider == epayProvider {
+		order.CheckoutURL = cfg.epay.checkout(cfg.site, order)
+		if err := db.Create(&order).Error; err != nil {
+			paymentError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": presentPaymentOrder(order)})
+		return
+	}
 	if err := db.Create(&order).Error; err != nil {
 		paymentError(c, err)
 		return

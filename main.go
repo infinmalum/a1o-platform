@@ -116,6 +116,9 @@ func main() {
 	// Run event logs carry their own retention policy; the loop self-disables
 	// when RUN_EVENT_RETENTION_DAYS is unset or zero.
 	go model.RunEventRetentionLoop()
+	if config.IsMasterNode {
+		go model.PrivacyRetentionLoop()
+	}
 
 	// Image workbench (studio proposal §7): reconcile interrupted
 	// generations, then start the same-process generation workers.

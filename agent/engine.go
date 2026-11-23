@@ -146,7 +146,7 @@ func addLapuaTools(ctx context.Context, set *toolSet, userId int) {
 	if hasImageModel(ctx, userId) {
 		set.add(generateImageToolDef(), imageGenExec(userId))
 	}
-	addMemoryTools(set, userId)
+	addMemoryTools(ctx, set, userId)
 }
 
 // hasImageModel probes the user's group for an image-capable model. A cache

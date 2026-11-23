@@ -28,7 +28,7 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 - 🤖 **内蔵チャットランタイム** — Chat と Work で [Lapua](https://github.com/infinmalum/Lapua) のツールループを共有。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
 - 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
 - 🖥️ **Web アプリ** — `/` の Studio でマルチプロトコル Playground 付きチャット、バックグラウンドタスク、エージェント、非公開の資料ライブラリ、画像・動画・音声ツールを利用できます。`/admin/` の管理コンソールではチャネル、上流アカウント、ユーザー、トークン、ログ、設定を管理します。
-- 💾 **柔軟なストレージ** — 初期状態で SQLite、共有ストレージに MySQL / PostgreSQL、キャッシュと同期には Redis を利用可能。master/slave のマルチノード構成にも対応。
+- 💾 **柔軟なストレージ** — Docker Compose の既定は PostgreSQL。SQLite と MySQL にも対応、キャッシュと同期には Redis を利用可能。master/slave のマルチノード構成にも対応。
 - 🛠️ **モダンな技術スタック** — Go バックエンドと TypeScript + Vite フロントエンド。フロントエンドのビルド前には必ず型チェックを実行。
 
 対応モデルと機能はチャネルの実装によって異なります。本番運用前に設定画面で確認し、対象モデルをテストしてください。
@@ -43,9 +43,9 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 | **Workspace → Knowledge libraries** | 非公開の UTF-8 TXT や Markdown をアップロードし、Chat でライブラリを選択して、回答に引用された箇所を開けます。既存のデータベースでキーワード検索を行うため、埋め込みやベクトルデータベースは不要です。1 ファイルあたり 256 KiB、1 ライブラリあたり 64 ファイルかつ合計 2 MiB までです。 |
 | **画像生成 → 画像／動画** | Volcengine Ark Seedream や対応する Gemini モデルなどで画像を生成し、プレビュー、原本のダウンロード、Chat や Work への添付ができます。Seedream と対応する Gemini 画像モデルでは PNG、JPEG、WebP の参照画像を指定できます。Ark の Seedance ではテキストから 720p、5～8 秒の動画を生成でき、先頭フレームも指定できます。Gemini の `gemini-omni-1.2-flash` はテキストから 360p、3～8 秒の動画を生成します。 |
 | **音声** | 対応モデルで読み上げ音声の生成、文字起こし、音声から英語への翻訳が可能です。生成音声の再生とダウンロード、文字起こしのテキスト出力に対応します。 |
-| **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout または NOWPayments で買い切りの利用枠を購入できます。暗号資産で支払う場合は、サイト運営者が有効にした通貨とネットワークを選びます。 |
+| **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout、NOWPayments、または EPay で買い切りの利用枠を購入できます。暗号資産で支払う場合は、サイト運営者が有効にした通貨とネットワークを選びます。 |
 
-運営者は `ARK_MEDIA_PRICES` で Ark モデルの利用単価を設定し、`PAYMENT_PACKAGES` で米ドル建ての定額パッケージを定義します。暗号資産決済を提供するには、決済サービスの認証情報を設定し、`NOWPAYMENTS_PAY_CURRENCIES` で 1 つ以上の選択肢を有効にします。たとえば `usdtsol,usdcmatic,btc` は Solana の USDT、Polygon の USDC、Bitcoin の BTC です。設定手順、最低決済額、対応する組み合わせの一覧は[メディアと決済の運用ガイド](docs/media-and-payments.md)を参照してください。
+運営者は `ARK_MEDIA_PRICES` で Ark モデルの利用単価を設定し、`PAYMENT_PACKAGES` でパッケージの価格を定義します。Stripe と NOWPayments には米ドルのセント、EPay には別途、中国人民元の分で価格を設定します。暗号資産決済を提供するには、決済サービスの認証情報を設定し、`NOWPAYMENTS_PAY_CURRENCIES` で 1 つ以上の選択肢を有効にします。たとえば `usdtsol,usdcmatic,btc` は Solana の USDT、Polygon の USDC、Bitcoin の BTC です。設定手順、最低決済額、対応する組み合わせの一覧は[メディアと決済の運用ガイド](docs/media-and-payments.md)を参照してください。
 
 Studio のヘッダーで 10 種類の表示言語を選択できます。アラビア語とペルシア語では右から左に表示します。管理コンソールでは中国語または英語を別に設定できます。
 
@@ -53,18 +53,22 @@ Studio のヘッダーで 10 種類の表示言語を選択できます。アラ
 
 ## Docker ですぐに起動する
 
-リポジトリのルートでイメージをビルドします。
+新規セットアップは、Docker Compose と OpenSSL を利用できる環境で実行します。
 
 ```sh
 git clone https://github.com/infinmalum/a1o-platform.git
 cd a1o-platform
-docker build -t a1o-platform:local .
-docker run -d --name a1o-platform --restart unless-stopped -p 3000:3000 -v "$(pwd)/data:/data" a1o-platform:local
+umask 077
+cp .env.example .env
+printf 'POSTGRES_PASSWORD=%s\nSESSION_SECRET=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
+docker compose up -d
 ```
 
 初回起動後に <http://localhost:3000/admin/setup> を開き、root アカウントを作成します。無人セットアップでは、コンテナの初回起動前に `INITIAL_ROOT_PASSWORD` を渡します。初期化後は <http://localhost:3000/> で Studio、<http://localhost:3000/admin/> で管理コンソールを開けます。コンテナを交換するときはデータボリュームを維持してください。公開環境では HTTPS と固定の `SESSION_SECRET` を設定します。
 
-同梱の `docker-compose.yml` はイメージをローカルでビルドし、`a1o-platform:local` タグを付けます。データベース名とデータの保存先は `a1o-platform` 系の名前に統一されています。以前の `one-api` 系の名前を使う compose ファイルで運用している場合は、切り替え前にデータベースと `data/` ディレクトリを移行してください。
+既定の Compose デプロイは PostgreSQL を起動し、データを `./data/postgres` に保存します。SQLite または既存の PostgreSQL / MySQL を利用するには `docker compose -f docker-compose.external.yml up -d` を使用し、外部データベースには `SQL_DSN` を設定します。Redis は任意です。
+
+以前の同梱 MySQL を使う環境を更新する場合は、既存のプロジェクトディレクトリと認証情報を保持し、`docker compose -f docker-compose.mysql.yml up -d` を実行します。データベースを切り替える前に、既存データのバックアップ、移行、検証を行います。手順と切り戻しは[データベース運用ガイド](docs/database-deployment.md)を参照してください。
 
 ## ソースからビルドする
 
@@ -124,6 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## ドキュメント
 
 - [フロントエンド開発](web/README.md)
+- [アカウントのプライバシー、長期メモリ、削除済みチャットの確認](docs/privacy.md)
 
 ## 開発
 
