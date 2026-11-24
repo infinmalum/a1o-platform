@@ -8,6 +8,9 @@ import { changeStudioLanguage, LANGUAGES } from '@/i18n';
 export default function LanguageSwitcher() {
   const { i18n, t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const supported = i18n.options.supportedLngs;
+  const languages = LANGUAGES.filter(({ code }) => supported && supported.includes(code));
+  if (languages.length < 2) return null;
 
   const handleChange = async (code: string) => {
     setLoading(true);
@@ -27,7 +30,7 @@ export default function LanguageSwitcher() {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {LANGUAGES.map(({ code, label }) => (
+        {languages.map(({ code, label }) => (
           <SelectItem key={code} value={code}>
             <bdi lang={code}>{label}</bdi>
           </SelectItem>

@@ -6,7 +6,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { API } from './helpers/api';
 import { getLogo, getSystemName, isAdmin, showError } from './helpers/utils';
 import { clearUser, storeUser, useUser, type StudioUser } from './context/User';
-import { cachedStudioStatus, type StudioStatus } from './helpers/studioStatus';
+import type { StudioStatus } from './helpers/studioStatus';
 import { expireSession } from './helpers/session';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -44,33 +44,13 @@ function PrivateRoute({ children, session, retry }: {
   return user ? <>{children}</> : <Navigate to='/login' state={{ from: location }} replace />;
 }
 
-const App: React.FC = () => {
+const App: React.FC<{ status: StudioStatus | null }> = ({ status }) => {
   const { t } = useTranslation();
   const { user } = useUser();
   const navigate = useNavigate();
-  const [status, setStatus] = useState(cachedStudioStatus);
   const [session, setSession] = useState<'checking' | 'ready' | 'error'>('checking');
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const retry = () => { setSession('checking'); setSessionAttempt((current) => current + 1); };
-
-  useEffect(() => {
-    const request = new AbortController();
-    API.get('/api/status', { signal: request.signal })
-      .then(({ data: payload }) => {
-        const data = payload?.data as StudioStatus | undefined;
-        if (!payload?.success || !data) return;
-        localStorage.setItem('status', JSON.stringify(data));
-        if (data.system_name) localStorage.setItem('system_name', data.system_name);
-        if (data.logo) localStorage.setItem('logo', data.logo);
-        if (data.quota_per_unit !== undefined) localStorage.setItem('quota_per_unit', String(data.quota_per_unit));
-        if (data.display_in_currency !== undefined) localStorage.setItem('display_in_currency', String(data.display_in_currency));
-        document.title = getSystemName();
-        const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-        if (link && data.logo) link.href = data.logo;
-        setStatus(data);
-      }).catch(() => undefined);
-    return () => request.abort();
-  }, []);
 
   useEffect(() => {
     const request = new AbortController();

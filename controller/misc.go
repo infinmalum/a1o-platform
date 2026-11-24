@@ -20,6 +20,7 @@ func GetStatus(c *gin.Context) {
 	// wizard; a failed lookup reports uninitialized, and the setup endpoint
 	// re-checks before it would do anything.
 	initialized, _ := model.HasAnyUser()
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -39,6 +40,7 @@ func GetStatus(c *gin.Context) {
 			"turnstile_site_key":          config.TurnstileSiteKey,
 			"top_up_link":                 config.TopUpLink,
 			"chat_link":                   config.ChatLink,
+			"studio_languages":            model.StudioLanguages(),
 			"quota_per_unit":              config.QuotaPerUnit,
 			"display_in_currency":         config.DisplayInCurrencyEnabled,
 			"oidc":                        config.OidcEnabled,

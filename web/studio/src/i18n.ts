@@ -2,6 +2,7 @@ import i18n, { type BackendModule } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import zhTranslation from './locales/zh.json';
+import type { StudioStatus } from './helpers/studioStatus';
 
 export const LANGUAGES = [
   { code: 'zh', label: '中文' },
@@ -37,6 +38,7 @@ const localeBackend: BackendModule = {
 };
 
 export async function changeStudioLanguage(language: string) {
+  if (!i18n.options.supportedLngs || !i18n.options.supportedLngs.includes(language)) return;
   // Keep the current language and its saved preference if loading fails.
   if (!i18n.hasResourceBundle(language, 'translation')) {
     i18n.addResourceBundle(language, 'translation', await readLocale(language));
@@ -50,23 +52,30 @@ i18n.on('languageChanged', () => {
   document.documentElement.dir = i18n.dir(language);
 });
 
-void i18n
-  .use(LanguageDetector)
-  .use(localeBackend)
-  .use(initReactI18next)
-  .init({
-    fallbackLng: defaultLanguage,
-    supportedLngs: LANGUAGES.map(({ code }) => code),
-    load: 'languageOnly',
-    partialBundledLanguages: true,
-    debug: import.meta.env.MODE === 'development',
-    detection: {
-      order: ['querystring', 'cookie', 'localStorage', 'sessionStorage', 'navigator'],
-      caches: ['localStorage'],
-      convertDetectedLanguage: (locale) => locale.split(/[-_]/, 1)[0].toLowerCase(),
-    },
-    interpolation: { escapeValue: false },
-    resources: { zh: { translation: zhTranslation } },
-  });
+export function initializeStudioLanguage(status: StudioStatus | null) {
+  const enabled = LANGUAGES
+    .filter(({ code }) => status?.studio_languages?.some((language) => language.code === code && language.enabled))
+    .map(({ code }) => code);
+  const supportedLngs = enabled.length ? enabled : LANGUAGES.map(({ code }) => code);
+
+  return i18n
+    .use(LanguageDetector)
+    .use(localeBackend)
+    .use(initReactI18next)
+    .init({
+      fallbackLng: supportedLngs[0],
+      supportedLngs,
+      load: 'languageOnly',
+      partialBundledLanguages: true,
+      debug: import.meta.env.MODE === 'development',
+      detection: {
+        order: ['querystring', 'cookie', 'localStorage', 'sessionStorage', 'navigator'],
+        caches: ['localStorage'],
+        convertDetectedLanguage: (locale) => locale.split(/[-_]/, 1)[0].toLowerCase(),
+      },
+      interpolation: { escapeValue: false },
+      resources: { zh: { translation: zhTranslation } },
+    });
+}
 
 export default i18n;

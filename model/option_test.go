@@ -1,6 +1,8 @@
 package model
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/infinmalum/a1o-platform/common/config"
@@ -8,6 +10,45 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestStudioLanguageOption(t *testing.T) {
+	previousDB, previousOptions := DB, config.OptionMap
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	DB, config.OptionMap = db, map[string]string{}
+	t.Cleanup(func() { DB, config.OptionMap = previousDB, previousOptions })
+
+	enabled := func(code string) bool {
+		languages := StudioLanguages()
+		index := slices.IndexFunc(languages, func(language StudioLanguage) bool { return language.Code == code })
+		require.NotEqual(t, -1, index)
+		return languages[index].Enabled
+	}
+
+	require.True(t, enabled("zh"))
+	require.NoError(t, UpdateOption(studioDisabledLanguagesOption, "zh,fr"))
+	require.False(t, enabled("zh"))
+	require.False(t, enabled("fr"))
+	require.True(t, enabled("en"))
+
+	for _, invalid := range []string{"zz", "fr,fr", strings.Join(studioLanguageCodes, ",")} {
+		require.Error(t, UpdateOption(studioDisabledLanguagesOption, invalid))
+	}
+	var stored Option
+	require.NoError(t, DB.First(&stored, "key = ?", studioDisabledLanguagesOption).Error)
+	require.Equal(t, "zh,fr", stored.Value)
+
+	delete(config.OptionMap, studioDisabledLanguagesOption)
+	loadOptionsFromDatabase()
+	require.False(t, enabled("fr"))
+
+	require.NoError(t, UpdateOption(studioDisabledLanguagesOption, "zh"))
+	require.True(t, enabled("fr"))
+	require.NoError(t, DB.Migrator().DropTable(&Option{}))
+	require.Error(t, UpdateOption(studioDisabledLanguagesOption, ""))
+	require.False(t, enabled("zh"))
+}
 
 // TestUpdateOptionMapBindings pins the declarative binding tables: each
 // mechanical option key updates its config variable and the option map, and

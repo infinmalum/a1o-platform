@@ -540,7 +540,15 @@
       "operation": "Operation Settings",
       "chat": "Chat",
       "system": "System Settings",
+      "studio_languages": "Studio Languages",
       "other": "Other Settings"
+    },
+    "studio_languages": {
+      "description": "Choose which interface languages users can select in Studio. Keep at least one enabled. Changes apply when users open or refresh Studio.",
+      "load_failed": "Could not load Studio languages. Refresh to try again.",
+      "save": "Save languages",
+      "saved": "Studio languages saved.",
+      "save_failed": "Could not save Studio languages."
     },
     "personal": {
       "general": {

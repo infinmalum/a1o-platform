@@ -26,6 +26,7 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	config.OptionMapRWMutex.Lock()
 	config.OptionMap = make(map[string]string)
+	config.OptionMap[studioDisabledLanguagesOption] = ""
 	config.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(config.PasswordLoginEnabled)
 	config.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(config.PasswordRegisterEnabled)
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
@@ -93,6 +94,8 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	studioLanguageUpdateMu.Lock()
+	defer studioLanguageUpdateMu.Unlock()
 	options, _ := AllOption()
 	for _, option := range options {
 		err := updateOptionMap(option.Key, option.Value)
@@ -111,6 +114,9 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == studioDisabledLanguagesOption {
+		return updateStudioDisabledLanguages(value)
+	}
 	// Apply to the in-memory state first: a value the bindings reject is
 	// reported back without ever reaching the database, so no half-valid
 	// "2.56" can linger in the table for the next sync to trip over.
@@ -234,6 +240,11 @@ var customOptionSetters = map[string]func(value string) error{
 // untouched, so bad input can neither silently zero a setting nor linger in
 // the display state for the next sync to trip over.
 func updateOptionMap(key string, value string) (err error) {
+	if key == studioDisabledLanguagesOption {
+		if err := validateStudioDisabledLanguages(value); err != nil {
+			return err
+		}
+	}
 	config.OptionMapRWMutex.Lock()
 	defer config.OptionMapRWMutex.Unlock()
 	if setter, ok := customOptionSetters[key]; ok {

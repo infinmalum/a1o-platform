@@ -540,7 +540,15 @@
       "operation": "运营设置",
       "chat": "聊天",
       "system": "系统设置",
+      "studio_languages": "用户端语言",
       "other": "其他设置"
+    },
+    "studio_languages": {
+      "description": "选择用户端可用的界面语言，至少保留一种。用户打开或刷新页面后生效。",
+      "load_failed": "无法加载用户端语言，请刷新后重试。",
+      "save": "保存语言设置",
+      "saved": "已保存用户端语言设置。",
+      "save_failed": "无法保存用户端语言设置。"
     },
     "personal": {
       "general": {
