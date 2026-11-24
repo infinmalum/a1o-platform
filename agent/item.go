@@ -1,7 +1,7 @@
 // Package agent hosts the agent runtime: the standard Item schema, the run
 // event envelope, the ModelExecutor that maps Items onto native provider
 // protocols through the shared relay lifecycle, the Engine driving Chat and
-// Work turns over Lapua, and the work-queue Scheduler with its cross-instance
+// Work turns over Norma, and the work-queue Scheduler with its cross-instance
 // lease.
 package agent
 

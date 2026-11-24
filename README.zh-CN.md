@@ -25,7 +25,7 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 - 🔌 **四种原生 API 协议** —— OpenAI Chat Completions、OpenAI Responses（支持可查询、可取消的后台任务）、Anthropic Messages、Gemini `generateContent`，同一个令牌还能调用 embeddings、图像、音频和内容审核接口。
 - 🌉 **跨协议桥接** —— 请求与响应会在客户端协议和上游协议之间自动转换，流式同样支持：OpenAI 客户端可以打到 Anthropic、Gemini、Responses 上游，Anthropic 客户端可以打到 OpenAI chat 和 Gemini 上游。
 - 🔀 **智能路由** —— 渠道负载均衡、模型映射、分组倍率、OAuth 连接的订阅账号（ChatGPT 套餐）、订阅优先的路由策略，以及首字节返回前的自动重试。
-- 🤖 **内置 chat 运行时** —— Chat 和 Work 共用 [Lapua](https://github.com/infinmalum/Lapua) 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
+- 🤖 **内置 chat 运行时** —— Chat 和 Work 共用 [Norma](https://github.com/infinmalum/norma-e) 工具循环，支持持久会话、沙箱化的 Python/Node 代码执行（rlimits 资源限制 + 网络隔离），以及 MCP（Model Context Protocol）工具服务器。
 - 🧮 **额度与计费** —— 令牌额度、用量日志、兑换码、充值，每个请求都按倍率精确结算。
 - 🖥️ **双前端** —— `/` 的 Studio 提供聊天与多协议 Playground、后台任务、智能体广场、私有资料库，以及图像、视频和音频工具。`/admin/` 的控制台管理渠道、上游账号、用户、令牌、日志和设置。
 - 💾 **灵活存储** —— Docker Compose 默认使用 PostgreSQL，也支持 SQLite 和 MySQL；缓存与同步可配合 Redis；支持 master/slave 多节点部署。
@@ -83,7 +83,7 @@ go build -o a1o-platform .
 ./a1o-platform --port 3000
 ```
 
-Vite 将构建产物分别写入 `web/build/studio` 和 `web/build/admin`，Go 二进制会嵌入两个前端。Lapua 驱动 Chat 和 Work 的模型与工具循环。A1O 提供已获授权的工具，负责模型路由、计费、持久化和调度。
+Vite 将构建产物分别写入 `web/build/studio` 和 `web/build/admin`，Go 二进制会嵌入两个前端。Norma 驱动 Chat 和 Work 的模型与工具循环。A1O 提供已获授权的工具，负责模型路由、计费、持久化和调度。
 
 ## 配置与使用
 

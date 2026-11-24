@@ -25,7 +25,7 @@ A1O Platform es una pasarela de IA derivada de [One API](https://github.com/song
 - 🔌 **Cuatro formatos nativos de API** — OpenAI Chat Completions, OpenAI Responses (con ejecuciones en segundo plano que se pueden consultar o cancelar), Anthropic Messages y Gemini `generateContent`. El mismo token da acceso a las API de embeddings, imágenes, audio y moderación.
 - 🌉 **Conversión entre protocolos** — la pasarela convierte solicitudes y respuestas, incluso en streaming. Los clientes OpenAI pueden usar canales Anthropic, Gemini y Responses. Los clientes Anthropic pueden usar canales OpenAI Chat y Gemini.
 - 🔀 **Enrutamiento de solicitudes** — balanceo de carga entre canales, asignación de nombres de modelo, multiplicadores por grupo, conexión de cuentas de suscripción de ChatGPT mediante OAuth, prioridad configurable para las suscripciones y reintentos automáticos antes de enviar el primer byte al cliente.
-- 🤖 **Motor conversacional integrado** — Chat y Work comparten el ciclo de herramientas de [Lapua](https://github.com/infinmalum/Lapua), con sesiones persistentes, ejecución aislada de código Python y Node (límites de recursos con rlimits y aislamiento de red) y servidores de herramientas MCP (Model Context Protocol).
+- 🤖 **Motor conversacional integrado** — Chat y Work comparten el ciclo de herramientas de [Norma](https://github.com/infinmalum/norma-e), con sesiones persistentes, ejecución aislada de código Python y Node (límites de recursos con rlimits y aislamiento de red) y servidores de herramientas MCP (Model Context Protocol).
 - 🧮 **Cuotas y facturación** — cuotas por token, registros de uso, códigos de canje, recargas y cálculo del coste de cada solicitud según las tarifas configuradas.
 - 🖥️ **Aplicaciones web** — Studio en `/` incluye Chat con un Playground multiprotocolo, tareas Work en segundo plano, una biblioteca de agentes, bibliotecas privadas de documentos y herramientas de imagen, vídeo y audio. La consola en `/admin/` gestiona canales, cuentas de proveedores, usuarios, tokens, registros y ajustes.
 - 💾 **Almacenamiento flexible** — PostgreSQL por defecto en Docker Compose, con soporte para SQLite y MySQL y Redis para la caché y la sincronización. Admite despliegues con un nodo principal y nodos secundarios.
@@ -83,7 +83,7 @@ go build -o a1o-platform .
 ./a1o-platform --port 3000
 ```
 
-Vite escribe las aplicaciones en `web/build/studio` y `web/build/admin`. El binario de Go incorpora las dos. Lapua ejecuta el ciclo de modelos y herramientas de Chat y Work. A1O proporciona las herramientas autorizadas y gestiona el enrutamiento, la facturación, la persistencia y la programación de tareas.
+Vite escribe las aplicaciones en `web/build/studio` y `web/build/admin`. El binario de Go incorpora las dos. Norma ejecuta el ciclo de modelos y herramientas de Chat y Work. A1O proporciona las herramientas autorizadas y gestiona el enrutamiento, la facturación, la persistencia y la programación de tareas.
 
 ## Configurar y usar la pasarela
 

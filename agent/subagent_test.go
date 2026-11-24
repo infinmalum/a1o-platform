@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/infinmalum/Lapua/llm"
+	"github.com/infinmalum/norma-e/llm"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
@@ -28,7 +28,7 @@ func TestRelayProviderStreamEvents(t *testing.T) {
 		Status:       ItemStatusCompleted,
 		Items: []Item{
 			{Type: ItemMessage, Role: "assistant", Content: []ContentPart{{Type: PartOutputText, Text: "先查一下。"}}},
-			{Type: ItemFunctionCall, Name: "web_search", CallID: "call_real_1", Arguments: `{"query":"lapua"}`},
+			{Type: ItemFunctionCall, Name: "web_search", CallID: "call_real_1", Arguments: `{"query":"norma"}`},
 		},
 		Usage: native.Usage{Input: 100, Output: 20, CacheRead: 40},
 	}}}
@@ -54,7 +54,7 @@ func TestRelayProviderStreamEvents(t *testing.T) {
 	if events[1].Type != llm.SEToolUseStart || events[1].ToolID != "0" || events[1].ToolName != "web_search" {
 		t.Fatalf("unexpected tool start: %+v", events[1])
 	}
-	if events[2].Type != llm.SEToolInputJSON || events[2].Text != `{"query":"lapua"}` {
+	if events[2].Type != llm.SEToolInputJSON || events[2].Text != `{"query":"norma"}` {
 		t.Fatalf("unexpected tool input: %+v", events[2])
 	}
 	if events[3].Type != llm.SEMessageDelta || events[3].StopReason != "end_turn" || events[3].Usage.OutputTokens != 20 {

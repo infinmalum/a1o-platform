@@ -25,7 +25,7 @@ A1O Platform is an independently maintained AI gateway, originally derived from 
 - 🔌 **Four native API formats** — OpenAI Chat Completions, OpenAI Responses (including background runs you can poll or cancel), Anthropic Messages, and Gemini `generateContent`, plus embeddings, images, audio, and moderations endpoints under the same token.
 - 🌉 **Cross-protocol bridging** — requests and responses are converted between client and upstream formats, streaming included: OpenAI clients reach Anthropic, Gemini, and Responses upstreams, and Anthropic clients reach OpenAI-chat and Gemini upstreams.
 - 🔀 **Smart routing** — channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
-- 🤖 **Built-in chat runtime** — a [Lapua](https://github.com/infinmalum/Lapua) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
+- 🤖 **Built-in chat runtime** — a [Norma](https://github.com/infinmalum/norma-e) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
 - 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
 - 🖥️ **Web apps** — Studio at `/` includes Chat with a multi-protocol Playground, background Work tasks, an agent library, private document libraries, and image, video, and audio tools. The console at `/admin/` manages channels, upstream accounts, users, tokens, logs, and settings.
 - 💾 **Flexible storage** — PostgreSQL by default in Docker Compose; SQLite and MySQL are also supported; Redis for caching and synchronization; master/slave multi-node deployments.
@@ -83,7 +83,7 @@ go build -o a1o-platform .
 ./a1o-platform --port 3000
 ```
 
-Vite writes the two apps to `web/build/studio` and `web/build/admin`. The Go binary embeds both builds. Lapua drives the model and tool loop in both Chat and Work. A1O supplies the permitted tools and owns model routing, billing, persistence, and scheduling.
+Vite writes the two apps to `web/build/studio` and `web/build/admin`. The Go binary embeds both builds. Norma drives the model and tool loop in both Chat and Work. A1O supplies the permitted tools and owns model routing, billing, persistence, and scheduling.
 
 ## Configure and use
 

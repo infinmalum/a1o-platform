@@ -112,12 +112,12 @@ var ChatMaxFileBytes = int64(20 << 20)
 // so launching host commands is an explicit opt-in even for admins.
 var ChatMCPStdioEnabled = false
 
-// ChatWebToolsEnabled exposes the Lapua WebSearch/WebFetch tools to chat and
+// ChatWebToolsEnabled exposes the Norma WebSearch/WebFetch tools to chat and
 // work runs. WebFetch calls carry an SSRF guard that rejects URLs resolving
 // to private, loopback, or link-local addresses; the guard is not optional.
 var ChatWebToolsEnabled = true
 
-// ChatWebSearchBackend selects the Lapua search backend: "ddgs" (DuckDuckGo
+// ChatWebSearchBackend selects the Norma search backend: "ddgs" (DuckDuckGo
 // scrape, no key), "brave-free" (needs ChatWebSearchAPIKey), or "tavily"
 // (needs ChatWebSearchAPIKey). Empty defaults to "ddgs".
 var ChatWebSearchBackend = "ddgs"
@@ -130,11 +130,11 @@ var ChatWebSearchAPIKey = ""
 // proxy URL — useful when the search endpoint is unreachable directly.
 var ChatWebSearchProxy = ""
 
-// ChatMemoryEnabled exposes the Lapua RecallMemory/RecordMemory tools. Each
+// ChatMemoryEnabled exposes the Norma RecallMemory/RecordMemory tools. Each
 // user's memories live under data/memory/users/<id>/ as markdown files.
 var ChatMemoryEnabled = true
 
-// WorkSubagentEnabled registers the Lapua Agent delegation tool on work runs
+// WorkSubagentEnabled registers the Norma Agent delegation tool on work runs
 // (chat stays single-agent). Subagent legs bill through the parent run.
 var WorkSubagentEnabled = true
 

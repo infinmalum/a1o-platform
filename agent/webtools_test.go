@@ -37,11 +37,11 @@ func setMemoryTools(t *testing.T, enabled bool) {
 	t.Cleanup(func() { config.ChatMemoryEnabled = previous })
 }
 
-func TestAddLapuaToolsWebToggle(t *testing.T) {
+func TestAddNormaToolsWebToggle(t *testing.T) {
 	setWebTools(t, true)
 	setMemoryTools(t, false)
 	set := newToolSet()
-	addLapuaTools(context.Background(), set, 0)
+	addNormaTools(context.Background(), set, 0)
 	if !defsContain(set.defs, "web_search") || !defsContain(set.defs, "WebFetch") {
 		t.Fatalf("web tools missing with toggle on: %v", set.defs)
 	}
@@ -51,7 +51,7 @@ func TestAddLapuaToolsWebToggle(t *testing.T) {
 
 	setWebTools(t, false)
 	set = newToolSet()
-	addLapuaTools(context.Background(), set, 0)
+	addNormaTools(context.Background(), set, 0)
 	if len(set.defs) != 0 || len(set.sdk) != 0 {
 		t.Fatalf("web tools present with toggle off: %v", set.defs)
 	}

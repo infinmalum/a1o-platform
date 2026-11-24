@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	normatool "github.com/infinmalum/norma-e/tool"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -114,19 +114,19 @@ func (e *Engine) resolveTools(ctx context.Context, turn ChatTurnRequest) *toolSe
 			set.add(def, e.extraTools.exec[def.Name])
 		}
 	}
-	addLapuaTools(ctx, set, turn.Session.UserId)
+	addNormaTools(ctx, set, turn.Session.UserId)
 	set.filterBySkills(turn.Skills)
 	return set
 }
 
-// addLapuaTools registers Lapua core tools that run inside the gateway
+// addNormaTools registers Norma core tools that run inside the gateway
 // process. Web tools are read-only in the permission pipeline, so they work
 // under the host's dontAsk mode; WebFetch additionally passes the SSRF guard
 // below. Search backend misconfiguration degrades to a tool-level error,
 // never a run error. Image generation reuses the studio pipeline; the tool
 // is offered only when the user's group has an image-capable model.
-func addLapuaTools(ctx context.Context, set *toolSet, userId int) {
-	if ws, err := lapuatool.NewWebSearch(lapuatool.WebSearchConfig{
+func addNormaTools(ctx context.Context, set *toolSet, userId int) {
+	if ws, err := normatool.NewWebSearch(normatool.WebSearchConfig{
 		Backend:      config.ChatWebSearchBackend,
 		BraveAPIKey:  config.ChatWebSearchAPIKey,
 		TavilyAPIKey: config.ChatWebSearchAPIKey,
@@ -139,7 +139,7 @@ func addLapuaTools(ctx context.Context, set *toolSet, userId int) {
 		logger.SysError("failed to build web search tool: " + err.Error())
 	}
 	if config.ChatWebToolsEnabled {
-		set.addSDK(newGuardedWebFetch(lapuatool.NewWebFetch(lapuatool.WebFetchConfig{
+		set.addSDK(newGuardedWebFetch(normatool.NewWebFetch(normatool.WebFetchConfig{
 			Proxy: config.ChatWebSearchProxy,
 		})))
 	}
@@ -252,7 +252,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	}()
 
 	totalPrompt, totalCompletion := int64(0), int64(0)
-	err = lapuaLoop(ctx, turn.Run, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
+	err = normaLoop(ctx, turn.Run, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
 		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools, sources)
 		pendingCalls = append([]Item(nil), pending...)
 		totalPrompt += result.Usage.Input
@@ -279,7 +279,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if isLapuaTurnLimit(err) {
+	if isNormaTurnLimit(err) {
 		err = fmt.Errorf("已达工具调用轮数上限（%d）", maxIterations)
 	}
 	if err != nil {

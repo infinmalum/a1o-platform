@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/infinmalum/Lapua/llm"
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	"github.com/infinmalum/norma-e/llm"
+	normatool "github.com/infinmalum/norma-e/tool"
 
 	"github.com/infinmalum/a1o-platform/model"
 )
@@ -19,7 +19,7 @@ type toolRequest struct {
 }
 
 // toolResult feeds the outcome back to the model; errors travel in-band so
-// the model can react. Blocks, when set, carries the full Lapua content
+// the model can react. Blocks, when set, carries the full Norma content
 // blocks (text plus media) and Content keeps the plain-text projection for
 // persistence paths that have no media representation yet.
 type toolResult struct {
@@ -28,8 +28,8 @@ type toolResult struct {
 	IsError bool
 }
 
-// sdkResultText renders a Lapua tool result's text blocks into one string.
-func sdkResultText(result lapuatool.Result) string {
+// sdkResultText renders a Norma tool result's text blocks into one string.
+func sdkResultText(result normatool.Result) string {
 	var b strings.Builder
 	for _, block := range result.Content {
 		b.WriteString(block.Text)
@@ -67,17 +67,17 @@ type toolFunc func(ctx context.Context, req toolRequest) toolResult
 type toolSet struct {
 	defs []Tool
 	exec map[string]toolFunc
-	// sdk holds Lapua core tools dispatched inside lapuaLoop. They share the
+	// sdk holds Norma core tools dispatched inside normaLoop. They share the
 	// defs surface (skill filtering, bootstrap visibility) but their Call is
 	// the SDK implementation, not a host closure.
-	sdk map[string]lapuatool.CoreTool
-	// todos is the per-run todo store backing the TodoWrite tool; lapuaLoop
+	sdk map[string]normatool.CoreTool
+	// todos is the per-run todo store backing the TodoWrite tool; normaLoop
 	// passes it to the harness for reminder re-surfacing.
-	todos *lapuatool.TodoStore
+	todos *normatool.TodoStore
 }
 
 func newToolSet() *toolSet {
-	return &toolSet{exec: map[string]toolFunc{}, sdk: map[string]lapuatool.CoreTool{}}
+	return &toolSet{exec: map[string]toolFunc{}, sdk: map[string]normatool.CoreTool{}}
 }
 
 func (t *toolSet) add(def Tool, fn toolFunc) {
@@ -88,9 +88,9 @@ func (t *toolSet) add(def Tool, fn toolFunc) {
 	t.exec[def.Name] = fn
 }
 
-// addSDK registers a Lapua core tool. The tool def mirrors the core tool's
+// addSDK registers a Norma core tool. The tool def mirrors the core tool's
 // schema so the rest of the host treats it like any other tool.
-func (t *toolSet) addSDK(core lapuatool.CoreTool) {
+func (t *toolSet) addSDK(core normatool.CoreTool) {
 	name := core.Name()
 	if _, exists := t.sdk[name]; exists {
 		return

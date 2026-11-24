@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestLapuaStopsDispatchAfterToolResultPersistenceFails(t *testing.T) {
+func TestNormaStopsDispatchAfterToolResultPersistenceFails(t *testing.T) {
 	tools := newToolSet()
 	var executions atomic.Int32
 	tools.add(Tool{Name: "test_tool"}, func(context.Context, toolRequest) toolResult {
@@ -17,7 +17,7 @@ func TestLapuaStopsDispatchAfterToolResultPersistenceFails(t *testing.T) {
 
 	saveErr := errors.New("tool result could not be saved")
 	legs := 0
-	err := lapuaLoop(t.Context(), nil, tools, 2, func(context.Context) (InvokeResult, []Item, error) {
+	err := normaLoop(t.Context(), nil, tools, 2, func(context.Context) (InvokeResult, []Item, error) {
 		legs++
 		return InvokeResult{}, []Item{
 			{CallID: "first", Name: "test_tool", Arguments: "{}"},

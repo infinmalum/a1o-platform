@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	normatool "github.com/infinmalum/norma-e/tool"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -103,12 +103,12 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 	}
 	limit := config.WorkMaxToolIterations
 	remaining := limit + 1
-	// Lapua drives each stretch of work until a model turn has no tools.
+	// Norma drives each stretch of work until a model turn has no tools.
 	// Input arriving during that final turn starts another stretch of this run.
 	for remaining > 0 {
 		var outputs []Item
 		var lastLeg InvokeResult
-		err := lapuaLoop(ctx, req.Run, tools, remaining, func(ctx context.Context) (InvokeResult, []Item, error) {
+		err := normaLoop(ctx, req.Run, tools, remaining, func(ctx context.Context) (InvokeResult, []Item, error) {
 			lastLeg = InvokeResult{}
 			if len(outputs) > 0 {
 				if err := e.appendWorkContext(req, outputs); err != nil {
@@ -149,9 +149,9 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 		switch {
 		case errors.Is(err, errLeaseLost):
 			return err
-		case errors.Is(err, errWorkCompleted), isLapuaTurnLimit(err) && summary != "":
+		case errors.Is(err, errWorkCompleted), isNormaTurnLimit(err) && summary != "":
 			return e.workComplete(req, summary)
-		case isLapuaTurnLimit(err):
+		case isNormaTurnLimit(err):
 			return e.workFail(req, fmt.Errorf("已达工具调用步数上限（%d）", limit))
 		case err != nil && lastLeg.ResponseID != "":
 			return e.workReconcile(req, err)
@@ -417,10 +417,10 @@ func (e *Engine) resolveWorkTools(ctx context.Context, req WorkTurnRequest) *too
 			set.add(def, e.extraTools.exec[def.Name])
 		}
 	}
-	addLapuaTools(ctx, set, req.Run.UserId)
+	addNormaTools(ctx, set, req.Run.UserId)
 	// Work runs plan across many legs, so the todo list rides here and the
 	// harness re-surfaces it between turns. Chat stays lean without it.
-	todos := lapuatool.NewTodoStore()
+	todos := normatool.NewTodoStore()
 	set.todos = todos
 	set.addSDK(todos.Tool())
 	set.filterBySkills(req.Skills)

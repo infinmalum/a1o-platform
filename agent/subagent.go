@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/infinmalum/Lapua/llm"
-	"github.com/infinmalum/Lapua/permission"
-	"github.com/infinmalum/Lapua/subagent"
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	"github.com/infinmalum/norma-e/llm"
+	"github.com/infinmalum/norma-e/permission"
+	"github.com/infinmalum/norma-e/subagent"
+	normatool "github.com/infinmalum/norma-e/tool"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
@@ -19,7 +19,7 @@ import (
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
-// relayProvider adapts the host's ModelInvoker to Lapua's llm.Provider so a
+// relayProvider adapts the host's ModelInvoker to Norma's llm.Provider so a
 // subagent's harness can drive its legs through the same gateway: protocol
 // negotiation, upstream channels, billing and invocation persistence all stay
 // in A1O. Subagent legs run with SkipContextAppend so they never touch the
@@ -277,8 +277,8 @@ func (p *relayProvider) Complete(ctx context.Context, req llm.CompletionRequest)
 // so children dispatch through direct execution instead: SDK tools call in
 // process, host tools keep the persisted execution intent with a synthetic
 // call id.
-func subagentRegistry(set *toolSet, run *model.AgentRun, p *relayProvider) *lapuatool.Registry {
-	registry := lapuatool.NewRegistry()
+func subagentRegistry(set *toolSet, run *model.AgentRun, p *relayProvider) *normatool.Registry {
+	registry := normatool.NewRegistry()
 	for _, def := range set.defs {
 		if def.Name == CompleteTaskToolName || def.Name == subagentToolName {
 			continue
@@ -292,30 +292,30 @@ func subagentRegistry(set *toolSet, run *model.AgentRun, p *relayProvider) *lapu
 		}
 		fn := set.exec[def.Name]
 		sdkTool := set.sdk[def.Name]
-		registry.Add(lapuatool.Build(lapuatool.Spec{
+		registry.Add(normatool.Build(normatool.Spec{
 			Name: def.Name, Description: def.Description, Schema: schema,
-			Run: func(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
+			Run: func(ctx context.Context, input json.RawMessage, tc *normatool.ToolContext) (normatool.Result, error) {
 				if sdkTool != nil {
 					result, err := sdkTool.Call(ctx, input, tc)
 					if err != nil {
-						return lapuatool.Result{Content: []llm.ContentBlock{llm.TextBlock(err.Error())}, IsError: true}, nil
+						return normatool.Result{Content: []llm.ContentBlock{llm.TextBlock(err.Error())}, IsError: true}, nil
 					}
 					if len(result.Content) == 0 {
 						result.Content = []llm.ContentBlock{llm.TextBlock(sdkResultText(result))}
 					}
-					return lapuatool.Result{Content: result.Content, IsError: result.IsError}, nil
+					return normatool.Result{Content: result.Content, IsError: result.IsError}, nil
 				}
 				if fn == nil {
-					return lapuatool.Result{Content: []llm.ContentBlock{llm.TextBlock("工具不可用")}, IsError: true}, nil
+					return normatool.Result{Content: []llm.ContentBlock{llm.TextBlock("工具不可用")}, IsError: true}, nil
 				}
 				result := recordToolExecution(ctx, run, p.lastInvocationID,
 					Item{CallID: tc.ToolUseID, Name: def.Name}, string(input), func() toolResult {
 						return fn(ctx, toolRequest{Name: def.Name, Arguments: string(input)})
 					})
 				if len(result.Blocks) > 0 {
-					return lapuatool.Result{Content: result.Blocks, IsError: result.IsError}, nil
+					return normatool.Result{Content: result.Blocks, IsError: result.IsError}, nil
 				}
-				return lapuatool.Result{Content: []llm.ContentBlock{llm.TextBlock(result.Content)}, IsError: result.IsError}, nil
+				return normatool.Result{Content: []llm.ContentBlock{llm.TextBlock(result.Content)}, IsError: result.IsError}, nil
 			},
 		}))
 	}
@@ -324,7 +324,7 @@ func subagentRegistry(set *toolSet, run *model.AgentRun, p *relayProvider) *lapu
 
 const subagentToolName = "Agent"
 
-// addSubagentTool registers the Lapua Agent tool for work runs. Chat stays
+// addSubagentTool registers the Norma Agent tool for work runs. Chat stays
 // single-agent by design. Definitions are derived from the resolved tool
 // set: a researcher gets the web pair only, a generalist inherits every
 // parent tool except completion and delegation. Recursion is capped two

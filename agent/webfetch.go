@@ -7,10 +7,10 @@ import (
 	"net"
 	"net/url"
 
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	normatool "github.com/infinmalum/norma-e/tool"
 )
 
-// guardedWebFetch wraps the Lapua WebFetch tool with an SSRF guard. The SDK
+// guardedWebFetch wraps the Norma WebFetch tool with an SSRF guard. The SDK
 // implementation fetches whatever URL the model supplies straight from the
 // gateway process; on a cloud host that exposes loopback services, cloud
 // metadata endpoints, and the admin surface. The wrapper resolves the target
@@ -20,22 +20,22 @@ import (
 // could still reach a private address between validation and connection;
 // closing that window needs a custom dialer inside the SDK.
 type guardedWebFetch struct {
-	lapuatool.CoreTool
+	normatool.CoreTool
 }
 
-func newGuardedWebFetch(core lapuatool.CoreTool) lapuatool.CoreTool {
+func newGuardedWebFetch(core normatool.CoreTool) normatool.CoreTool {
 	return &guardedWebFetch{CoreTool: core}
 }
 
-func (g *guardedWebFetch) Call(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
+func (g *guardedWebFetch) Call(ctx context.Context, input json.RawMessage, tc *normatool.ToolContext) (normatool.Result, error) {
 	var in struct {
 		URL string `json:"url"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
-		return lapuatool.Errorf("Error: invalid arguments: " + err.Error()), nil
+		return normatool.Errorf("Error: invalid arguments: " + err.Error()), nil
 	}
 	if err := validatePublicURL(ctx, in.URL); err != nil {
-		return lapuatool.Errorf("Error: " + err.Error()), nil
+		return normatool.Errorf("Error: " + err.Error()), nil
 	}
 	return g.CoreTool.Call(ctx, input, tc)
 }

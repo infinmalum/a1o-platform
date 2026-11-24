@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinmalum/Lapua/llm"
+	"github.com/infinmalum/norma-e/llm"
 
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"

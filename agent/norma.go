@@ -12,19 +12,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/infinmalum/Lapua/harness"
-	"github.com/infinmalum/Lapua/llm"
-	"github.com/infinmalum/Lapua/permission"
-	lapuatool "github.com/infinmalum/Lapua/tool"
+	"github.com/infinmalum/norma-e/harness"
+	"github.com/infinmalum/norma-e/llm"
+	"github.com/infinmalum/norma-e/permission"
+	normatool "github.com/infinmalum/norma-e/tool"
 
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
 )
 
-// lapuaLoop delegates turn progression and tool dispatch to Lapua. The host
+// normaLoop delegates turn progression and tool dispatch to Norma. The host
 // supplies the next model leg from its own Item history, retaining native
 // provider state and the existing gateway's streaming and billing behavior.
-func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs int,
+func normaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs int,
 	nextLeg func(context.Context) (InvokeResult, []Item, error),
 	onToolResult func(InvokeResult, Item, toolResult) error,
 ) error {
@@ -32,7 +32,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 	var activeTool sync.Mutex
 	defer func() {
 		cancel()
-		// Lapua can emit synthetic cancellation results before the tool's
+		// Norma can emit synthetic cancellation results before the tool's
 		// cleanup returns. Keep the host turn alive until cleanup finishes.
 		activeTool.Lock()
 		activeTool.Unlock()
@@ -45,7 +45,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 	var leg InvokeResult
 	var calls []Item
 	var processed int
-	registry := lapuatool.NewRegistry()
+	registry := normatool.NewRegistry()
 	allowed := make([]string, 0, len(tools.defs))
 	for _, def := range tools.defs {
 		var schema map[string]any
@@ -56,26 +56,26 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 		}
 		fn := tools.exec[def.Name]
 		sdkTool := tools.sdk[def.Name]
-		registry.Add(lapuatool.Build(lapuatool.Spec{
+		registry.Add(normatool.Build(normatool.Spec{
 			Name: def.Name, Description: def.Description, Schema: schema,
-			Run: func(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
+			Run: func(ctx context.Context, input json.RawMessage, tc *normatool.ToolContext) (normatool.Result, error) {
 				index, err := strconv.Atoi(tc.ToolUseID)
 				if err != nil || index < 0 || index >= len(ready) {
-					return lapuatool.Result{}, fmt.Errorf("无法定位工具调用 %q", tc.ToolUseID)
+					return normatool.Result{}, fmt.Errorf("无法定位工具调用 %q", tc.ToolUseID)
 				}
 				select {
 				case <-ready[index]:
 				case <-ctx.Done():
-					return lapuatool.Result{}, ctx.Err()
+					return normatool.Result{}, ctx.Err()
 				}
 				activeTool.Lock()
 				defer activeTool.Unlock()
 				if err := ctx.Err(); err != nil {
-					return lapuatool.Result{}, err
+					return normatool.Result{}, err
 				}
 				var result toolResult
 				if sdkTool != nil {
-					// Lapua core tool: execute in-process via the SDK and
+					// Norma core tool: execute in-process via the SDK and
 					// keep its content blocks (media-capable) intact.
 					sdkResult, err := sdkTool.Call(ctx, input, tc)
 					if err != nil {
@@ -89,9 +89,9 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 					})
 				}
 				if len(result.Blocks) > 0 {
-					return lapuatool.Result{Content: result.Blocks, IsError: result.IsError}, nil
+					return normatool.Result{Content: result.Blocks, IsError: result.IsError}, nil
 				}
-				return lapuatool.Result{
+				return normatool.Result{
 					Content: []llm.ContentBlock{llm.TextBlock(result.Content)},
 					IsError: result.IsError,
 				}, nil
@@ -109,7 +109,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 				return
 			}
 			// The ModelExecutor already streamed text and reasoning to the host.
-			// Lapua needs only complete tool calls to decide whether to continue.
+			// Norma needs only complete tool calls to decide whether to continue.
 			processed = 0
 			ready = make([]chan struct{}, len(calls))
 			for i, call := range calls {
@@ -117,7 +117,7 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 				if i == 0 {
 					close(ready[i])
 				}
-				// Positional IDs are private to Lapua. Keep provider IDs
+				// Positional IDs are private to Norma. Keep provider IDs
 				// intact in A1O's history, even if a provider repeats them.
 				if !yield(llm.StreamEvent{Type: llm.SEToolUseStart, ToolID: strconv.Itoa(i), ToolName: call.Name, ToolIndex: i}, nil) ||
 					!yield(llm.StreamEvent{Type: llm.SEToolInputJSON, Text: call.Arguments, ToolIndex: i, HasToolIndex: true}, nil) {
@@ -161,10 +161,10 @@ func lapuaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 			return event.Terminal.CompletionError()
 		}
 	}
-	return fmt.Errorf("Lapua 未返回运行结果")
+	return fmt.Errorf("Norma 未返回运行结果")
 }
 
-func isLapuaTurnLimit(err error) bool {
+func isNormaTurnLimit(err error) bool {
 	var incomplete *harness.IncompleteError
 	return errors.As(err, &incomplete) && incomplete.Reason == harness.ReasonMaxTurns
 }

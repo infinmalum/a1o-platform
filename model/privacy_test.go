@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/infinmalum/Lapua/memory"
+	"github.com/infinmalum/norma-e/memory"
 	"github.com/infinmalum/a1o-platform/common/blacklist"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"

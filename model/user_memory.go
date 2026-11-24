@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/infinmalum/Lapua/memory"
+	"github.com/infinmalum/norma-e/memory"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"gorm.io/gorm"
 )

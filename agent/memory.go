@@ -4,18 +4,18 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/infinmalum/Lapua/memory"
-	lapuatool "github.com/infinmalum/Lapua/tool"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/norma-e/memory"
+	normatool "github.com/infinmalum/norma-e/tool"
 )
 
 type userMemoryTool struct {
-	lapuatool.CoreTool
+	normatool.CoreTool
 	userID int
 }
 
-func (tool userMemoryTool) Call(ctx context.Context, input json.RawMessage, tc *lapuatool.ToolContext) (lapuatool.Result, error) {
-	var result lapuatool.Result
+func (tool userMemoryTool) Call(ctx context.Context, input json.RawMessage, tc *normatool.ToolContext) (normatool.Result, error) {
+	var result normatool.Result
 	err := model.WithEnabledMemory(ctx, tool.userID, func() error {
 		var runErr error
 		result, runErr = tool.CoreTool.Call(ctx, input, tc)
