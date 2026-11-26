@@ -61,6 +61,8 @@ type paymentConfig struct {
 	providers                                        []string
 	nowCurrencies                                    []nowCurrencyOption
 	epay                                             epayConfig
+	airwallex                                        airwallexConfig
+	gmpay                                            gmpayConfig
 }
 
 type nowCurrencyOption struct {
@@ -149,6 +151,14 @@ func loadPaymentConfig() (paymentConfig, error) {
 	if cfg.epay.checkoutEnabled() {
 		cfg.providers = append(cfg.providers, epayProvider)
 	}
+	cfg.airwallex = loadAirwallexConfig()
+	if cfg.airwallex.enabled() {
+		cfg.providers = append(cfg.providers, airwallexProvider)
+	}
+	cfg.gmpay = loadGMPayConfig()
+	if cfg.gmpay.enabled() {
+		cfg.providers = append(cfg.providers, gmpayProvider)
+	}
 	return cfg, nil
 }
 
@@ -174,6 +184,9 @@ type paymentOrderResponse struct {
 func presentPaymentOrder(order model.PaymentOrder) paymentOrderResponse {
 	if order.Provider == nowProvider {
 		order.PayCurrency = orderNowCurrency(order)
+	}
+	if order.Provider == epayProvider && order.Protocol == epayV2 && order.CheckoutURL != "" {
+		order.CheckoutURL = epayCheckoutPath + "/" + order.ID
 	}
 	return paymentOrderResponse{PaymentOrder: order, PayCurrencyLabel: nowCurrencyLabels[order.PayCurrency]}
 }
@@ -243,6 +256,7 @@ func CreatePaymentOrder(c *gin.Context) {
 		Quota: selected.Quota, Provider: input.Provider, PayCurrency: payCurrency}
 	db := model.DB.WithContext(ctx)
 	if order.Provider == epayProvider {
+		order.Protocol = cfg.epay.version
 		order.CheckoutURL = cfg.epay.checkout(cfg.site, order)
 		if err := db.Create(&order).Error; err != nil {
 			paymentError(c, err)
@@ -261,11 +275,15 @@ func CreatePaymentOrder(c *gin.Context) {
 		id, checkoutURL, err = createStripeCheckout(ctx, cfg, order)
 	case nowProvider:
 		id, checkoutURL, err = createNowInvoice(ctx, cfg, order)
+	case airwallexProvider:
+		id, checkoutURL, err = createAirwallexLink(ctx, cfg.airwallex, order)
+	case gmpayProvider:
+		id, checkoutURL, err = createGMPayOrder(ctx, cfg.gmpay, cfg.site, order)
 	}
 	if err == nil {
 		target, parseErr := url.Parse(checkoutURL)
-		if !paymentIdentifier.MatchString(id) || parseErr != nil || target.Scheme != "https" ||
-			target.User != nil || target.Port() != "" || !allowedCheckoutHost(order.Provider, target.Hostname()) {
+		if !paymentIdentifier.MatchString(id) || parseErr != nil || target.Scheme != "https" || target.User != nil ||
+			!cfg.checkoutTargetAllowed(order.Provider, target) {
 			err = errors.New("invalid gateway checkout")
 		}
 	}
@@ -280,15 +298,30 @@ func CreatePaymentOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": presentPaymentOrder(order)})
 }
 
-func allowedCheckoutHost(provider, host string) bool {
+func (cfg paymentConfig) checkoutTargetAllowed(provider string, target *url.URL) bool {
+	if provider == gmpayProvider {
+		return strings.EqualFold(target.Host, cfg.gmpay.gateway.Host)
+	}
+	if target.Port() != "" {
+		return false
+	}
+	host := target.Hostname()
 	switch provider {
 	case stripeProvider:
 		return host == "checkout.stripe.com"
 	case nowProvider:
 		return host == "nowpayments.io"
+	case airwallexProvider:
+		return host == "www.airwallex.com" || host == "www.sandbox.airwallex.com" ||
+			host == "checkout.airwallex.com" || host == "checkout.sandbox.airwallex.com"
 	default:
 		return false
 	}
+}
+
+func PaymentReturn(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Redirect(http.StatusSeeOther, "/account?tab=redeem&payment=return")
 }
 
 type stripeCheckout struct {
@@ -550,6 +583,12 @@ func NowPaymentWebhook(c *gin.Context) {
 }
 
 func processPaidOrder(c *gin.Context, provider, reference string, matches func(model.PaymentOrder) bool) {
+	processConfirmedPayment(c, provider, reference, func(order model.PaymentOrder) (bool, error) {
+		return matches(order), nil
+	})
+}
+
+func processConfirmedPayment(c *gin.Context, provider, reference string, matches func(model.PaymentOrder) (bool, error)) {
 	if _, err := uuid.Parse(reference); err != nil {
 		c.Status(http.StatusOK)
 		return
@@ -565,7 +604,13 @@ func processPaidOrder(c *gin.Context, provider, reference string, matches func(m
 		c.Status(http.StatusOK)
 		return
 	}
-	if !matches(order) {
+	matched, err := matches(order)
+	if err != nil {
+		logger.Error(ctx, "confirm payment "+order.ID+": "+err.Error())
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	if !matched {
 		logger.Error(ctx, "payment does not match order "+order.ID)
 		updatePaymentState(c, provider, reference, *order.ProviderID, "review")
 		return

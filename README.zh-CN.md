@@ -43,9 +43,9 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 | **工作区 → 资料库** | 上传私有 UTF-8 TXT 或 Markdown 文件，在对话中选择资料库，并打开回复引用的原文。关键词检索使用现有数据库，无需嵌入模型或向量库。单份文件上限为 256 KiB，每库最多 64 份且总量不超过 2 MiB。 |
 | **图像生成 → 图片／视频** | 通过火山引擎方舟 Seedream、兼容的 Gemini 等已支持模型生成图片，可预览、下载原图，并将图片附到对话或 Work。Seedream 和兼容的 Gemini 图像模型支持 PNG、JPEG 和 WebP 参考图。方舟 Seedance 支持文生视频及可选首帧，输出 720p、5–8 秒视频。Gemini `gemini-omni-1.2-flash` 支持生成 360p、3–8 秒的文生视频。 |
 | **音频** | 使用兼容模型合成语音、转写音频或将语音翻译成英文。可试听、下载生成的音频，也可导出转写文本。 |
-| **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout、NOWPayments 或易支付购买一次性额度套餐。使用加密货币付款时，选择站长已启用的币种和网络。 |
+| **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout、Airwallex、易支付 V1/V2、NOWPayments 或 GMPay Edge 购买一次性额度套餐。 |
 
-站长使用 `ARK_MEDIA_PRICES` 设置方舟模型的额度费率，通过 `PAYMENT_PACKAGES` 配置固定额度套餐。Stripe 和 NOWPayments 使用美元美分，易支付的人民币价格用分单独设置。启用加密货币付款时，需配置网关凭据，并通过 `NOWPAYMENTS_PAY_CURRENCIES` 启用一种或多种选项。例如 `usdtsol,usdcmatic,btc` 对应 Solana 上的 USDT、Polygon 上的 USDC 和比特币主网的 BTC。配置步骤、网关最低金额和完整的币种与网络组合见[媒体与支付部署指南](docs/media-and-payments.md)。
+站长通过 `ARK_MEDIA_PRICES` 设置方舟模型额度费率，通过 `PAYMENT_PACKAGES` 配置套餐价格。Stripe、Airwallex、NOWPayments 和 GMPay 使用美元美分。易支付的人民币价格以分单独配置。用 `NOWPAYMENTS_PAY_CURRENCIES` 启用一种或多种 NOWPayments 币种和网络，在 GMPay Edge 中配置 GMPay 收款方式。接入和测试步骤见[媒体与支付部署指南](docs/media-and-payments.md)。
 
 Studio 顶栏提供 10 种界面语言，阿拉伯语和波斯语支持从右到左布局。管理控制台独立保存中英文偏好。
 

@@ -6,7 +6,7 @@ import { renderQuota } from '@/helpers/render';
 import { studioRequest as request } from '@/helpers/studioRequest';
 import { accountApi, type UserSelf } from './accountApi';
 
-type Provider = 'stripe' | 'nowpayments' | 'epay';
+type Provider = 'stripe' | 'nowpayments' | 'epay' | 'airwallex' | 'gmpay';
 type Package = { id: string; name: string; amount: number; cny_amount?: number; quota: number };
 type CryptoCurrency = { code: string; label: string };
 type Catalog = { packages: Package[]; providers: Provider[]; nowpayments_currencies: CryptoCurrency[] };
@@ -28,6 +28,8 @@ const providerNames: Record<Provider, string> = {
   stripe: 'Stripe',
   nowpayments: 'NOWPayments',
   epay: '易支付 · EPay',
+  airwallex: 'Airwallex',
+  gmpay: 'GMPay',
 };
 
 function packagePrice(pack: Package, provider: Provider) {

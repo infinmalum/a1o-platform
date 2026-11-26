@@ -43,9 +43,9 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 | **Workspace → Knowledge libraries** | 非公開の UTF-8 TXT や Markdown をアップロードし、Chat でライブラリを選択して、回答に引用された箇所を開けます。既存のデータベースでキーワード検索を行うため、埋め込みやベクトルデータベースは不要です。1 ファイルあたり 256 KiB、1 ライブラリあたり 64 ファイルかつ合計 2 MiB までです。 |
 | **画像生成 → 画像／動画** | Volcengine Ark Seedream や対応する Gemini モデルなどで画像を生成し、プレビュー、原本のダウンロード、Chat や Work への添付ができます。Seedream と対応する Gemini 画像モデルでは PNG、JPEG、WebP の参照画像を指定できます。Ark の Seedance ではテキストから 720p、5～8 秒の動画を生成でき、先頭フレームも指定できます。Gemini の `gemini-omni-1.2-flash` はテキストから 360p、3～8 秒の動画を生成します。 |
 | **音声** | 対応モデルで読み上げ音声の生成、文字起こし、音声から英語への翻訳が可能です。生成音声の再生とダウンロード、文字起こしのテキスト出力に対応します。 |
-| **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout、NOWPayments、または EPay で買い切りの利用枠を購入できます。暗号資産で支払う場合は、サイト運営者が有効にした通貨とネットワークを選びます。 |
+| **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout、Airwallex、EPay V1/V2、NOWPayments、GMPay Edge で買い切りの利用枠を購入できます。 |
 
-運営者は `ARK_MEDIA_PRICES` で Ark モデルの利用単価を設定し、`PAYMENT_PACKAGES` でパッケージの価格を定義します。Stripe と NOWPayments には米ドルのセント、EPay には別途、中国人民元の分で価格を設定します。暗号資産決済を提供するには、決済サービスの認証情報を設定し、`NOWPAYMENTS_PAY_CURRENCIES` で 1 つ以上の選択肢を有効にします。たとえば `usdtsol,usdcmatic,btc` は Solana の USDT、Polygon の USDC、Bitcoin の BTC です。設定手順、最低決済額、対応する組み合わせの一覧は[メディアと決済の運用ガイド](docs/media-and-payments.md)を参照してください。
+運営者は `ARK_MEDIA_PRICES` で Ark モデルの利用単価を設定し、`PAYMENT_PACKAGES` でパッケージ価格を定義します。Stripe、Airwallex、NOWPayments、GMPay には米ドルのセントを使い、EPay には別途、中国人民元の分で価格を設定します。NOWPayments の通貨とネットワークは `NOWPAYMENTS_PAY_CURRENCIES` で有効にし、GMPay の受取方法は GMPay Edge で設定します。設定とテストの手順は[メディアと決済の運用ガイド](docs/media-and-payments.md)を参照してください。
 
 Studio のヘッダーで 10 種類の表示言語を選択できます。アラビア語とペルシア語では右から左に表示します。管理コンソールでは中国語または英語を別に設定できます。
 

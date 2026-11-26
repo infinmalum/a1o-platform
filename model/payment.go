@@ -15,6 +15,7 @@ type PaymentOrder struct {
 	UserID      int     `json:"-" gorm:"index"`
 	PackageName string  `json:"package_name" gorm:"size:100"`
 	Provider    string  `json:"provider" gorm:"size:20;uniqueIndex:idx_payment_provider"`
+	Protocol    string  `json:"-" gorm:"size:8"`
 	ProviderID  *string `json:"-" gorm:"size:128;uniqueIndex:idx_payment_provider"`
 	CheckoutURL string  `json:"checkout_url,omitempty" gorm:"type:text"`
 	Amount      int64   `json:"amount"`

@@ -1,13 +1,21 @@
 package controller
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
@@ -45,7 +53,7 @@ func TestEPayCheckoutAndNotification(t *testing.T) {
 	engine.GET("/orders", ListPaymentOrders)
 	engine.GET(epayNotifyPath, EPayPaymentWebhook)
 	engine.POST(epayNotifyPath, EPayPaymentWebhook)
-	engine.GET(epayReturnPath, EPayPaymentReturn)
+	engine.GET(epayReturnPath, PaymentReturn)
 	send := func(method, path, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		res := httptest.NewRecorder()
@@ -67,6 +75,7 @@ func TestEPayCheckoutAndNotification(t *testing.T) {
 		return result.Data
 	}
 	order := createOrder()
+	require.NoError(t, model.DB.Model(&order).UpdateColumn("protocol", nil).Error)
 	t.Setenv("EPAY_PAYMENT_TYPE", "wxpay")
 	otherOrder := createOrder()
 	require.Contains(t, otherOrder.CheckoutURL, "type=wxpay")
@@ -133,4 +142,104 @@ func TestEPayCheckoutAndNotification(t *testing.T) {
 	require.NotEqual(t, "success", notify().Body.String())
 	require.NoError(t, model.DB.First(&user, user.Id).Error)
 	require.EqualValues(t, 7600, user.Quota)
+}
+
+func TestEPayV2CheckoutAndNotification(t *testing.T) {
+	setupChannelTypeTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.PaymentOrder{}, &model.Log{}))
+	previousLogDB := model.LOG_DB
+	t.Cleanup(func() { model.LOG_DB = previousLogDB })
+	model.LOG_DB = model.DB
+	merchantKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	platformKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	platformDER, err := x509.MarshalPKIXPublicKey(&platformKey.PublicKey)
+	require.NoError(t, err)
+
+	t.Setenv("PAYMENT_PUBLIC_URL", "https://platform.example")
+	t.Setenv("PAYMENT_PACKAGES", `[{"id":"cny","name":"额度","cny_amount":9900,"quota":7500}]`)
+	t.Setenv("EPAY_VERSION", "v2")
+	t.Setenv("EPAY_V2_GATEWAY_URL", "https://rsa.example/merchant")
+	t.Setenv("EPAY_V2_MERCHANT_ID", "2002")
+	t.Setenv("EPAY_V2_MERCHANT_PRIVATE_KEY", base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(merchantKey)))
+	t.Setenv("EPAY_V2_PLATFORM_PUBLIC_KEY", base64.StdEncoding.EncodeToString(platformDER))
+	t.Setenv("EPAY_MERCHANT_ID", "1001")
+	t.Setenv("EPAY_MERCHANT_KEY", "legacy-test-key")
+
+	user := model.User{Username: "epay-v2-owner", Quota: 100}
+	require.NoError(t, model.DB.Create(&user).Error)
+	engine := gin.New()
+	actor := user.Id
+	engine.Use(func(c *gin.Context) { c.Set(ctxkey.Id, actor) })
+	engine.POST("/orders", CreatePaymentOrder)
+	engine.GET("/orders", ListPaymentOrders)
+	engine.GET(epayCheckoutPath+"/:id", EPayV2Checkout)
+	engine.GET(epayNotifyPath, EPayPaymentWebhook)
+	engine.POST(epayNotifyPath, EPayPaymentWebhook)
+	send := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		return rec
+	}
+	res := send(http.MethodPost, "/orders", `{"package_id":"cny","provider":"epay"}`)
+	var checkout struct {
+		Success bool
+		Data    model.PaymentOrder
+	}
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &checkout))
+	require.True(t, checkout.Success, res.Body.String())
+	order := checkout.Data
+	require.Equal(t, epayCheckoutPath+"/"+order.ID, order.CheckoutURL)
+	require.Contains(t, send(http.MethodGet, "/orders", "").Body.String(), order.CheckoutURL)
+	actor++
+	require.Equal(t, http.StatusNotFound, send(http.MethodGet, order.CheckoutURL, "").Code)
+	actor--
+
+	t.Setenv("EPAY_VERSION", "off")
+	t.Setenv("EPAY_V2_GATEWAY_URL", "")
+	redirect := send(http.MethodGet, order.CheckoutURL, "")
+	require.Equal(t, http.StatusSeeOther, redirect.Code)
+	target, err := url.Parse(redirect.Header().Get("Location"))
+	require.NoError(t, err)
+	require.Equal(t, "rsa.example", target.Host)
+	require.Equal(t, "/merchant/api/pay/submit", target.Path)
+	query := target.Query()
+	ts, err := strconv.ParseInt(query.Get("timestamp"), 10, 64)
+	require.NoError(t, err)
+	require.InDelta(t, time.Now().Unix(), ts, 5)
+	require.Equal(t, "RSA", query.Get("sign_type"))
+	signature, err := base64.StdEncoding.DecodeString(query.Get("sign"))
+	require.NoError(t, err)
+	digest := sha256.Sum256([]byte("money=99.00&name=额度&notify_url=https://platform.example" + epayNotifyPath +
+		"&out_trade_no=" + order.ID + "&pid=2002&return_url=https://platform.example" + epayReturnPath + "&timestamp=" + query.Get("timestamp")))
+	require.NoError(t, rsa.VerifyPKCS1v15(&merchantKey.PublicKey, crypto.SHA256, digest[:], signature))
+
+	legacy := url.Values{"pid": {"1001"}, "out_trade_no": {order.ID}, "trade_no": {"legacy-trade"}, "trade_status": {"TRADE_SUCCESS"}, "money": {"99.00"}, "sign_type": {"MD5"}}
+	legacy.Set("sign", hex.EncodeToString(epaySign(legacy, "legacy-test-key")))
+	require.Equal(t, http.StatusBadRequest, send(http.MethodGet, epayNotifyPath+"?"+legacy.Encode(), "").Code)
+
+	notify := func(key *rsa.PrivateKey, timestamp time.Time) *httptest.ResponseRecorder {
+		ts := strconv.FormatInt(timestamp.Unix(), 10)
+		form := url.Values{"pid": {"2002"}, "out_trade_no": {order.ID}, "trade_no": {"rsa-trade"}, "trade_status": {"TRADE_SUCCESS"},
+			"money": {"99.00"}, "sign_type": {"RSA"}, "timestamp": {ts}}
+		digest := sha256.Sum256([]byte("money=99.00&out_trade_no=" + order.ID + "&pid=2002&timestamp=" + ts +
+			"&trade_no=rsa-trade&trade_status=TRADE_SUCCESS"))
+		signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+		require.NoError(t, err)
+		form.Set("sign", base64.StdEncoding.EncodeToString(signature))
+		return send(http.MethodPost, epayNotifyPath, form.Encode())
+	}
+	require.Equal(t, http.StatusBadRequest, notify(merchantKey, time.Now()).Code)
+	require.Equal(t, http.StatusBadRequest, notify(platformKey, time.Now().Add(-6*time.Minute)).Code)
+	quota, err := model.GetUserQuota(user.Id)
+	require.NoError(t, err)
+	require.EqualValues(t, 100, quota)
+	require.Equal(t, "success", notify(platformKey, time.Now()).Body.String())
+	require.Equal(t, "success", notify(platformKey, time.Now()).Body.String())
+	quota, err = model.GetUserQuota(user.Id)
+	require.NoError(t, err)
+	require.EqualValues(t, 7600, quota)
+	require.Equal(t, http.StatusNotFound, send(http.MethodGet, order.CheckoutURL, "").Code)
 }
