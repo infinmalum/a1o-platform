@@ -6,7 +6,7 @@
   **One platform that speaks OpenAI, Anthropic, and Gemini — for every model provider.**
 
   [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
-  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/License-AGPL_v3.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
@@ -24,7 +24,7 @@ A1O Platform is an independently maintained AI gateway, originally derived from 
 
 - 🔌 **Four native API formats** — OpenAI Chat Completions, OpenAI Responses (including background runs you can poll or cancel), Anthropic Messages, and Gemini `generateContent`, plus embeddings, images, audio, and moderations endpoints under the same token.
 - 🌉 **Cross-protocol bridging** — requests and responses are converted between client and upstream formats, streaming included: OpenAI clients reach Anthropic, Gemini, and Responses upstreams, and Anthropic clients reach OpenAI-chat and Gemini upstreams.
-- 🔀 **Smart routing** — channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans), subscription-first routing policies, and automatic retries before the first byte reaches the client.
+- 🔀 **Smart routing** — channel load balancing, model mappings, group rates, OAuth-connected subscription accounts (ChatGPT plans, Claude Code, Gemini CLI), subscription-first routing policies, and automatic retries before the first byte reaches the client.
 - 🤖 **Built-in chat runtime** — a [Norma](https://github.com/infinmalum/norma-e) tool loop shared by Chat and Work, with persistent sessions, sandboxed Python and Node code execution (rlimits plus network isolation), and Model Context Protocol (MCP) tool servers.
 - 🧮 **Quota and billing** — per-token quotas, usage logs, redemption codes, top-up, and rate-based settlement for every request.
 - 🖥️ **Web apps** — Studio at `/` includes Chat with a multi-protocol Playground, background Work tasks, an agent library, private document libraries, and image, video, and audio tools. The console at `/admin/` manages channels, upstream accounts, users, tokens, logs, and settings.
@@ -139,4 +139,4 @@ Report bugs and changes in [this repository's issues](https://github.com/infinma
 
 ## Origin and licenses
 
-A1O Platform is derived from [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong and other contributors. The upstream MIT license and notice are preserved in [`LICENSE.upstream`](LICENSE.upstream). Original changes made in A1O Platform are offered under the [Apache License 2.0](LICENSE); see [`NOTICE`](NOTICE) for attribution and scope. Existing per-file and third-party license notices remain applicable.
+A1O Platform is derived from [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong and other contributors. The upstream MIT license and notice are preserved in [`LICENSE.upstream`](LICENSE.upstream). Original changes made in A1O Platform are offered under the [GNU Affero General Public License v3.0](LICENSE); see [`NOTICE`](NOTICE) for attribution and scope. Existing per-file and third-party license notices remain applicable.

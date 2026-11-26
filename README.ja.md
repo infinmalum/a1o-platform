@@ -6,7 +6,7 @@
   **OpenAI・Anthropic・Gemini の各プロトコルをネイティブに話す、すべてのモデルプロバイダー向けの単一プラットフォーム。**
 
   [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
-  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/License-AGPL_v3.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
@@ -24,7 +24,7 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 
 - 🔌 **4 つのネイティブ API 形式** — OpenAI Chat Completions、OpenAI Responses（照会・キャンセル可能なバックグラウンド実行を含む）、Anthropic Messages、Gemini `generateContent`。同じトークンで embeddings・画像・音声・モデレーションも利用可能。
 - 🌉 **プロトコル間ブリッジ** — クライアントと上流の形式が異なっても、リクエストとレスポンスを相互変換します（ストリーミング対応）。OpenAI クライアントは Anthropic・Gemini・Responses の上流へ、Anthropic クライアントは OpenAI chat・Gemini の上流へ接続できます。
-- 🔀 **スマートルーティング** — チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
+- 🔀 **スマートルーティング** — チャネルの負荷分散、モデル名マッピング、グループ別倍率、OAuth で接続したサブスクリプションアカウント（ChatGPT プラン、Claude Code、Gemini CLI）、サブスクリプション優先のルーティングポリシー、最初のバイトがクライアントに届く前の自動リトライ。
 - 🤖 **内蔵チャットランタイム** — Chat と Work で [Norma](https://github.com/infinmalum/norma-e) のツールループを共有。永続化されたセッション、サンドボックス化した Python / Node コード実行（rlimits による資源制限とネットワーク分離）、MCP（Model Context Protocol）ツールサーバーをサポート。
 - 🧮 **利用枠と課金** — トークンごとの利用枠、利用ログ、引換コード、チャージ、すべてのリクエストを倍率に基づいて正確に精算。
 - 🖥️ **Web アプリ** — `/` の Studio でマルチプロトコル Playground 付きチャット、バックグラウンドタスク、エージェント、非公開の資料ライブラリ、画像・動画・音声ツールを利用できます。`/admin/` の管理コンソールではチャネル、上流アカウント、ユーザー、トークン、ログ、設定を管理します。
@@ -139,4 +139,4 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## 由来とライセンス
 
-A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。A1O Platform の独自の変更は [Apache License 2.0](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。
+A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生したプロジェクトで、原著作者は © 2023 JustSong および他の貢献者です。元プロジェクトの MIT ライセンスと表示は [`LICENSE.upstream`](LICENSE.upstream) に保存されています。A1O Platform の独自の変更は [GNU Affero General Public License v3.0（AGPL-3.0）](LICENSE) の下で提供され、帰属と適用範囲は [`NOTICE`](NOTICE) を参照してください。各ソースファイルおよびサードパーティ依存関係の元のライセンス表示は引き続き適用されます。

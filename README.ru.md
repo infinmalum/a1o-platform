@@ -6,7 +6,7 @@
   **Шлюз для моделей ИИ с поддержкой API OpenAI, Anthropic и Gemini.**
 
   [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
-  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/License-AGPL_v3.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
@@ -24,7 +24,7 @@ A1O Platform — независимо поддерживаемый шлюз дл
 
 - 🔌 **Четыре нативных формата API** — OpenAI Chat Completions, OpenAI Responses (с возможностью проверять состояние и отменять фоновые задачи), Anthropic Messages и Gemini `generateContent`. Тот же токен подходит для API эмбеддингов, изображений, аудио и модерации.
 - 🌉 **Преобразование протоколов** — шлюз преобразует запросы и ответы, включая потоковую передачу. Клиент OpenAI может обращаться к каналам Anthropic, Gemini и Responses, а клиент Anthropic — к каналам OpenAI Chat и Gemini.
-- 🔀 **Маршрутизация запросов** — балансировка нагрузки между каналами, сопоставление имён моделей, коэффициенты для групп, подключение аккаунтов ChatGPT с подпиской через OAuth, приоритет таких аккаунтов в правилах маршрутизации и автоматические повторы до отправки первого байта клиенту.
+- 🔀 **Маршрутизация запросов** — балансировка нагрузки между каналами, сопоставление имён моделей, коэффициенты для групп, подключение аккаунтов подписки через OAuth (ChatGPT, Claude Code, Gemini CLI), приоритет таких аккаунтов в правилах маршрутизации и автоматические повторы до отправки первого байта клиенту.
 - 🤖 **Встроенная среда для диалогов** — Chat и Work используют общий цикл вызова инструментов [Norma](https://github.com/infinmalum/norma-e). Поддерживаются сохраняемые сеансы, изолированное выполнение кода Python и Node (ограничения ресурсов rlimits и сетевая изоляция), а также серверы инструментов MCP (Model Context Protocol).
 - 🧮 **Квоты и оплата** — квоты для отдельных токенов, журналы использования, коды пополнения, пополнение баланса и расчёт стоимости каждого запроса по настроенным тарифам.
 - 🖥️ **Веб-интерфейсы** — в Studio по адресу `/` доступны Chat с многопротокольным Playground, фоновые задачи Work, каталог агентов, закрытые библиотеки документов и инструменты для изображений, видео и аудио. В консоли `/admin/` можно управлять каналами, аккаунтами поставщиков, пользователями, токенами, журналами и настройками.
@@ -139,4 +139,4 @@ curl http://localhost:3000/v1/chat/completions \
 
 ## Происхождение и лицензии
 
-A1O Platform основан на [One API](https://github.com/songquanpeng/one-api), авторские права © 2023 JustSong и другие участники. Исходная лицензия MIT и уведомление сохранены в [`LICENSE.upstream`](LICENSE.upstream). Оригинальные изменения в A1O Platform распространяются по [лицензии Apache 2.0](LICENSE). Сведения об авторстве и области применения приведены в [`NOTICE`](NOTICE). Уведомления о лицензиях отдельных файлов и сторонних зависимостей сохраняют силу.
+A1O Platform основан на [One API](https://github.com/songquanpeng/one-api), авторские права © 2023 JustSong и другие участники. Исходная лицензия MIT и уведомление сохранены в [`LICENSE.upstream`](LICENSE.upstream). Оригинальные изменения в A1O Platform распространяются по [лицензии GNU Affero General Public v3.0 (AGPL-3.0)](LICENSE). Сведения об авторстве и области применения приведены в [`NOTICE`](NOTICE). Уведомления о лицензиях отдельных файлов и сторонних зависимостей сохраняют силу.

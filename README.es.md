@@ -6,7 +6,7 @@
   **Una pasarela de IA compatible con las API de OpenAI, Anthropic y Gemini.**
 
   [![CI](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/infinmalum/a1o-platform/actions/workflows/ci.yml)
-  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/License-AGPL_v3.0-blue.svg)](LICENSE)
   ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
   ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 
@@ -24,7 +24,7 @@ A1O Platform es una pasarela de IA derivada de [One API](https://github.com/song
 
 - 🔌 **Cuatro formatos nativos de API** — OpenAI Chat Completions, OpenAI Responses (con ejecuciones en segundo plano que se pueden consultar o cancelar), Anthropic Messages y Gemini `generateContent`. El mismo token da acceso a las API de embeddings, imágenes, audio y moderación.
 - 🌉 **Conversión entre protocolos** — la pasarela convierte solicitudes y respuestas, incluso en streaming. Los clientes OpenAI pueden usar canales Anthropic, Gemini y Responses. Los clientes Anthropic pueden usar canales OpenAI Chat y Gemini.
-- 🔀 **Enrutamiento de solicitudes** — balanceo de carga entre canales, asignación de nombres de modelo, multiplicadores por grupo, conexión de cuentas de suscripción de ChatGPT mediante OAuth, prioridad configurable para las suscripciones y reintentos automáticos antes de enviar el primer byte al cliente.
+- 🔀 **Enrutamiento de solicitudes** — balanceo de carga entre canales, asignación de nombres de modelo, multiplicadores por grupo, conexión de cuentas de suscripción mediante OAuth (ChatGPT, Claude Code, Gemini CLI), prioridad configurable para las suscripciones y reintentos automáticos antes de enviar el primer byte al cliente.
 - 🤖 **Motor conversacional integrado** — Chat y Work comparten el ciclo de herramientas de [Norma](https://github.com/infinmalum/norma-e), con sesiones persistentes, ejecución aislada de código Python y Node (límites de recursos con rlimits y aislamiento de red) y servidores de herramientas MCP (Model Context Protocol).
 - 🧮 **Cuotas y facturación** — cuotas por token, registros de uso, códigos de canje, recargas y cálculo del coste de cada solicitud según las tarifas configuradas.
 - 🖥️ **Aplicaciones web** — Studio en `/` incluye Chat con un Playground multiprotocolo, tareas Work en segundo plano, una biblioteca de agentes, bibliotecas privadas de documentos y herramientas de imagen, vídeo y audio. La consola en `/admin/` gestiona canales, cuentas de proveedores, usuarios, tokens, registros y ajustes.
@@ -139,4 +139,4 @@ Informa de problemas y propone cambios en el [gestor de incidencias del reposito
 
 ## Origen y licencias
 
-A1O Platform deriva de [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong y demás colaboradores. La licencia MIT y el aviso del proyecto original se conservan en [`LICENSE.upstream`](LICENSE.upstream). Los cambios originales de A1O Platform se distribuyen bajo la [licencia Apache 2.0](LICENSE). Consulta [`NOTICE`](NOTICE) para conocer la atribución y el alcance. Siguen vigentes los avisos de licencia de archivos concretos y dependencias de terceros.
+A1O Platform deriva de [One API](https://github.com/songquanpeng/one-api), copyright © 2023 JustSong y demás colaboradores. La licencia MIT y el aviso del proyecto original se conservan en [`LICENSE.upstream`](LICENSE.upstream). Los cambios originales de A1O Platform se distribuyen bajo la [licencia GNU Affero General Public v3.0 (AGPL-3.0)](LICENSE). Consulta [`NOTICE`](NOTICE) para conocer la atribución y el alcance. Siguen vigentes los avisos de licencia de archivos concretos y dependencias de terceros.

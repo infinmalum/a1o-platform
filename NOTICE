@@ -7,5 +7,6 @@ https://github.com/songquanpeng/one-api
 The original One API code and documentation remain subject to their MIT
 License and copyright notice. The original license is preserved in
 LICENSE.upstream. A1O Platform's original modifications are offered under the
-Apache License, Version 2.0, whose text is in LICENSE. These notices do not
-replace license notices carried by individual source files or dependencies.
+GNU Affero General Public License, Version 3.0, whose text is in LICENSE.
+These notices do not replace license notices carried by individual source
+files or dependencies.
