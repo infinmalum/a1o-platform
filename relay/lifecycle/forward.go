@@ -279,6 +279,10 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				VertexProject: attempt.Config.VertexAIProjectID, VertexADC: attempt.Config.VertexAIADC,
 				CloudflareAcct:      attempt.Config.UserID,
 				CloudflareGatewayID: attempt.Config.CloudflareGatewayID, CloudflareGatewayToken: attempt.Config.CloudflareGatewayToken,
+				SubscriptionOAuth: subscription != nil,
+			}
+			if subscription != nil {
+				nativeRequest.CodeAssistProject = subscription.Project
 			}
 			var response *http.Response
 			var reservation *billing.NativeReservation
@@ -319,6 +323,9 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			}
 			if attempt.Type == channeltype.Cloudflare {
 				response = native.NormalizeCloudflareResponse(response, nativeRequest)
+			}
+			if attempt.Type == channeltype.GeminiCLI {
+				response = native.NormalizeCodeAssistResponse(response, nativeRequest)
 			}
 			if response.StatusCode < 200 || response.StatusCode >= 300 {
 				reservation.Refund(settlementContext)
@@ -762,7 +769,7 @@ func channelSupportsProtocol(kind int, protocol native.Protocol) bool {
 	case native.Anthropic:
 		return kind == channeltype.Anthropic || kind == channeltype.AwsClaude || kind == channeltype.VertextAI || kind == channeltype.OpenRouter
 	case native.Gemini:
-		return kind == channeltype.Gemini || kind == channeltype.VertextAI
+		return kind == channeltype.Gemini || kind == channeltype.VertextAI || kind == channeltype.GeminiCLI
 	case native.GeminiInteractions:
 		return kind == channeltype.Gemini
 	case native.SystemOne:

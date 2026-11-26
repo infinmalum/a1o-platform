@@ -88,6 +88,13 @@ type Request struct {
 	CloudflareGatewayID    string
 	CloudflareGatewayToken string
 	CloudflareAcct         string
+	// SubscriptionOAuth marks an OAuth subscription credential (for example
+	// a Claude Code plan account); the Anthropic wire authenticates it as a
+	// bearer token instead of an API key and declares the OAuth beta.
+	SubscriptionOAuth bool
+	// CodeAssistProject is the cloudaicompanion project bound to a Gemini
+	// CLI credential; every Code Assist request wraps the payload with it.
+	CodeAssistProject string
 }
 
 // BuildRequest changes only the fields required to reach the selected upstream.
@@ -149,6 +156,14 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			}
 			path = fmt.Sprintf("/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
 				url.PathEscape(input.VertexProject), url.PathEscape(input.Region), url.PathEscape(input.Model), input.Action)
+		} else if input.ChannelType == channeltype.GeminiCLI {
+			// Code Assist serves one operation path per call; the model and
+			// project move into the request envelope below. The SSE marker
+			// rides the shared query handling at the end of this function.
+			if input.CodeAssistProject == "" || strings.ContainsAny(input.CodeAssistProject, "/?#:") {
+				return nil, errors.New("Gemini CLI channel requires the Code Assist project bound to its credential")
+			}
+			path = "/v1internal:" + input.Action
 		} else {
 			version := input.Version
 			if version == "" {
@@ -162,6 +177,12 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 		stream = input.Action == "streamGenerateContent"
 		if input.SystemPrompt != "" {
 			body, err = prepareGeminiBody(body, input.SystemPrompt)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if input.ChannelType == channeltype.GeminiCLI {
+			body, err = prepareCodeAssistBody(body, input.Model, input.CodeAssistProject)
 			if err != nil {
 				return nil, err
 			}
@@ -350,14 +371,26 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 			// OpenRouter authenticates every wire, Messages included, with
 			// the same bearer key.
 			req.Header.Set("Authorization", "Bearer "+input.APIKey)
+		} else if input.SubscriptionOAuth {
+			// A subscription plan credential authenticates as a bearer token
+			// and must declare the OAuth beta to be accepted for Messages.
+			req.Header.Set("Authorization", "Bearer "+input.APIKey)
+			req.Header.Set("User-Agent", "claude-cli/2.1.0 (external, cli)")
+			beta := "oauth-2025-04-20"
+			if value := input.Headers.Get("anthropic-beta"); value != "" {
+				beta += "," + value
+			}
+			req.Header.Set("anthropic-beta", beta)
 		} else {
 			req.Header.Set("x-api-key", input.APIKey)
 		}
 		version := anthropicAPIVersion(input)
 		req.Header.Set("anthropic-version", version)
-		for _, name := range []string{"anthropic-beta", "anthropic-workspace-id"} {
-			if value := input.Headers.Get(name); value != "" {
-				req.Header.Set(name, value)
+		if !input.SubscriptionOAuth {
+			for _, name := range []string{"anthropic-beta", "anthropic-workspace-id"} {
+				if value := input.Headers.Get(name); value != "" {
+					req.Header.Set(name, value)
+				}
 			}
 		}
 	case Gemini, GeminiInteractions:
@@ -367,6 +400,10 @@ func BuildRequest(ctx context.Context, input Request) (*http.Request, error) {
 				return nil, err
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
+		} else if input.ChannelType == channeltype.GeminiCLI {
+			req.Header.Set("Authorization", "Bearer "+input.APIKey)
+			req.Header.Set("User-Agent", "GeminiCLI/v25.11.0 (linux; x64)")
+			req.Header.Set("X-Goog-Api-Client", "google-cloud-sdk")
 		} else {
 			req.Header.Set("x-goog-api-key", input.APIKey)
 		}

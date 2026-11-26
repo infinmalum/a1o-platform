@@ -138,8 +138,8 @@ func newOAuthWizardFixture(t *testing.T) *oauthWizardFixture {
 	fixture.issuer = fixture.server.URL
 	t.Cleanup(fixture.server.Close)
 
-	previousClient := oauthClientFactory
-	oauthClientFactory = func(hostID string) *openai.Client {
+	previousClient := openai.ClientFactory
+	openai.ClientFactory = func(agentName, hostID string) *openai.Client {
 		return &openai.Client{
 			Endpoints: openai.Endpoints{
 				Authorize: fixture.server.URL + "/authorize",
@@ -148,7 +148,7 @@ func newOAuthWizardFixture(t *testing.T) *oauthWizardFixture {
 				Issuer:    fixture.issuer,
 			},
 			HTTP:        fixture.server.Client(),
-			AgentName:   "A1O Platform Test",
+			AgentName:   agentName,
 			HostID:      hostID,
 			RedirectURI: openai.DefaultRedirectURI,
 		}
@@ -156,7 +156,7 @@ func newOAuthWizardFixture(t *testing.T) *oauthWizardFixture {
 	previousStore := credentialStoreForWrite
 	credentialStoreForWrite = func() (*credential.Store, error) { return fixture.store, nil }
 	t.Cleanup(func() {
-		oauthClientFactory = previousClient
+		openai.ClientFactory = previousClient
 		credentialStoreForWrite = previousStore
 	})
 	return fixture

@@ -39,8 +39,14 @@ const (
 	// VolcengineArk serves Studio image and video generation.
 	VolcengineArk = 56
 
+	// GeminiCLI targets Google accounts connected the way Gemini CLI logs
+	// in: the OAuth bearer credential serves the Code Assist wire at
+	// https://cloudcode-pa.googleapis.com, whose path and request envelope
+	// differ from the Gemini API kind, so it is routed to its own kind.
+	GeminiCLI = 57
+
 	// Dummy is the exclusive upper bound of valid kind IDs, not a kind.
-	Dummy = 57
+	Dummy = 58
 )
 
 // IsValid reports whether kind names a channel kind that actually exists.
@@ -51,7 +57,7 @@ func IsValid(kind int) bool {
 	switch kind {
 	case OpenAI, Azure, Anthropic, Gemini, AwsClaude,
 		Cloudflare, VertextAI, Replicate,
-		TypeSafe, OpenAIResponses, OpenRouter, Vercel, VolcengineArk:
+		TypeSafe, OpenAIResponses, OpenRouter, Vercel, VolcengineArk, GeminiCLI:
 		return true
 	}
 	return false

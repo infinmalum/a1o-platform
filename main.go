@@ -25,6 +25,8 @@ import (
 	"github.com/infinmalum/a1o-platform/router"
 	// Registers the ChatGPT subscription profile's refresher and capability
 	// validator in the upstream registry.
+	_ "github.com/infinmalum/a1o-platform/relay/upstream/anthropic"
+	_ "github.com/infinmalum/a1o-platform/relay/upstream/google"
 	_ "github.com/infinmalum/a1o-platform/relay/upstream/openai"
 )
 

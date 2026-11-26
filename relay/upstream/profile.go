@@ -50,6 +50,25 @@ var (
 			UpstreamProtocols: []native.Protocol{native.OpenAIResponses},
 			Subscription:      true,
 		},
+		// A Claude Pro/Max subscription connected through the Claude Code
+		// OAuth client, served over the Anthropic Messages wire with the
+		// OAuth bearer credential. Personal-use only per provider ToS.
+		"anthropic_claude_code": {
+			ID:                "anthropic_claude_code",
+			Provider:          "anthropic",
+			CredentialKind:    "oauth",
+			UpstreamProtocols: []native.Protocol{native.Anthropic},
+			Subscription:      true,
+		},
+		// A Google account connected the way Gemini CLI logs in, served over
+		// the Code Assist endpoint. Personal-use only per provider ToS.
+		"gemini_cli": {
+			ID:                "gemini_cli",
+			Provider:          "google",
+			CredentialKind:    "oauth",
+			UpstreamProtocols: []native.Protocol{native.Gemini},
+			Subscription:      true,
+		},
 	}
 )
 

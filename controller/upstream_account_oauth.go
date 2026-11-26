@@ -1,13 +1,12 @@
 package controller
 
-// Sign in with ChatGPT connection wizard. The administrator starts a pending
+// Subscription account connection wizard. The administrator starts a pending
 // authorization session from the management UI, completes sign-in in the
-// browser — whose loopback redirect has no listener by provider design when
-// the gateway runs remotely — and pastes the full callback URL back. The
-// gateway then validates state, exchanges the code with the retained PKCE
-// verifier, verifies the ID token against the provider's JWKS, and stores the
-// sealed credential. All OAuth parameters follow the official
-// Sign in with ChatGPT specification; refreshes stay server-owned.
+// browser, and pastes the callback URL (or code) back. Each subscription
+// profile registers its own Connector — Sign in with ChatGPT, Claude Code,
+// Gemini CLI — that validates the callback, exchanges the code, and verifies
+// identity and entitlement; the wizard then stores the sealed credential.
+// Refreshes stay server-owned.
 
 import (
 	"context"
@@ -18,8 +17,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,24 +32,15 @@ import (
 const (
 	upstreamOAuthSessionTTL  = 10 * time.Minute
 	upstreamOAuthMaxSessions = 64
-	upstreamOAuthAgentName   = "A1O Platform"
 )
 
-// oauthClientFactory builds the Sign in with ChatGPT client; tests replace it
-// to point at a local authorization server.
-var oauthClientFactory = func(hostID string) *openai.Client {
-	return openai.NewClient(upstreamOAuthAgentName, hostID)
-}
-
+// upstreamOAuthSession keeps one pending authorization across the browser
+// round trip.
 type upstreamOAuthSession struct {
 	ID             string
-	State          string
-	Nonce          string
-	Verifier       string
+	Session        upstream.ConnectorSession
 	Profile        string
 	AccountID      int // reconnect target; 0 creates a new account
-	RegistrationID string
-	RedirectURI    string
 	ExpiresAt      time.Time
 }
 
@@ -116,8 +104,7 @@ type upstreamOAuthSessionResponse struct {
 
 // StartUpstreamAccountOAuth creates a pending authorization session and
 // returns the browser URL. AccountID > 0 reconnects an existing account with
-// its saved client registration; otherwise the flow performs the provider's
-// dynamic client registration.
+// its saved client registration.
 func StartUpstreamAccountOAuth(c *gin.Context) {
 	var payload upstreamOAuthSessionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil && !errors.Is(err, io.EOF) {
@@ -134,6 +121,11 @@ func StartUpstreamAccountOAuth(c *gin.Context) {
 	}
 	if _, ok := upstream.RefresherFor(payload.Profile); !ok {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Profile " + payload.Profile + " 未注册凭据刷新器"})
+		return
+	}
+	connector, ok := upstream.ConnectorFor(payload.Profile)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Profile " + payload.Profile + " 未注册连接流程"})
 		return
 	}
 	registrationID := ""
@@ -153,13 +145,7 @@ func StartUpstreamAccountOAuth(c *gin.Context) {
 			return
 		}
 	}
-	hostID, err := model.GetOrCreateUpstreamOAuthHostID()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "生成主机标识失败：" + err.Error()})
-		return
-	}
-	client := oauthClientFactory(hostID)
-	authorization, err := client.BuildAuthorization(registrationID)
+	authorizeURL, connectorSession, err := connector.Begin(registrationID)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "构建授权链接失败：" + err.Error()})
 		return
@@ -170,15 +156,13 @@ func StartUpstreamAccountOAuth(c *gin.Context) {
 		return
 	}
 	upstreamOAuthSessions.put(&upstreamOAuthSession{
-		ID: sessionID, State: authorization.State, Nonce: authorization.Nonce,
-		Verifier: authorization.Verifier, Profile: payload.Profile,
-		AccountID: payload.AccountID, RegistrationID: registrationID,
-		RedirectURI: client.RedirectURI, ExpiresAt: time.Now().Add(upstreamOAuthSessionTTL),
+		ID: sessionID, Session: *connectorSession, Profile: payload.Profile,
+		AccountID: payload.AccountID, ExpiresAt: time.Now().Add(upstreamOAuthSessionTTL),
 	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "",
 		"data": upstreamOAuthSessionResponse{
-			SessionID: sessionID, AuthorizeURL: authorization.URL,
-			RedirectURI: client.RedirectURI, ExpiresIn: int(upstreamOAuthSessionTTL.Seconds()),
+			SessionID: sessionID, AuthorizeURL: authorizeURL,
+			RedirectURI: connectorSession.RedirectURI, ExpiresIn: int(upstreamOAuthSessionTTL.Seconds()),
 		}})
 }
 
@@ -196,10 +180,10 @@ type upstreamOAuthCompletePayload struct {
 	Name        string `json:"name"`
 }
 
-// CompleteUpstreamAccountOAuth finishes a pending session with the loopback
-// callback URL pasted back by the administrator: it validates state, resolves
-// the issued client registration, exchanges the code, verifies identity and
-// entitlement, and creates or reconnects the sealed account.
+// CompleteUpstreamAccountOAuth finishes a pending session with the callback
+// URL pasted back by the administrator: the profile's connector validates
+// state and exchanges the credential, and the wizard creates or reconnects
+// the sealed account.
 func CompleteUpstreamAccountOAuth(c *gin.Context) {
 	var payload upstreamOAuthCompletePayload
 	if err := c.ShouldBindJSON(&payload); err != nil || payload.SessionID == "" || payload.CallbackURL == "" {
@@ -211,56 +195,23 @@ func CompleteUpstreamAccountOAuth(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "授权会话不存在或已过期，请重新发起连接"})
 		return
 	}
-	parsed, err := url.Parse(payload.CallbackURL)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "回调 URL 无法解析"})
+	profile, ok := upstream.Lookup(session.Profile)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "未知的 Profile：" + session.Profile})
 		return
 	}
-	callback, err := openai.ParseCallback(parsed.Query())
+	connector, ok := upstream.ConnectorFor(session.Profile)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Profile " + session.Profile + " 未注册连接流程"})
+		return
+	}
+	ctx := c.Request.Context()
+	result, err := connector.Complete(ctx, &session.Session, payload.CallbackURL)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	if callback.State != session.State {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "state 校验失败，请重新发起连接"})
-		return
-	}
-	clientID := callback.IssuedClientID
-	if clientID == "" {
-		clientID = session.RegistrationID
-	}
-	if clientID == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "回调中没有签发的 client ID，动态注册未完成，请重新发起连接"})
-		return
-	}
-	if session.RegistrationID != "" && callback.IssuedClientID != "" && callback.IssuedClientID != session.RegistrationID {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "授权服务器返回了不同的 client ID，已拒绝重连以保护原注册"})
-		return
-	}
-	ctx := c.Request.Context()
-	hostID, err := model.GetOrCreateUpstreamOAuthHostID()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "读取主机标识失败：" + err.Error()})
-		return
-	}
-	client := oauthClientFactory(hostID)
-	tokenSet, err := client.Exchange(ctx, clientID, callback.Code, session.Verifier, session.RedirectURI)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "授权码交换失败：" + err.Error()})
-		return
-	}
-	if !openai.GrantsEntitlement(strings.Fields(tokenSet.Scope)) {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "授权未包含 ChatGPT 计划使用权限（" + openai.EntitlementScope + "）"})
-		return
-	}
-	identity, err := client.ValidateIDToken(ctx, tokenSet.IDToken, clientID, session.Nonce)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "ID token 校验失败：" + err.Error()})
-		return
-	}
-	document := openai.DocumentFromTokenSet(tokenSet, clientID, identity.Subject)
-	document.OAuth.Email = identity.Email
-	docPayload, err := json.Marshal(document)
+	docPayload, err := json.Marshal(result.Document)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -276,7 +227,7 @@ func CompleteUpstreamAccountOAuth(c *gin.Context) {
 	}
 	adminId := c.GetInt(ctxkey.Id)
 	if session.AccountID > 0 {
-		dto, message := reconnectUpstreamAccount(ctx, session, docPayload, sealed)
+		dto, message := reconnectUpstreamAccount(ctx, session, result, docPayload, sealed)
 		if dto == nil {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": message})
 			return
@@ -288,16 +239,19 @@ func CompleteUpstreamAccountOAuth(c *gin.Context) {
 	}
 	name := payload.Name
 	if name == "" {
-		name = identity.Email
+		name = result.DisplayName
 	}
 	if name == "" {
-		name = identity.Subject
+		name = result.Email
+	}
+	if name == "" {
+		name = result.ExternalID
 	}
 	account := model.UpstreamAccount{
-		Name: name, Provider: profileProvider(session.Profile), Profile: session.Profile,
-		AdminUserId: adminId, ExternalId: identity.Subject, RegistrationId: clientID,
-		CredentialKind: document.Kind, EncryptedCredential: sealed,
-		CredentialVersion: 1, CredentialExpiresAt: document.ExpiresAt(),
+		Name: name, Provider: profile.Provider, Profile: session.Profile,
+		AdminUserId: adminId, ExternalId: result.ExternalID, RegistrationId: result.RegistrationID,
+		CredentialKind: result.Document.Kind, EncryptedCredential: sealed,
+		CredentialVersion: 1, CredentialExpiresAt: result.Document.ExpiresAt(),
 	}
 	if err := account.Insert(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -308,17 +262,10 @@ func CompleteUpstreamAccountOAuth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": account.DTO()})
 }
 
-func profileProvider(profileID string) string {
-	if profile, ok := upstream.Lookup(profileID); ok {
-		return profile.Provider
-	}
-	return ""
-}
-
 // reconnectUpstreamAccount replaces the credential of an existing account
 // through the version-checked write and re-enables a reauthorization-marked
 // account. It returns nil with a message on failure.
-func reconnectUpstreamAccount(ctx context.Context, session *upstreamOAuthSession, docPayload []byte, sealed string) (*model.UpstreamAccountDTO, string) {
+func reconnectUpstreamAccount(ctx context.Context, session *upstreamOAuthSession, result *upstream.ConnectorResult, docPayload []byte, sealed string) (*model.UpstreamAccountDTO, string) {
 	account, err := model.GetUpstreamAccountById(session.AccountID, true)
 	if err != nil {
 		return nil, "上游账号不存在：" + err.Error()

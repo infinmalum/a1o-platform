@@ -13,8 +13,24 @@ import (
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
 
+// profileChannelTypes maps a subscription profile onto the channel kinds its
+// wire can serve, so a bound channel never points at an upstream the profile
+// cannot reach.
+func profileChannelTypes(profile string) []int {
+	switch profile {
+	case "chatgpt_plan_public":
+		return []int{channeltype.OpenAI, channeltype.OpenAIResponses}
+	case "anthropic_claude_code":
+		return []int{channeltype.Anthropic}
+	case "gemini_cli":
+		return []int{channeltype.GeminiCLI}
+	}
+	return nil
+}
+
 // validateChannelAccountBinding rejects references to accounts that do not
-// exist so a subscription channel never points at a stale account ID.
+// exist or whose profile cannot serve the channel kind, so a subscription
+// channel never points at a stale or mismatched account.
 func validateChannelAccountBinding(channel *model.Channel) error {
 	if channel.UpstreamAccountID == nil {
 		return nil
@@ -22,8 +38,23 @@ func validateChannelAccountBinding(channel *model.Channel) error {
 	if *channel.UpstreamAccountID <= 0 {
 		return fmt.Errorf("无效的上游账号 Id")
 	}
-	if _, err := model.GetUpstreamAccountById(*channel.UpstreamAccountID, false); err != nil {
+	account, err := model.GetUpstreamAccountById(*channel.UpstreamAccountID, false)
+	if err != nil {
 		return fmt.Errorf("绑定的上游账号不存在：%d", *channel.UpstreamAccountID)
+	}
+	allowed := profileChannelTypes(account.Profile)
+	if allowed == nil {
+		return fmt.Errorf("上游账号 %d 的 Profile %s 不支持绑定渠道", account.Id, account.Profile)
+	}
+	matched := false
+	for _, kind := range allowed {
+		if channel.Type == kind {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return fmt.Errorf("上游账号 %d（%s）需要绑定类型为 %v 的渠道", account.Id, account.Profile, allowed)
 	}
 	return nil
 }

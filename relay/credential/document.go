@@ -36,6 +36,9 @@ type OAuthDocument struct {
 	Scopes            []string `json:"scopes,omitempty"`
 	RegistrationID    string   `json:"registration_id,omitempty"`
 	ExternalAccountID string   `json:"external_account_id,omitempty"`
+	// Project binds a Google Code Assist credential to the cloudaicompanion
+	// project chosen during onboarding; every Gemini CLI request carries it.
+	Project string `json:"project,omitempty"`
 }
 
 // ExpiresAt returns the document expiry in unix seconds, 0 when unknown.

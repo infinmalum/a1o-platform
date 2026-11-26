@@ -36,11 +36,14 @@ type attemptOutcome struct {
 
 // subscriptionAttempt carries the per-attempt state of a subscription channel:
 // the acquired lease, the resolved access token, the profile's capability
-// validator, and the profile used for credential rotation.
+// validator, the profile used for credential rotation, and the credential's
+// transport extras (for example the Code Assist project of a Gemini CLI
+// account).
 type subscriptionAttempt struct {
 	Lease     *account.Lease
 	APIKey    string
 	ProfileID string
+	Project   string
 	validator upstream.RequestValidator
 }
 
@@ -110,7 +113,7 @@ func prepareSubscription(ctx context.Context, channel Channel, upstreamProtocol 
 		return nil, &HTTPError{Status: http.StatusBadGateway, Message: "upstream credential is malformed"}
 	}
 	validator, _ := upstream.RequestValidatorFor(accountRow.Profile)
-	return &subscriptionAttempt{Lease: lease, APIKey: doc.OAuth.AccessToken, ProfileID: accountRow.Profile, validator: validator}, nil
+	return &subscriptionAttempt{Lease: lease, APIKey: doc.OAuth.AccessToken, ProfileID: accountRow.Profile, Project: doc.OAuth.Project, validator: validator}, nil
 }
 
 func profileServesProtocol(profile upstream.Profile, protocol native.Protocol) bool {

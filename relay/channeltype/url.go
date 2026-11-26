@@ -23,6 +23,8 @@ func BaseURL(kind int) string {
 		return "https://ark.cn-beijing.volces.com/api/v3"
 	case Vercel:
 		return "https://ai-gateway.vercel.sh/v1"
+	case GeminiCLI:
+		return "https://cloudcode-pa.googleapis.com"
 	}
 	return ""
 }

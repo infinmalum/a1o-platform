@@ -13,4 +13,7 @@ func init() {
 	if err := upstream.RegisterRequestValidator(ProfileID, ValidateResponsesRequest); err != nil {
 		panic("openai upstream: register validator: " + err.Error())
 	}
+	if err := upstream.RegisterConnector(ProfileID, Connect{}); err != nil {
+		panic("openai upstream: register connector: " + err.Error())
+	}
 }
