@@ -40,5 +40,22 @@ jobs:
   commit_lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect funding-only push
+        id: funding
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            exit 0
+          fi
+          paths=$(git log --format= --name-only --no-renames --diff-merges=first-parent "${BEFORE}..${GITHUB_SHA}" -- | sed '/^$/d' | sort -u)
+          if [[ "$paths" == '.github/FUNDING.yml' ]]; then
+            echo 'only=true' >> "$GITHUB_OUTPUT"
+          fi
       - uses: wagoid/commitlint-github-action@v6
+        if: steps.funding.outputs.only != 'true'
