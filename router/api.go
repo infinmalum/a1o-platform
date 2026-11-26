@@ -76,11 +76,6 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 			}
 		}
-		privacyReview := apiRouter.Group("/privacy/review", middleware.RootAuth())
-		privacyReview.GET("/chats", controller.ListRetainedChats)
-		privacyReview.GET("/access", controller.ListPrivacyReviewAccess)
-		privacyReview.POST("/chats/:id", controller.ReviewRetainedChat)
-
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

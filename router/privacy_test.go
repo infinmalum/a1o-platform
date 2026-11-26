@@ -1,12 +1,10 @@
 package router
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -20,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestPrivacyReviewRoutesAndSessionRevocation(t *testing.T) {
+func TestPrivacyRoutesAndSessionRevocation(t *testing.T) {
 	t.Chdir(t.TempDir())
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -30,7 +28,7 @@ func TestPrivacyReviewRoutesAndSessionRevocation(t *testing.T) {
 	before, redis := model.DB, common.RedisEnabled
 	model.DB, common.RedisEnabled = db, false
 	t.Cleanup(func() { model.DB, common.RedisEnabled = before, redis; _ = sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.ChatSession{}, &model.ChatMessage{}, &model.PrivacyReviewAccess{},
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.ChatSession{},
 		&model.AgentRun{}, &model.Token{}, &model.ImageGeneration{}))
 	root := model.User{Username: "review-root", AccessToken: "root-review-key", AffCode: "root-review", Role: model.RoleRootUser}
 	user := model.User{Username: "review-owner", AccessToken: "owner-review-key", AffCode: "owner-review", Role: model.RoleAdminUser}
@@ -39,12 +37,6 @@ func TestPrivacyReviewRoutesAndSessionRevocation(t *testing.T) {
 	require.NoError(t, db.Create(&model.Token{UserId: user.Id, Key: "fixture-relay-key", Status: model.TokenStatusEnabled,
 		ExpiredTime: -1, UnlimitedQuota: true}).Error)
 	t.Cleanup(func() { blacklist.UnbanUser(user.Id) })
-	active := model.ChatSession{UserId: user.Id, Title: "visible chat"}
-	retained := model.ChatSession{UserId: user.Id, Title: "retained chat"}
-	require.NoError(t, db.Create(&active).Error)
-	require.NoError(t, db.Create(&retained).Error)
-	require.NoError(t, model.InsertChatMessage(&model.ChatMessage{SessionId: retained.Id, Role: model.ChatRoleUser, Content: "retained message"}))
-	require.NoError(t, model.DeleteChatSession(retained.Id, user.Id))
 
 	engine := gin.New()
 	engine.Use(sessions.Sessions("session", cookie.NewStore([]byte("fixture-privacy-cookie"))))
@@ -69,17 +61,7 @@ func TestPrivacyReviewRoutesAndSessionRevocation(t *testing.T) {
 		engine.ServeHTTP(response, request)
 		return response
 	}
-	route := fmt.Sprintf("/api/privacy/review/chats/%d", retained.Id)
-	rootToken := root.AccessToken
-	require.NotContains(t, send(http.MethodPost, route, user.AccessToken, `{"reason":"case"}`, nil).Body.String(), "retained message")
-	require.Equal(t, http.StatusBadRequest, send(http.MethodPost, route, rootToken, `{"reason":""}`, nil).Code)
-	require.Contains(t, send(http.MethodPost, route, rootToken, `{"reason":"case"}`, nil).Body.String(), "retained message")
-	require.Equal(t, http.StatusNotFound, send(http.MethodPost, fmt.Sprintf("/api/privacy/review/chats/%d", active.Id), rootToken, `{"reason":"case"}`, nil).Code)
-	require.NoError(t, db.Model(&retained).Update("privacy_purge_at", time.Now().Unix()-1).Error)
-	require.Equal(t, http.StatusNotFound, send(http.MethodPost, route, rootToken, `{"reason":"case"}`, nil).Code)
-	var audit int64
-	require.NoError(t, db.Model(&model.PrivacyReviewAccess{}).Count(&audit).Error)
-	require.EqualValues(t, 1, audit)
+	require.Equal(t, http.StatusNotFound, send(http.MethodGet, "/api/privacy/review/chats", root.AccessToken, "", nil).Code)
 
 	require.Equal(t, http.StatusNoContent, send(http.MethodGet, "/test-token", "sk-fixture-relay-key", "", nil).Code)
 	login := send(http.MethodGet, "/test-login", "", "", nil)

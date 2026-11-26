@@ -62,77 +62,6 @@ func markAccountDeleted(ctx context.Context, userID int) error {
 	})
 }
 
-type PrivacyReviewAccess struct {
-	Id        int    `json:"id"`
-	Reviewer  int    `json:"reviewer_id"`
-	SessionId int    `json:"session_id" gorm:"index"`
-	Reason    string `json:"reason" gorm:"size:300"`
-	Accessed  int64  `json:"accessed_at" gorm:"index"`
-}
-
-type RetainedChat struct {
-	Id      int   `json:"id"`
-	UserId  int   `json:"user_id"`
-	PurgeAt int64 `json:"purge_at" gorm:"column:privacy_purge_at"`
-}
-
-type ReviewMessage struct {
-	Id          int    `json:"id"`
-	Role        string `json:"role"`
-	Content     string `json:"content"`
-	CreatedTime int64  `json:"created_time"`
-}
-
-const ReviewPageSize = 25
-
-func ListRetainedChats(ctx context.Context, before int) ([]RetainedChat, error) {
-	chats := []RetainedChat{}
-	query := DB.WithContext(ctx).Model(&ChatSession{}).Select("id", "user_id", "privacy_purge_at").
-		Where("privacy_purge_at > ?", time.Now().Unix()).Order("id DESC").Limit(ReviewPageSize + 1)
-	if before > 0 {
-		query = query.Where("id < ?", before)
-	}
-	err := query.Find(&chats).Error
-	return chats, err
-}
-
-func ListPrivacyReviewAccess(ctx context.Context, before int) ([]PrivacyReviewAccess, error) {
-	rows := []PrivacyReviewAccess{}
-	query := DB.WithContext(ctx).Order("id DESC").Limit(ReviewPageSize + 1)
-	if before > 0 {
-		query = query.Where("id < ?", before)
-	}
-	err := query.Find(&rows).Error
-	return rows, err
-}
-
-func ReviewRetainedChat(ctx context.Context, reviewer, sessionID, after int, reason string) ([]ReviewMessage, error) {
-	messages := []ReviewMessage{}
-	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		now := time.Now().Unix()
-		var session ChatSession
-		if err := tx.Select("id", "privacy_purge_at").Where("id = ? AND privacy_purge_at > ?", sessionID, now).Take(&session).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&PrivacyReviewAccess{
-			Reviewer: reviewer, SessionId: sessionID, Reason: reason, Accessed: now,
-		}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&ChatMessage{}).Select("id", "role", "content", "created_time").
-			Where("session_id = ? AND id > ? AND role IN ? AND content <> ''", sessionID, after, []string{ChatRoleUser, ChatRoleAssistant}).
-			Order("id ASC").Limit(ReviewPageSize + 1).Find(&messages).Error; err != nil {
-			return err
-		}
-		if session.PrivacyPurgeAt <= time.Now().Unix() {
-			return gorm.ErrRecordNotFound
-		}
-		return nil
-	})
-	return messages, err
-}
-
-// Runs replicate visible messages and can hold raw prompt or tool data too.
 func purgeRunData(tx *gorm.DB, filter string, id int) error {
 	runs := tx.Model(&AgentRun{}).Select("id").Where(filter, id)
 	for _, row := range []any{&RunInput{}, &ToolExecution{}, &ModelInvocation{}, &RunEvent{}} {
@@ -295,11 +224,7 @@ func (p *privacyPruner) prune(ctx context.Context, now int64) error {
 	accounts := DB.Model(&User{}).Where("status = ?", UserStatusDeleted)
 	chatErr := prunePrivacyBatch(ctx, chats, &p.chatCursor, 100, now, "conversation", purgeRetainedChat)
 	accountErr := prunePrivacyBatch(ctx, accounts, &p.accountCursor, 25, now, "account", purgeDeletedAccount)
-	auditCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	auditErr := DB.WithContext(auditCtx).Where("accessed < ?", now-int64((90*24*time.Hour)/time.Second)).
-		Delete(&PrivacyReviewAccess{}).Error
-	return errors.Join(chatErr, accountErr, auditErr)
+	return errors.Join(chatErr, accountErr)
 }
 
 func prunePrivacyBatch(ctx context.Context, query *gorm.DB, cursor *int, limit int, now int64,

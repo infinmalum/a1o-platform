@@ -166,7 +166,13 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Token{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&User{}, &PrivacyReviewAccess{}); err != nil {
+	// The retained-chat review feature was removed; retire its audit table outright.
+	if DB.Migrator().HasTable("privacy_review_accesses") {
+		if err = DB.Migrator().DropTable("privacy_review_accesses"); err != nil {
+			return err
+		}
+	}
+	if err = DB.AutoMigrate(&User{}); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&Option{}); err != nil {

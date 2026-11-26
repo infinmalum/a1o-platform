@@ -3,9 +3,6 @@ package controller
 import (
 	"errors"
 	"net/http"
-	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/a1o-platform/common/config"
@@ -74,63 +71,4 @@ func ExportUserPrivacyData(c *gin.Context) {
 			privacyFailure(c, err)
 		}
 	}
-}
-
-func privacyBefore(c *gin.Context) (int, bool) {
-	before, err := strconv.Atoi(c.DefaultQuery("before", "0"))
-	if err != nil || before < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid page cursor"})
-		return 0, false
-	}
-	return before, true
-}
-
-func privacyPage[T any](c *gin.Context, rows []T, err error, id func(T) int) {
-	if err != nil {
-		privacyFailure(c, err)
-		return
-	}
-	next := 0
-	if len(rows) > model.ReviewPageSize {
-		rows = rows[:model.ReviewPageSize]
-		next = id(rows[len(rows)-1])
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"rows": rows, "next": next}})
-}
-
-func ListRetainedChats(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	if before, ok := privacyBefore(c); ok {
-		rows, err := model.ListRetainedChats(c.Request.Context(), before)
-		privacyPage(c, rows, err, func(row model.RetainedChat) int { return row.Id })
-	}
-}
-
-func ListPrivacyReviewAccess(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	if before, ok := privacyBefore(c); ok {
-		rows, err := model.ListPrivacyReviewAccess(c.Request.Context(), before)
-		privacyPage(c, rows, err, func(row model.PrivacyReviewAccess) int { return row.Id })
-	}
-}
-
-func ReviewRetainedChat(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	id, err := strconv.Atoi(c.Param("id"))
-	var input struct {
-		Reason string `json:"reason"`
-		After  int    `json:"after"`
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
-	if err != nil || id <= 0 || c.ShouldBindJSON(&input) != nil || input.After < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid review request"})
-		return
-	}
-	reason := strings.TrimSpace(input.Reason)
-	if reason == "" || utf8.RuneCountInString(reason) > 300 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Enter a review reason (1–300 characters)"})
-		return
-	}
-	rows, err := model.ReviewRetainedChat(c.Request.Context(), c.GetInt(ctxkey.Id), id, input.After, reason)
-	privacyPage(c, rows, err, func(row model.ReviewMessage) int { return row.Id })
 }

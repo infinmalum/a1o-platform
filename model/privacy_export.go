@@ -149,7 +149,10 @@ func exportWorkTranscript(db *gorm.DB, archive *zip.Writer, userID, runID int) e
 			return err
 		}
 	}
-	messages := []ReviewMessage{}
+	messages := []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}{}
 	for _, item := range items {
 		if item.Type != "message" || (item.Role != ChatRoleUser && item.Role != ChatRoleAssistant) {
 			continue
@@ -160,7 +163,10 @@ func exportWorkTranscript(db *gorm.DB, archive *zip.Writer, userID, runID int) e
 				text.WriteString(part.Text)
 			}
 		}
-		messages = append(messages, ReviewMessage{Role: item.Role, Content: text.String()})
+		messages = append(messages, struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{Role: item.Role, Content: text.String()})
 	}
 	return archiveJSON(archive, fmt.Sprintf("work-transcripts/%d.json", runID), messages)
 }
