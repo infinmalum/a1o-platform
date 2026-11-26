@@ -173,11 +173,15 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 // the run's fenced context; fencing propagates so a stale worker's write
 // fails instead of clobbering the new owner's state.
 func (e *Engine) workLeg(ctx context.Context, req WorkTurnRequest, items []Item, tools *toolSet) (InvokeResult, error) {
+	instructions := workInstructions(req.Task, req.AgentSpec)
+	if tools.skillPrompt != "" {
+		instructions += "\n\n" + tools.skillPrompt
+	}
 	result, err := req.Executor.Invoke(ctx, InvokeRequest{
 		RunID:           req.Run.Id,
 		Model:           req.Run.Model,
-		Instructions:    workInstructions(req.Task, req.Skills, req.AgentSpec),
-		Items:           items,
+		Instructions:    instructions,
+		Items:           tools.withSkillGuidance(items),
 		Tools:           tools.defs,
 		MaxOutputTokens: DefaultMaxOutputTokens,
 		FencingToken:    req.Fencing,
@@ -346,9 +350,8 @@ func (e *Engine) workReconcile(req WorkTurnRequest, cause error) error {
 }
 
 // workInstructions renders the run-level system prompt: the work contract,
-// the frozen agent instructions when the run pins a version, the task title,
-// then the selected skills.
-func workInstructions(task *model.WorkTask, skills []*model.ChatSkill, spec *model.AgentVersionSpec) string {
+// frozen agent instructions when the run pins a version, and the task title.
+func workInstructions(task *model.WorkTask, spec *model.AgentVersionSpec) string {
 	parts := []string{
 		"你是 A1O 平台的持久任务执行助手，在后台独立运行，用户可能不在线。" +
 			"持续推进任务目标，把关键结论写进回复，让用户随时回来都能看到进展。",
@@ -361,12 +364,6 @@ func workInstructions(task *model.WorkTask, skills []*model.ChatSkill, spec *mod
 	}
 	if task != nil && strings.TrimSpace(task.Title) != "" {
 		parts = append(parts, "## 任务\n"+strings.TrimSpace(task.Title))
-	}
-	for _, skill := range skills {
-		if strings.TrimSpace(skill.Instructions) == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("## Skill: %s\n%s", skill.Name, strings.TrimSpace(skill.Instructions)))
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -427,5 +424,6 @@ func (e *Engine) resolveWorkTools(ctx context.Context, req WorkTurnRequest) *too
 	// The Agent delegation tool joins after the filter like complete_task:
 	// skill tool lists narrow capability tools, never delegation itself.
 	e.addSubagentTool(ctx, set, req)
+	set.addSkillTool(req.Skills)
 	return set
 }

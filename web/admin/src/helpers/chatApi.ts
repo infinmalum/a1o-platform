@@ -2,6 +2,7 @@
 // and MCP servers). End-user chat surfaces live in the studio app; the
 // session/message/file/turn endpoints are intentionally absent here.
 import { showError } from './utils';
+import i18n from '../i18n';
 
 export interface ChatSkill {
   id: number;
@@ -29,6 +30,7 @@ export interface ChatMCPServer {
 interface ApiResponse<T> {
   success: boolean;
   message?: string;
+  code?: string;
   data: T;
 }
 
@@ -53,7 +55,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     payload = { success: false, message: `HTTP ${response.status}`, data: null as T };
   }
   if (!payload.success) {
-    const error = new Error(payload.message || `HTTP ${response.status}`);
+    const markdownError = payload.code === 'skill_markdown_invalid'
+      ? i18n.t('chat.skillMarkdownInvalid')
+      : payload.code === 'skill_markdown_too_large' ? i18n.t('chat.skillMarkdownTooLarge') : undefined;
+    const error = new Error(markdownError || payload.message || `HTTP ${response.status}`);
     showError(error);
     throw error;
   }
@@ -61,6 +66,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const chatApi = {
+  previewSkillMarkdown: (body: File) =>
+    request<Pick<ChatSkill, 'name' | 'description' | 'instructions'>>('/api/chat/skills/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+      body,
+    }),
   adminListMCPServers: () => request<ChatMCPServer[]>('/api/chat/mcp'),
   adminSaveMCPServer: (server: Partial<ChatMCPServer> & { id?: number }) =>
     server.id

@@ -82,7 +82,8 @@ func applyChatSessionPayload(session *model.ChatSession, payload *chatSessionPay
 	session.MaxTokens = payload.MaxTokens
 	session.SandboxEnabled = payload.SandboxEnabled
 	session.ContextBudget = payload.ContextBudget
-	return session.SetSkillIdList(payload.SkillIds)
+	session.SkillIds = payload.SkillIds
+	return nil
 }
 
 // GetChatSessions lists the caller's sessions, newest activity first.
@@ -152,12 +153,22 @@ func GetChatSession(c *gin.Context) {
 		chatError(c, errors.New("无效的会话 ID"))
 		return
 	}
-	session, err := model.GetChatSessionById(id, c.GetInt(ctxkey.Id))
+	userID := c.GetInt(ctxkey.Id)
+	session, err := model.GetChatSessionById(id, userID)
 	if err != nil {
 		chatError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": session})
+	view := struct {
+		*model.ChatSession
+		AgentSkillIds *[]int `json:"agent_skill_ids,omitempty"`
+	}{ChatSession: session}
+	if session.AgentVersionId > 0 {
+		if _, _, spec, err := model.ResolveAgentVersionForRun(userID, session.AgentVersionId, model.AgentModeChat); err == nil {
+			view.AgentSkillIds = &spec.SkillIds
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": view})
 }
 
 // UpdateChatSession rewrites the session configuration.
@@ -284,6 +295,7 @@ func RunChatTurn(c *gin.Context) {
 		Content        string `json:"content"`
 		FileIds        []int  `json:"file_ids"`
 		RetryMessageID int    `json:"retry_message_id"`
+		SkillIds       []int  `json:"skill_ids"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		chatError(c, err)
@@ -345,7 +357,7 @@ func RunChatTurn(c *gin.Context) {
 		}
 	}
 
-	skills, err := sessionSkills(session, userId)
+	skills, err := sessionSkills(session, userId, request.SkillIds)
 	if err != nil {
 		chatError(c, err)
 		return
@@ -468,10 +480,10 @@ func truncateChatTitle(content string) string {
 	return content
 }
 
-// sessionSkills resolves the session's selected skill IDs against the
-// enabled skills visible to the user.
-func sessionSkills(session *model.ChatSession, userId int) ([]*model.ChatSkill, error) {
-	ids := session.SkillIdList()
+func sessionSkills(session *model.ChatSession, userId int, ids []int) ([]*model.ChatSkill, error) {
+	if ids == nil {
+		ids = session.SkillIds
+	}
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -604,7 +616,7 @@ type chatSkillPayload struct {
 	Description  string   `json:"description"`
 	Instructions string   `json:"instructions"`
 	Tools        []string `json:"tools"`
-	Enabled      bool     `json:"enabled"`
+	Enabled      *bool    `json:"enabled"`
 }
 
 func applyChatSkillPayload(skill *model.ChatSkill, payload *chatSkillPayload) error {
@@ -618,7 +630,9 @@ func applyChatSkillPayload(skill *model.ChatSkill, payload *chatSkillPayload) er
 	skill.Name = name
 	skill.Description = payload.Description
 	skill.Instructions = payload.Instructions
-	skill.Enabled = payload.Enabled
+	if payload.Enabled != nil {
+		skill.Enabled = *payload.Enabled
+	}
 	return skill.SetToolList(payload.Tools)
 }
 

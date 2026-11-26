@@ -13,7 +13,7 @@ func TestBranchChatSessionCopiesHistoryWithoutCopyingLatestReply(t *testing.T) {
 	t.Cleanup(func() { DB = previous })
 	require.NoError(t, DB.AutoMigrate(&ChatSession{}, &ChatMessage{}))
 
-	session := ChatSession{UserId: 1, Title: "original", Model: "test", KnowledgeLibraryId: 42, AgentVersionId: 21}
+	session := ChatSession{UserId: 1, Title: "original", Model: "test", KnowledgeLibraryId: 42, AgentVersionId: 21, SkillIds: []int{7}}
 	require.NoError(t, CreateChatSession(&session))
 	var firstUser ChatMessage
 	// More than one database batch verifies that pagination follows the source
@@ -47,7 +47,11 @@ func TestBranchChatSessionCopiesHistoryWithoutCopyingLatestReply(t *testing.T) {
 	require.Equal(t, session.UserId, branch.UserId)
 	require.Equal(t, session.KnowledgeLibraryId, branch.KnowledgeLibraryId)
 	require.Equal(t, session.AgentVersionId, branch.AgentVersionId)
+	require.Equal(t, session.SkillIds, branch.SkillIds)
 	require.Equal(t, session.Summary, branch.Summary)
+	stored, err := GetChatSessionById(branch.Id, session.UserId)
+	require.NoError(t, err)
+	require.Equal(t, session.SkillIds, stored.SkillIds)
 
 	rows, err := GetSessionMessages(branch.Id)
 	require.NoError(t, err)

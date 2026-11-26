@@ -117,6 +117,7 @@ func (e *Engine) resolveTools(ctx context.Context, turn ChatTurnRequest) *toolSe
 	}
 	addNormaTools(ctx, set, turn.Session.UserId)
 	set.filterBySkills(turn.Skills)
+	set.addSkillTool(turn.Skills)
 	return set
 }
 
@@ -301,7 +302,10 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 		map[string]any{"message_id": row.Id}, true, emit)
 	// The callbacks append the row id so the client can anchor deltas; they
 	// run inside Invoke before the result is complete.
-	instructions := systemContent(turn.Session, turn.Skills, turn.AgentSpec)
+	instructions := systemContent(turn.Session, turn.AgentSpec)
+	if tools.skillPrompt != "" {
+		instructions = strings.TrimSpace(instructions + "\n\n" + tools.skillPrompt)
+	}
 	if turn.Session.KnowledgeLibraryId != 0 {
 		instructions = strings.TrimSpace(instructions + "\n\n" + knowledgeInstructions)
 	}
@@ -309,7 +313,7 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 		RunID:           turn.Run.Id,
 		Model:           turn.Session.Model,
 		Instructions:    instructions,
-		Items:           items,
+		Items:           tools.withSkillGuidance(items),
 		Tools:           tools.defs,
 		MaxOutputTokens: int64(maxTokens),
 		Temperature:     turn.Session.Temperature,

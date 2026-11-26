@@ -12,7 +12,7 @@ import {
   Tabs,
   Typography,
 } from 'antd';
-import { API, showSuccess } from '../helpers';
+import { API, showError, showSuccess } from '../helpers';
 import { chatApi, type ChatMCPServer, type ChatSkill } from '../helpers/chatApi';
 
 const fieldStyle = { marginBottom: 16 };
@@ -419,6 +419,7 @@ const GlobalSkillPane: React.FC = () => {
   const [skills, setSkills] = React.useState<ChatSkill[]>([]);
   const [editing, setEditing] = React.useState<ChatSkill | null>(null);
   const [toolText, setToolText] = React.useState('');
+  const [importing, setImporting] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     try {
@@ -435,6 +436,22 @@ const GlobalSkillPane: React.FC = () => {
   const startEdit = (skill: ChatSkill) => {
     setEditing({ ...skill });
     setToolText((skill.tools || []).join(', '));
+  };
+
+  const importMarkdown = async (file: File) => {
+    if (file.size > 64 * 1024) {
+      showError(t('chat.skillMarkdownTooLarge'));
+      return;
+    }
+    setImporting(true);
+    try {
+      const draft = await chatApi.previewSkillMarkdown(file);
+      setEditing((current) => current && current === editing ? { ...current, ...draft } : current);
+    } catch {
+      // chatApi displays the error.
+    } finally {
+      setImporting(false);
+    }
   };
 
   const save = async () => {
@@ -506,13 +523,29 @@ const GlobalSkillPane: React.FC = () => {
           <Button key='cancel' onClick={() => setEditing(null)}>
             {t('chat.cancel')}
           </Button>,
-          <Button key='save' type='primary' onClick={save}>
+          <Button key='save' type='primary' disabled={importing} onClick={save}>
             {t('chat.save')}
           </Button>,
         ]}
       >
         {editing && (
           <div>
+            <div style={fieldStyle}>
+              <label htmlFor='global-skill-markdown' style={labelStyle}>
+                {t('chat.importSkillMarkdown')}
+              </label>
+              <Input
+                id='global-skill-markdown'
+                type='file'
+                accept='.md,text/markdown'
+                disabled={importing}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  if (file) void importMarkdown(file);
+                }}
+              />
+            </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>
                 {t('chat.skillName')} <span style={{ color: '#ff4d4f' }}>*</span>

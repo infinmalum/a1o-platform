@@ -16,6 +16,8 @@ const errorKeys: Record<string, string> = {
   image_invalid_settings: 'images.invalidSettings',
   chat_busy: 'studio.errors.chatBusy',
   retry_unavailable: 'studio.errors.retryUnavailable',
+  skill_markdown_invalid: 'chat.skillMarkdownInvalid',
+  skill_markdown_too_large: 'chat.skillMarkdownTooLarge',
 };
 
 class StudioRequestError extends Error {

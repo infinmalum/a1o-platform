@@ -49,7 +49,7 @@ type ChatSession struct {
 	MaxTokens      int      `json:"max_tokens"`
 	SandboxEnabled bool     `json:"sandbox_enabled" gorm:"default:false"`
 	ContextBudget  int      `json:"context_budget"` // 0 means the global default
-	SkillIds       *string  `json:"skill_ids" gorm:"type:text"`
+	SkillIds       []int    `json:"skill_ids" gorm:"serializer:json;type:text"`
 	// AgentVersionId pins the immutable agent version this session was
 	// created from; 0 for plain sessions. Editing the agent later never
 	// rewrites this binding — new sessions pick up the new version.
@@ -107,7 +107,7 @@ type ChatSkill struct {
 	// Tools is a JSON array of tool names the skill enables; the built-in
 	// sandbox tool is named "sandbox", MCP tools use their virtual names.
 	Tools       *string `json:"tools" gorm:"type:text"`
-	Enabled     bool    `json:"enabled" gorm:"default:true"`
+	Enabled     bool    `json:"enabled"`
 	CreatedTime int64   `json:"created_time" gorm:"bigint"`
 	UpdatedTime int64   `json:"updated_time" gorm:"bigint"`
 }
@@ -189,24 +189,6 @@ func (s *ChatMCPServer) View() ChatMCPServerView {
 		Headers:   decodeJSONColumn[map[string]string](s.Headers),
 		Enabled:   s.Enabled,
 	}
-}
-
-func (s *ChatSession) SkillIdList() []int {
-	return decodeJSONColumn[[]int](s.SkillIds)
-}
-
-func (s *ChatSession) SetSkillIdList(ids []int) error {
-	if len(ids) == 0 {
-		s.SkillIds = nil
-		return nil
-	}
-	raw, err := json.Marshal(ids)
-	if err != nil {
-		return err
-	}
-	encoded := string(raw)
-	s.SkillIds = &encoded
-	return nil
 }
 
 // ToolList decodes the skill's bound tool names; nil means the skill binds

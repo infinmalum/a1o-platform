@@ -44,6 +44,7 @@ func normaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 	// closure can capture them.
 	var leg InvokeResult
 	var calls []Item
+	var extras [][]llm.Message
 	var processed int
 	registry := normatool.NewRegistry()
 	allowed := make([]string, 0, len(tools.defs))
@@ -82,6 +83,9 @@ func normaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 						result = toolResult{Content: err.Error(), IsError: true}
 					} else {
 						result = toolResult{Content: sdkResultText(sdkResult), Blocks: sdkResult.Content, IsError: sdkResult.IsError}
+						if def.Name == skillToolName && !sdkResult.IsError {
+							extras[index] = sdkResult.Extra
+						}
 					}
 				} else {
 					result = recordToolExecution(ctx, run, leg.InvocationID, calls[index], string(input), func() toolResult {
@@ -112,6 +116,7 @@ func normaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 			// Norma needs only complete tool calls to decide whether to continue.
 			processed = 0
 			ready = make([]chan struct{}, len(calls))
+			extras = make([][]llm.Message, len(calls))
 			for i, call := range calls {
 				ready[i] = make(chan struct{})
 				if i == 0 {
@@ -152,6 +157,9 @@ func normaLoop(ctx context.Context, run *model.AgentRun, tools *toolSet, maxLegs
 			}
 			if err := onToolResult(leg, call, toolResult{Content: content.String(), Blocks: block.Content, IsError: block.IsError}); err != nil {
 				return err
+			}
+			if !block.IsError {
+				tools.rememberSkillGuidance(extras[processed])
 			}
 			processed++
 			if processed < len(ready) {

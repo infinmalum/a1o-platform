@@ -40,12 +40,15 @@ Configure a provider channel and enable the model for your group in the admin co
 | Open | What you can do |
 | --- | --- |
 | **Chat → Playground** | Send native OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini requests. Inspect raw JSON or streaming events, compare two models with the same request, and copy a cURL example. |
+| **Chat → Tools & Skills** | Create a personal Skill or import a single `SKILL.md` up to 64 KiB into an editable form. Select Skills in Chat or bind them to an agent for Chat or Work. A tool-capable model sees their names and descriptions and loads instructions as needed. |
 | **Workspace → Knowledge libraries** | Upload private UTF-8 TXT or Markdown files, select a library in Chat, and open cited passages from replies. Keyword search runs against the existing database without embeddings or a vector store. Each library holds up to 64 documents and 2 MiB total, with a 256 KiB limit per document. |
 | **Image generation → Image / Video** | Generate images with supported models, including Volcengine Ark Seedream and compatible Gemini models. Preview or download originals and attach images to Chat or Work. Seedream and compatible Gemini image models accept PNG, JPEG, and WebP references. Seedance on Ark generates 720p clips of 5–8 seconds from text with an optional first frame. Gemini `gemini-omni-1.2-flash` generates 360p text-to-video clips of 3–8 seconds. |
 | **Audio** | Select a compatible model to generate speech, transcribe an audio file, or translate speech into English. Play and download generated audio or export the transcript. |
 | **Account → Redeem** | Redeem a code or buy a one-time quota package through Stripe Checkout, Airwallex, EPay V1/V2, NOWPayments, or GMPay Edge when enabled. |
 
 The operator sets Ark model rates with `ARK_MEDIA_PRICES` and defines package prices with `PAYMENT_PACKAGES`. Stripe, Airwallex, NOWPayments, and GMPay use USD cents. EPay uses a separate CNY price in fen. Set `NOWPAYMENTS_PAY_CURRENCIES` to enable one or more NOWPayments assets and networks. Configure GMPay receiving methods in GMPay Edge. The [media and payments guide](docs/media-and-payments.md) covers provider setup and testing.
+
+The Chat composer selection takes effect on the next message. Save the selection in Chat settings to change the session defaults. Administrators manage global Skills in the admin console. Import reads the YAML `name` and `description` and the Markdown body. Configure allowed tools in the Skill editor. Imports contain instructions only and do not install scripts or connect MCP servers.
 
 The Studio header lets you choose from ten interface languages, including right-to-left layouts for Arabic and Persian. The admin console has its own Chinese and English preference.
 

@@ -168,6 +168,7 @@ func SetApiRouter(router *gin.Engine) {
 			chatRoute.POST("/files", controller.UploadChatFile)
 			chatRoute.DELETE("/files/:id", controller.DeleteChatFile)
 			chatRoute.GET("/skills", controller.GetChatSkills)
+			chatRoute.POST("/skills/preview", controller.PreviewSkillMarkdown)
 			chatRoute.POST("/skills", controller.CreateChatSkill)
 			chatRoute.PUT("/skills/:id", controller.UpdateChatSkill)
 			chatRoute.DELETE("/skills/:id", controller.DeleteChatSkill)

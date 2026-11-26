@@ -18,6 +18,7 @@ export interface ChatSession {
   context_budget: number;
   skill_ids: number[] | null;
   agent_version_id: number;
+  agent_skill_ids?: number[] | null;
   knowledge_library_id?: number;
   updated_time: number;
 }
@@ -99,6 +100,8 @@ export interface ChatEvent {
 export const chatApi = {
   bootstrap: () => request<ChatBootstrap>('/api/chat/bootstrap'),
   listSessions: () => request<ChatSession[]>('/api/chat/sessions'),
+  getSession: (id: number) =>
+    request<ChatSession>(`/api/chat/sessions/${id}`, undefined, false),
   createSession: (session: Partial<ChatSession>) =>
     request<ChatSession>('/api/chat/sessions', {
       method: 'POST',
@@ -123,6 +126,12 @@ export const chatApi = {
     request<ChatMessage[]>(`/api/chat/sessions/${id}/messages`),
   listFiles: () => request<ChatFile[]>('/api/chat/files'),
   listSkills: () => request<ChatSkill[]>('/api/chat/skills'),
+  previewSkillMarkdown: (body: File) =>
+    request<Pick<ChatSkill, 'name' | 'description' | 'instructions'>>('/api/chat/skills/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+      body,
+    }),
   saveSkill: (skill: Partial<ChatSkill> & { id?: number }) =>
     skill.id
       ? request<ChatSkill>(`/api/chat/skills/${skill.id}`, {
@@ -166,6 +175,7 @@ export async function runTurn(
   sessionId: number,
   content: string,
   fileIds: number[],
+  skillIds: number[],
   onEvent: (event: ChatEvent) => void,
   signal: AbortSignal,
   retryMessageId?: number,
@@ -173,7 +183,10 @@ export async function runTurn(
   const response = await studioFetch(`/api/chat/sessions/${sessionId}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(retryMessageId ? { retry_message_id: retryMessageId } : { content, file_ids: fileIds }),
+    body: JSON.stringify({
+      ...(retryMessageId ? { retry_message_id: retryMessageId } : { content, file_ids: fileIds }),
+      skill_ids: skillIds,
+    }),
     signal,
   });
   if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('text/event-stream')) {

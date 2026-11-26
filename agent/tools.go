@@ -73,7 +73,10 @@ type toolSet struct {
 	sdk map[string]normatool.CoreTool
 	// todos is the per-run todo store backing the TodoWrite tool; normaLoop
 	// passes it to the harness for reminder re-surfacing.
-	todos *normatool.TodoStore
+	todos         *normatool.TodoStore
+	skillPrompt   string
+	skillGuidance map[string]string
+	loadedSkills  []string
 }
 
 func newToolSet() *toolSet {

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { showError } from '@/helpers/utils';
 import { chatApi, type ChatMCPServer, type ChatSkill } from './chatApi';
 
 const emptySkill: ChatSkill = {
@@ -31,6 +32,7 @@ const SkillPane: React.FC = () => {
   const [skills, setSkills] = React.useState<ChatSkill[]>([]);
   const [editing, setEditing] = React.useState<ChatSkill | null>(null);
   const [toolText, setToolText] = React.useState('');
+  const [importing, setImporting] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     try {
@@ -47,6 +49,22 @@ const SkillPane: React.FC = () => {
   const startEdit = (skill: ChatSkill) => {
     setEditing({ ...skill });
     setToolText((skill.tools || []).join(', '));
+  };
+
+  const importMarkdown = async (file: File) => {
+    if (file.size > 64 * 1024) {
+      showError(t('chat.skillMarkdownTooLarge'));
+      return;
+    }
+    setImporting(true);
+    try {
+      const draft = await chatApi.previewSkillMarkdown(file);
+      setEditing((current) => current && current === editing ? { ...current, ...draft } : current);
+    } catch {
+      // chatApi displays the error.
+    } finally {
+      setImporting(false);
+    }
   };
 
   const save = async () => {
@@ -124,6 +142,20 @@ const SkillPane: React.FC = () => {
           {editing && (
             <div className='grid gap-4'>
               <div className='grid gap-2'>
+                <Label htmlFor='personal-skill-markdown'>{t('chat.importSkillMarkdown')}</Label>
+                <Input
+                  id='personal-skill-markdown'
+                  type='file'
+                  accept='.md,text/markdown'
+                  disabled={importing}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = '';
+                    if (file) void importMarkdown(file);
+                  }}
+                />
+              </div>
+              <div className='grid gap-2'>
                 <Label>{t('chat.skillName')}</Label>
                 <Input
                   value={editing.name}
@@ -166,7 +198,7 @@ const SkillPane: React.FC = () => {
             <Button variant='outline' onClick={() => setEditing(null)}>
               {t('chat.cancel')}
             </Button>
-            <Button onClick={save}>{t('chat.save')}</Button>
+            <Button disabled={importing} onClick={save}>{t('chat.save')}</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -231,22 +231,13 @@ func historyToItems(history []*model.ChatMessage, files map[int]*model.ChatFile,
 	return entries, nil
 }
 
-// systemContent assembles the run instructions: the frozen agent
-// instructions when the run pins an agent version, then the session prompt,
-// then the selected skill instructions.
-func systemContent(session *model.ChatSession, skills []*model.ChatSkill, spec *model.AgentVersionSpec) string {
+func systemContent(session *model.ChatSession, spec *model.AgentVersionSpec) string {
 	var parts []string
 	if spec != nil && strings.TrimSpace(spec.Instructions) != "" {
 		parts = append(parts, strings.TrimSpace(spec.Instructions))
 	}
 	if strings.TrimSpace(session.SystemPrompt) != "" {
 		parts = append(parts, strings.TrimSpace(session.SystemPrompt))
-	}
-	for _, skill := range skills {
-		if strings.TrimSpace(skill.Instructions) == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("## Skill: %s\n%s", skill.Name, strings.TrimSpace(skill.Instructions)))
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -265,7 +256,7 @@ func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTur
 	if err != nil {
 		return nil, err
 	}
-	systemTokens := estimateText(systemContent(turn.Session, turn.Skills, turn.AgentSpec), "")
+	systemTokens := estimateText(systemContent(turn.Session, turn.AgentSpec)+tools.skillPrompt, "")
 	toolTokens := 0
 	for _, def := range tools.defs {
 		raw, _ := json.Marshal(def)

@@ -72,6 +72,7 @@ const Chat = () => {
   const [selectedFileIds, setSelectedFileIds] = React.useState<number[]>([]);
   const [skills, setSkills] = React.useState<ChatSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = React.useState<number[]>([]);
+  const [pinnedSkills, setPinnedSkills] = React.useState<{ sessionId: number; ids: number[] }>();
   const [models, setModels] = React.useState<string[]>([]);
   // The model for the next created session; existing sessions carry their
   // own model, which the header picker rewrites directly.
@@ -319,8 +320,9 @@ const Chat = () => {
 
   const streamTurn = async (
     sessionId: number, content: string, fileIds: number[],
-    previousUserId?: number, retryMessageId?: number,
+    options: { previousUserId?: number; retryMessageId?: number; skillIds: number[] },
   ) => {
+    const { previousUserId, retryMessageId, skillIds } = options;
     setStreaming(true);
     setStreamError('');
     setTurnFailed(false);
@@ -328,7 +330,7 @@ const Chat = () => {
     abortRef.current = controller;
     let failed = false;
     try {
-      await runTurn(sessionId, content, fileIds, handleEvent, controller.signal, retryMessageId);
+      await runTurn(sessionId, content, fileIds, skillIds, handleEvent, controller.signal, retryMessageId);
     } catch (error) {
       if (!controller.signal.aborted) {
         failed = true;
@@ -372,7 +374,10 @@ const Chat = () => {
     }]);
     setInput('');
     setSelectedFileIds([]);
-    await streamTurn(activeSession.id, content, selectedFileIds, lastUser?.id);
+    await streamTurn(activeSession.id, content, selectedFileIds, {
+      previousUserId: lastUser?.id,
+      skillIds: selectedSkillIds,
+    });
   };
 
   const regenerate = async () => {
@@ -384,12 +389,11 @@ const Chat = () => {
       const result = await chatApi.branch(activeSession.id, lastUser.id, t('chat.branchTitle', { title: baseTitle }));
       activeSessionRef.current = result.session.id;
       setActiveSession(result.session);
-      setSelectedSkillIds(result.session.skill_ids || []);
       setSelectedFileIds([]);
       setMessages((current) => current.slice(0, current.findIndex((message) => message.id === lastUser.id) + 1));
       setSearchParams({ session: String(result.session.id) }, { replace: true });
       setConfirmBranch(false);
-      await streamTurn(result.session.id, '', [], undefined, result.message_id);
+      await streamTurn(result.session.id, '', [], { retryMessageId: result.message_id, skillIds: selectedSkillIds });
     } catch (error) {
       setConfirmBranch(false);
       setStreamError(error instanceof Error ? error.message : t('chat.requestFailed'));
@@ -524,6 +528,25 @@ const Chat = () => {
   const activeAgent = activeSession?.agent_version_id
     ? agents.find((agent) => agent.latest?.id === activeSession.agent_version_id)
     : undefined;
+  const lookupPinnedSkills = !activeAgent && activeSession?.agent_version_id ? activeSession.id : undefined;
+  React.useEffect(() => {
+    if (!lookupPinnedSkills) return;
+    let cancelled = false;
+    void chatApi.getSession(lookupPinnedSkills).then(
+      (session) => {
+        if (!cancelled && session.agent_skill_ids !== undefined) {
+          setPinnedSkills({ sessionId: session.id, ids: session.agent_skill_ids ?? [] });
+        }
+      },
+      () => { /* The server still validates the scope on each turn. */ },
+    );
+    return () => { cancelled = true; };
+  }, [lookupPinnedSkills]);
+  const fetchedIds = pinnedSkills?.sessionId === activeSession?.id ? pinnedSkills?.ids : undefined;
+  const boundSkillIds = activeAgent?.spec?.skill_ids ?? fetchedIds ?? activeSession?.skill_ids ?? [];
+  const sessionSkills = activeSession?.agent_version_id
+    ? skills.filter((skill) => boundSkillIds.includes(skill.id))
+    : skills;
   const emptyHint =
     activeAgent?.spec?.opening_hint || t('chat.emptyHint');
 
@@ -769,7 +792,7 @@ const Chat = () => {
             selectedFileIds={selectedFileIds}
             onToggleFile={toggleFile}
             onUpload={uploadFile}
-            skills={skills}
+            skills={sessionSkills}
             selectedSkillIds={selectedSkillIds}
             onToggleSkill={toggleSkill}
           />
@@ -792,7 +815,7 @@ const Chat = () => {
         onClose={() => setSettingsOpen(false)}
         session={activeSession}
         models={models}
-        skills={skills}
+        skills={sessionSkills}
         bootstrap={bootstrap}
         onSave={saveSettings}
       />
