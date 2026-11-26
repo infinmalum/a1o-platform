@@ -37,18 +37,18 @@ jobs:
         env:
           CI: ""
         run: |
-          cd web/admin
-          npm ci --legacy-peer-deps
-          REACT_APP_VERSION=$(git describe --tags) npm run build
-          cd ../web/studio
-          npm ci --legacy-peer-deps
-          REACT_APP_VERSION=$(git describe --tags) npm run build
-          cd ../..
+          export REACT_APP_VERSION=$(git describe --tags)
+          npm ci --legacy-peer-deps --prefix web/admin
+          npm run build --prefix web/admin
+          npm ci --legacy-peer-deps --prefix web/studio
+          npm run build --prefix web/studio
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
           go-version: '1.27.1'
       - name: Build Backend
+        env:
+          CGO_ENABLED: '1'
         run: |
           go mod download
           go build -ldflags "-s -w -X 'github.com/infinmalum/a1o-platform/common.Version=$(git describe --tags)'" -o a1o-platform.exe
