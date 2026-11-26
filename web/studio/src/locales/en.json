@@ -232,13 +232,13 @@
       "noMemory": "No saved memories.",
       "data": "Personal data",
       "export": "Download my data (ZIP)",
-      "retention": "Deleted conversations remain available to authorized abuse reviewers for 15 days. Payment records may be retained separately.",
+      "retention": "Deleted chats are scheduled for permanent deletion after 15 days. Payment records may be retained separately.",
       "deleteAccount": "Delete account",
-      "confirmAccount": "Your account and API keys stop working immediately. Authorized reviewers can check deleted chat text for 15 days. Download your data before continuing.",
+      "confirmAccount": "Your account and API keys stop working immediately. Your chats are scheduled for permanent deletion after 15 days. Download your data before continuing.",
       "confirmMemory": "Delete saved memory?",
       "memoryPermanent": "Deleted memories cannot be restored.",
       "confirmDelete": "Confirm deletion",
-      "retentionChat": "Authorized reviewers can check the deleted conversation for abuse for 15 days."
+      "retentionChat": "This chat disappears from your chat history immediately. It is scheduled for permanent deletion after 15 days."
     },
     "home": {
       "tagline": "A workspace centered on using, creating and reusing AI.",

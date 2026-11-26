@@ -232,13 +232,13 @@
       "noMemory": "没有已保存的记忆。",
       "data": "个人数据",
       "export": "下载我的数据（ZIP）",
-      "retention": "已删除的对话仍可由授权管理员审查 15 天。支付记录可能单独保留。",
+      "retention": "已删除的对话将在 15 天后进入自动清理。支付记录可能单独保留。",
       "deleteAccount": "删除账号",
-      "confirmAccount": "账号和 API 密钥将立即失效。授权管理员可在 15 天内检查已删除的聊天正文。请在继续前下载所需数据。",
+      "confirmAccount": "账号和 API 密钥将立即失效。你的对话将在 15 天后进入自动清理。请在继续前下载所需数据。",
       "confirmMemory": "删除已保存的记忆？",
       "memoryPermanent": "删除的记忆无法恢复。",
       "confirmDelete": "确认删除",
-      "retentionChat": "授权管理员可在 15 天内审查已删除的对话，排查滥用。"
+      "retentionChat": "此对话会立即从聊天记录中隐藏，并在 15 天后进入自动清理。"
     },
     "home": {
       "tagline": "一个以 AI 使用、创作和复用为中心的工作台。",

@@ -128,7 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## ドキュメント
 
 - [フロントエンド開発](web/README.md)
-- [アカウントのプライバシー、長期メモリ、削除済みチャットの確認](docs/privacy.md)
+- [アカウントのプライバシー、長期メモリ、データの削除](docs/privacy.md)
 
 ## 開発
 

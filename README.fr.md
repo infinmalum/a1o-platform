@@ -128,7 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## Documentation
 
 - [Développement des interfaces Web](web/README.md)
-- [Confidentialité du compte, mémoire et examen des conversations supprimées](docs/privacy.md)
+- [Confidentialité du compte, mémoire et suppression des données](docs/privacy.md)
 
 ## Développement
 

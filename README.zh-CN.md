@@ -128,7 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## 文档
 
 - [前端开发说明](web/README.md)
-- [账号隐私、长期记忆和已删除聊天审查](docs/privacy.md)
+- [账号隐私、长期记忆和数据删除](docs/privacy.md)
 
 ## 开发
 

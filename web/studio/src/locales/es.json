@@ -232,13 +232,13 @@
       "noMemory": "No hay recuerdos guardados.",
       "data": "Datos personales",
       "export": "Descargar mis datos (ZIP)",
-      "retention": "El personal autorizado puede revisar las conversaciones eliminadas durante 15 días para investigar abusos. Los registros de pago pueden conservarse por separado.",
+      "retention": "Las conversaciones eliminadas se programan para su eliminación definitiva al cabo de 15 días. Los registros de pago pueden conservarse por separado.",
       "deleteAccount": "Eliminar cuenta",
-      "confirmAccount": "Tu cuenta y tus claves de API se desactivarán de inmediato. El personal autorizado puede revisar el texto eliminado durante 15 días. Descarga tus datos antes de continuar.",
+      "confirmAccount": "Tu cuenta y tus claves de API se desactivarán de inmediato. Tus conversaciones se programarán para su eliminación definitiva al cabo de 15 días. Descarga tus datos antes de continuar.",
       "confirmMemory": "¿Eliminar la memoria guardada?",
       "memoryPermanent": "Los recuerdos eliminados no se pueden recuperar.",
       "confirmDelete": "Confirmar eliminación",
-      "retentionChat": "El personal autorizado puede revisar la conversación eliminada durante 15 días para investigar abusos."
+      "retentionChat": "Esta conversación desaparecerá de inmediato de tu historial. Su eliminación definitiva está prevista al cabo de 15 días."
     },
     "home": {
       "tagline": "Un espacio de trabajo para usar, crear y reutilizar IA.",

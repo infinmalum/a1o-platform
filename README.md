@@ -128,7 +128,7 @@ curl http://localhost:3000/v1/chat/completions \
 ## Documentation
 
 - [Frontend development](web/README.md)
-- [Account privacy, memory, and deleted-chat review](docs/privacy.md)
+- [Account privacy, memory, and data deletion](docs/privacy.md)
 
 ## Development
 

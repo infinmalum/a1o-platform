@@ -232,13 +232,13 @@
       "noMemory": "Keine gespeicherten Erinnerungen.",
       "data": "Personenbezogene Daten",
       "export": "Meine Daten herunterladen (ZIP)",
-      "retention": "Berechtigte Prüfer können gelöschte Chats 15 Tage lang auf Missbrauch prüfen. Zahlungsdaten können gesondert aufbewahrt werden.",
+      "retention": "Gelöschte Chats sind nach 15 Tagen zur endgültigen Löschung vorgesehen. Zahlungsdaten können gesondert aufbewahrt werden.",
       "deleteAccount": "Konto löschen",
-      "confirmAccount": "Konto und API-Schlüssel werden sofort deaktiviert. Berechtigte Prüfer können gelöschte Chattexte 15 Tage lang prüfen. Lade deine Daten vorher herunter.",
+      "confirmAccount": "Konto und API-Schlüssel werden sofort deaktiviert. Deine Chats sind nach 15 Tagen zur endgültigen Löschung vorgesehen. Lade deine Daten vorher herunter.",
       "confirmMemory": "Gespeicherte Erinnerung löschen?",
       "memoryPermanent": "Gelöschte Erinnerungen lassen sich nicht wiederherstellen.",
       "confirmDelete": "Löschen bestätigen",
-      "retentionChat": "Berechtigte Prüfer können diese Unterhaltung 15 Tage lang auf Missbrauch prüfen."
+      "retentionChat": "Dieser Chat verschwindet sofort aus deinem Chatverlauf. Er ist nach 15 Tagen zur endgültigen Löschung vorgesehen."
     },
     "home": {
       "tagline": "Ein Arbeitsplatz für die Nutzung, Erstellung und Wiederverwendung von KI.",
