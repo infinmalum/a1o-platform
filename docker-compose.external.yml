@@ -2,7 +2,7 @@
 services:
   a1o-platform:
     build: .
-    image: a1o-platform:local
+    image: ${A1O_IMAGE:-a1o-platform:local}
     container_name: a1o-platform
     restart: always
     command: --log-dir /app/logs

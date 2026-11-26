@@ -1,4 +1,27 @@
 {
+  "models": {
+    "search": "Modellnamen suchen",
+    "scope": "Modellauswahl",
+    "mine": "Für mich verfügbar",
+    "all": "Alle Modelle",
+    "group": "Gruppe: {{group}}",
+    "category": "Kategorie",
+    "allCategories": "Alle Kategorien",
+    "categories": {
+      "chat": "Chat",
+      "image": "Bild",
+      "video": "Video",
+      "audio": "Audio",
+      "retrieval": "Embeddings und Reranking",
+      "other": "Sonstige"
+    },
+    "matchCount": "{{total}} gefunden · Deine Gruppe: {{group}}",
+    "empty": "Keine Modelle entsprechen den Filtern.",
+    "available": "Verfügbar",
+    "restricted": "Für deine Gruppe gesperrt",
+    "groups": "Gruppen: {{groups}}",
+    "tokenPrice": "Pro Million Token: {{input}} Eingabe · {{output}} Ausgabe"
+  },
   "common": {
     "quota": {
       "display": "Entspricht: ${{amount}}",
@@ -244,6 +267,11 @@
       "retentionChat": "Dieser Chat verschwindet sofort aus deinem Chatverlauf. Er ist nach 15 Tagen zur endgültigen Löschung vorgesehen."
     },
     "home": {
+      "models": {
+        "title": "Modellkatalog",
+        "description": "Aktive Modelle ansehen und nach Gruppe oder Kategorie filtern.",
+        "cta": "Modelle ansehen"
+      },
       "tagline": "Ein Arbeitsplatz für die Nutzung, Erstellung und Wiederverwendung von KI.",
       "open": "Verfügbar",
       "enter": "Öffnen",

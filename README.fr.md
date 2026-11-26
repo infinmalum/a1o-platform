@@ -51,7 +51,11 @@ Studio propose dix langues d’interface dans son en-tête, avec écriture de dr
 
 Une instance unique peut utiliser SQLite sans Redis ni base vectorielle. Conservez la base de données et le volume de données lors d’une sauvegarde ou d’une migration. Les pièces jointes des conversations et les images et vidéos générées sont enregistrées sur disque.
 
+Après connexion, le catalogue présente les modèles actifs et permet de les filtrer par groupe, catégorie et nom.
+
 ## Démarrage rapide avec Docker
+
+Les commandes par défaut compilent l’application à partir des sources. Pour utiliser une image précompilée sous Linux amd64, consultez les [instructions GHCR](docs/database-deployment.md#deploy-a-prebuilt-image-from-ghcr).
 
 Pour une nouvelle installation, exécutez les commandes suivantes avec Docker Compose et OpenSSL.
 

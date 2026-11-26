@@ -1,4 +1,27 @@
 {
+  "models": {
+    "search": "Buscar por nombre",
+    "scope": "Alcance",
+    "mine": "Disponibles para mí",
+    "all": "Todos los modelos",
+    "group": "Grupo: {{group}}",
+    "category": "Categoría",
+    "allCategories": "Todas las categorías",
+    "categories": {
+      "chat": "Chat",
+      "image": "Imagen",
+      "video": "Vídeo",
+      "audio": "Audio",
+      "retrieval": "Embeddings y reordenación",
+      "other": "Otros"
+    },
+    "matchCount": "{{total}} resultados · Tu grupo: {{group}}",
+    "empty": "Ningún modelo coincide con los filtros.",
+    "available": "Disponible",
+    "restricted": "No disponible para tu grupo",
+    "groups": "Grupos: {{groups}}",
+    "tokenPrice": "Por millón de tokens: {{input}} de entrada · {{output}} de salida"
+  },
   "common": {
     "quota": {
       "display": "Equivalente: ${{amount}}",
@@ -244,6 +267,11 @@
       "retentionChat": "Esta conversación desaparecerá de inmediato de tu historial. Su eliminación definitiva está prevista al cabo de 15 días."
     },
     "home": {
+      "models": {
+        "title": "Catálogo de modelos",
+        "description": "Explora los modelos habilitados y fíltralos por grupo o categoría.",
+        "cta": "Explorar modelos"
+      },
       "tagline": "Un espacio de trabajo para usar, crear y reutilizar IA.",
       "open": "Disponible",
       "enter": "Abrir",

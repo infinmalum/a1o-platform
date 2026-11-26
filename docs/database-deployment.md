@@ -16,6 +16,23 @@ Run Compose commands from the same project directory. Use the same Compose proje
 
 The default Compose file always connects the app to its bundled PostgreSQL. To use an external service, choose the external file explicitly. Set `REDIS_CONN_STRING` only if connecting to an existing Redis service. Use the same Compose file for future app updates and configuration changes. If the deployment uses older `one-api` names or paths, retain its existing configuration and storage locations until they have been backed up and migrated separately.
 
+## Deploy a prebuilt image from GHCR
+
+The public image is published for `linux/amd64`. Use the Compose files from a checkout that supports `A1O_IMAGE`. For a new installation, copy `.env.example` to `.env` and configure the database and session secret as described in the README. For an existing installation, keep its Compose project name, database configuration, and data directories.
+
+1. Set `A1O_IMAGE=ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.3` in the project’s `.env` to pin this release. Use `ghcr.io/infinmalum/a1o-platform:latest` to follow the latest published image, which can be a Beta.
+2. Pull and start the pinned image with bundled PostgreSQL. Use the same reference in `docker pull` that you set in `.env`.
+
+   ```sh
+   docker pull ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.3 && docker compose up -d --no-build
+   ```
+
+   For SQLite or an external database, use `docker compose -f docker-compose.external.yml up -d --no-build` after a successful pull. For existing bundled MySQL deployments, use `docker compose -f docker-compose.mysql.yml up -d --no-build` after a successful pull.
+
+3. Verify `docker compose ps` with the same Compose file, then open `http://localhost:3000/admin/setup` for a new site or sign in to the existing site.
+
+For later image updates, edit `A1O_IMAGE` if you use a pinned tag, pull the chosen reference, and repeat the same Compose command with `--no-build`. Leave `A1O_IMAGE` unset to use the source build instead. On other architectures, build from source or use the matching binary from the release page.
+
 ## Switch an existing installation
 
 **First decide whether the target already contains the site's data.** For an upgrade that keeps the same database, select the matching deployment above. For a separate, empty installation, use a separate deployment directory and application data mount. Changing `SQL_DSN` only changes the connection. The application's startup migrations create or update schema in that database and do not copy data from another one.

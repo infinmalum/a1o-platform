@@ -1,4 +1,27 @@
 {
+  "models": {
+    "search": "Search model names",
+    "scope": "Scope",
+    "mine": "Available to me",
+    "all": "All models",
+    "group": "Group: {{group}}",
+    "category": "Category",
+    "allCategories": "All categories",
+    "categories": {
+      "chat": "Chat",
+      "image": "Image",
+      "video": "Video",
+      "audio": "Audio",
+      "retrieval": "Embeddings and reranking",
+      "other": "Other"
+    },
+    "matchCount": "{{total}} found · Your group: {{group}}",
+    "empty": "No models match these filters.",
+    "available": "Available",
+    "restricted": "Unavailable to your group",
+    "groups": "Groups: {{groups}}",
+    "tokenPrice": "Per million tokens: {{input}} input · {{output}} output"
+  },
   "common": {
     "quota": {
       "display": "Equivalent: ${{amount}}",
@@ -244,6 +267,11 @@
       "retentionChat": "This chat disappears from your chat history immediately. It is scheduled for permanent deletion after 15 days."
     },
     "home": {
+      "models": {
+        "title": "Model Catalog",
+        "description": "Browse enabled models and filter by group or category.",
+        "cta": "Browse models"
+      },
       "tagline": "A workspace centered on using, creating and reusing AI.",
       "open": "Available",
       "enter": "Open",

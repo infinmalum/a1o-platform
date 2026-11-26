@@ -1,4 +1,27 @@
 {
+  "models": {
+    "search": "搜索模型名称",
+    "scope": "模型范围",
+    "mine": "我可用的模型",
+    "all": "所有模型",
+    "group": "分组：{{group}}",
+    "category": "模型类别",
+    "allCategories": "全部类别",
+    "categories": {
+      "chat": "对话",
+      "image": "图像",
+      "video": "视频",
+      "audio": "音频",
+      "retrieval": "嵌入与排序",
+      "other": "其他"
+    },
+    "matchCount": "找到 {{total}} 个模型 · 你的分组：{{group}}",
+    "empty": "没有符合条件的模型。",
+    "available": "可用",
+    "restricted": "当前分组不可用",
+    "groups": "开放分组：{{groups}}",
+    "tokenPrice": "每百万 Token：输入 {{input}} · 输出 {{output}}"
+  },
   "common": {
     "quota": {
       "display": "等价金额：${{amount}}",
@@ -244,6 +267,11 @@
       "retentionChat": "此对话会立即从聊天记录中隐藏，并在 15 天后进入自动清理。"
     },
     "home": {
+      "models": {
+        "title": "模型广场",
+        "description": "浏览站点已启用的模型，按分组或类别筛选。",
+        "cta": "浏览模型"
+      },
       "tagline": "一个以 AI 使用、创作和复用为中心的工作台。",
       "open": "可用",
       "enter": "进入",

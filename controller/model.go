@@ -215,20 +215,7 @@ func GetUserPricing(c *gin.Context) {
 	groupRatio := billingratio.GetGroupRatio(userGroup)
 	prices := make([]modelPrice, 0, len(models))
 	for _, name := range models {
-		entry := modelPrice{Name: name}
-		// A model is priced only when both its input and output prices
-		// exist: billing refuses a partially priced model, so the list must
-		// not advertise one either.
-		if ratio, ok := billingratio.LookupModelRatio(name); ok {
-			if completion, cok := billingratio.LookupCompletionRatio(name); cok {
-				entry.Priced = true
-				entry.ModelRatio = ratio
-				entry.CompletionRatio = completion
-				entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
-				entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
-			}
-		}
-		prices = append(prices, entry)
+		prices = append(prices, tokenModelPrice(name, groupRatio))
 	}
 	sort.Slice(prices, func(i, j int) bool { return prices[i].Name < prices[j].Name })
 	c.JSON(http.StatusOK, gin.H{
@@ -240,5 +227,18 @@ func GetUserPricing(c *gin.Context) {
 			"models":      prices,
 		},
 	})
-	return
+}
+
+func tokenModelPrice(name string, groupRatio float64) modelPrice {
+	entry := modelPrice{Name: name}
+	ratio, hasInput := billingratio.LookupModelRatio(name)
+	completion, hasOutput := billingratio.LookupCompletionRatio(name)
+	if hasInput && hasOutput {
+		entry.Priced = true
+		entry.ModelRatio = ratio
+		entry.CompletionRatio = completion
+		entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
+		entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
+	}
+	return entry
 }

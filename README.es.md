@@ -51,7 +51,11 @@ El encabezado de Studio permite elegir entre diez idiomas de interfaz, con escri
 
 Una sola instancia puede usar SQLite sin Redis ni una base vectorial. Conserva la base de datos y el volumen de datos al hacer copias de seguridad o migrar. Los adjuntos de Chat y las imágenes y vídeos generados se guardan en disco.
 
+Tras iniciar sesión, el catálogo muestra los modelos habilitados y permite filtrar por grupo, categoría y nombre.
+
 ## Inicio rápido con Docker
+
+Las instrucciones predeterminadas compilan la aplicación desde el código fuente. Para usar una imagen precompilada en Linux amd64, consulta las [instrucciones de GHCR](docs/database-deployment.md#deploy-a-prebuilt-image-from-ghcr).
 
 Para una instalación nueva, ejecuta estos comandos en un entorno con Docker Compose y OpenSSL.
 

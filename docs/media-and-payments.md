@@ -30,7 +30,7 @@ Image workers renew a 90-second lease while executing a job. Expired jobs with a
    PAYMENT_PACKAGES='[{"id":"standard","name":"Standard","amount":1500,"cny_amount":9900,"quota":7500000}]'
    ```
 
-3. Configure the gateways you want to offer, then start the app with the new environment. With Docker Compose, set the variables in the project's environment or Compose `.env` file. Run `docker compose up -d a1o-platform` for the bundled PostgreSQL deployment, or add the same `-f` option you selected in the [database deployment guide](database-deployment.md) before `up`. For a direct container run, pass the variables when creating the container and retain the existing data mount when replacing it. Use Stripe test credentials on a separate test deployment or database. The NOWPayments adapter uses the production API.
+3. Configure the gateways you want to offer, then start the app with the new environment. With Docker Compose, set the variables in the project's environment or Compose `.env` file. Run `docker compose up -d a1o-platform` for the bundled PostgreSQL deployment, or add the same `-f` option you selected in the [database deployment guide](database-deployment.md) before `up`. If you deploy from GHCR, keep `--no-build` after `up -d`. For a direct container run, pass the variables when creating the container and retain the existing data mount when replacing it. Use Stripe test credentials on a separate test deployment or database. The NOWPayments adapter uses the production API.
 
    | Gateway | Setup |
    | --- | --- |

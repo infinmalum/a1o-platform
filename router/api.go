@@ -202,6 +202,7 @@ func SetApiRouter(router *gin.Engine) {
 		studioRoute := apiRouter.Group("/studio")
 		studioRoute.Use(middleware.UserAuth())
 		{
+			studioRoute.GET("/models", controller.GetStudioModelCatalog)
 			studioRoute.POST("/runs", controller.CreateStudioRun)
 			studioRoute.GET("/runs", controller.ListStudioRuns)
 			studioRoute.GET("/runs/:id", controller.GetStudioRun)

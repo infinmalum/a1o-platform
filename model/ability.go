@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/common/utils"
@@ -179,6 +180,15 @@ func GetGroupModels(ctx context.Context, group string) ([]string, error) {
 	}
 	sort.Strings(models)
 	return models, err
+}
+
+// ListEnabledModelGroups returns one row per model and group, regardless of
+// how many enabled channels offer the same model.
+func ListEnabledModelGroups(ctx context.Context) ([]Ability, error) {
+	var rows []Ability
+	err := DB.WithContext(ctx).Where(&Ability{Enabled: true}).Distinct("model", "group").
+		Order("model").Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}}).Find(&rows).Error
+	return rows, err
 }
 
 // GetAllModels lists the distinct models served by any enabled channel. With

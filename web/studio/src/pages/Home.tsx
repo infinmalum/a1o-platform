@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, AudioLines, Image as ImageIcon, Bot, Wrench, FolderOpen, CircleUserRound, ArrowRight } from 'lucide-react';
+import { MessageCircle, AudioLines, Image as ImageIcon, Bot, Wrench, FolderOpen, CircleUserRound, ArrowRight, Boxes } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,7 @@ const Home: React.FC = () => {
     { key: 'workspace', icon: FolderOpen, onClick: () => navigate('/workspace') },
     { key: 'image', icon: ImageIcon, onClick: () => navigate('/images') },
     { key: 'audio', icon: AudioLines, onClick: () => navigate('/audio') },
+    { key: 'models', icon: Boxes, onClick: () => navigate('/models') },
     { key: 'account', icon: CircleUserRound, onClick: () => navigate('/account') },
   ];
 

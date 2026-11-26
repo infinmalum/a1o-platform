@@ -18,6 +18,7 @@ import Workspace from './pages/Workspace';
 import Account from './pages/Account';
 import Images from './pages/Images';
 import AudioStudio from './pages/Audio';
+import Models from './pages/Models';
 import OAuthCallback from './pages/OAuthCallback';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button';
 const studioLinks = [
   ['chat', 'chat'], ['work', 'work'], ['agents', 'agent'], ['workspace', 'workspace'],
   ['images', 'image'], ['audio', 'audio'], ['account', 'account'],
+  ['models', 'models'],
 ];
 
 function PrivateRoute({ children, session, retry }: {
@@ -216,6 +218,7 @@ const App: React.FC<{ status: StudioStatus | null }> = ({ status }) => {
             }
           />
           <Route path='/audio' element={<PrivateRoute session={session} retry={retry}><AudioStudio /></PrivateRoute>} />
+          <Route path='/models' element={<PrivateRoute session={session} retry={retry}><Models /></PrivateRoute>} />
           <Route path='/login' element={<Login status={status} />} />
           <Route path='/oauth/github' element={<OAuthCallback provider='github' onSuccess={storeUser} />} />
           <Route path='/oauth/lark' element={<OAuthCallback provider='lark' onSuccess={storeUser} />} />

@@ -54,7 +54,11 @@ The Studio header lets you choose from ten interface languages, including right-
 
 A single instance can use SQLite without running Redis or a vector database. Keep the database and the data volume when backing up or moving the deployment. Chat attachments and generated image and video files are stored on disk.
 
+The signed-in Model Catalog shows enabled model names, their access groups, and a category inferred from each model name. It starts with models available to your group. Browse all models or filter by a specific group or category. When configured, token prices are shown for chat models available to you.
+
 ## Quick start with Docker
+
+The default instructions build the application from source. For a prebuilt Linux amd64 image, see the [GHCR deployment instructions](docs/database-deployment.md#deploy-a-prebuilt-image-from-ghcr).
 
 For a new installation, run the following from a shell with Docker Compose and OpenSSL.
 
