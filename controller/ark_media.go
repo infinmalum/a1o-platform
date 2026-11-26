@@ -186,7 +186,9 @@ func startArkMedia(ctx context.Context, gen *model.ImageGeneration) error {
 		if !arkTaskID.MatchString(result.ID) {
 			return arkMediaUncertain(gen, errors.New("Ark did not return a valid task ID"))
 		}
-		if err := model.StoreArkVideoTask(gen, result.ID); err != nil {
+		if err := retryImageWrite(func(ctx context.Context) error {
+			return model.StoreArkVideoTask(ctx, gen.Id, result.ID)
+		}); err != nil {
 			return arkMediaUncertain(gen, err)
 		}
 		return nil
@@ -196,7 +198,7 @@ func startArkMedia(ctx context.Context, gen *model.ImageGeneration) error {
 	if len(result.Data) != 1 || result.Data[0].URL == "" {
 		return arkMediaUncertain(gen, errors.New("Ark did not return one image URL"))
 	}
-	if err := persistImageProducts(gen, result.Data); err != nil {
+	if err := persistImageProducts(ctx, gen, result.Data); err != nil {
 		raw, marshalErr := json.Marshal(result)
 		if marshalErr != nil {
 			return arkMediaUncertain(gen, marshalErr)
@@ -211,7 +213,9 @@ func pollArkVideo(ctx context.Context, gen *model.ImageGeneration) {
 	if err := checkArkVideo(ctx, gen); err != nil {
 		logger.Error(ctx, fmt.Sprintf("Ark video %d: %v", gen.Id, err))
 		if time.Since(time.Unix(gen.CreatedTime, 0)) > 48*time.Hour {
-			_ = arkMediaUncertain(gen, err)
+			if writeErr := arkMediaUncertain(gen, err); writeErr != nil {
+				logger.Errorf(ctx, "Ark video %d: persist reconciliation state: %v", gen.Id, writeErr)
+			}
 			return
 		}
 		if err := model.ScheduleArkVideoPoll(gen, 30*time.Second); err != nil {
@@ -283,12 +287,16 @@ func finishArkMedia(gen *model.ImageGeneration, completed bool, message string) 
 }
 
 func settleArkMedia(gen *model.ImageGeneration, status, message string, results *string) error {
-	ctx := context.Background()
-	finished, err := model.FinishArkMedia(ctx, gen, status, message, results)
-	if finished {
+	var finished bool
+	err := retryImageWrite(func(ctx context.Context) error {
+		var err error
+		finished, err = model.FinishArkMedia(ctx, gen, status, message, results)
+		return err
+	})
+	if err == nil && finished {
 		refreshArkQuota(gen)
 		if status != model.ImageGenStatusFailed {
-			model.RecordConsumeLog(ctx, &model.Log{UserId: gen.UserId, ModelName: gen.Model, ChannelId: gen.ArkChannelID,
+			model.RecordConsumeLog(context.Background(), &model.Log{UserId: gen.UserId, ModelName: gen.Model, ChannelId: gen.ArkChannelID,
 				Quota: int(gen.ArkQuota), TokenName: model.ChatTokenName, Content: "Studio Ark media"})
 		}
 	}
@@ -305,5 +313,7 @@ func refreshArkQuota(gen *model.ImageGeneration) {
 
 func arkMediaUncertain(gen *model.ImageGeneration, reason error) error {
 	logger.SysError(fmt.Sprintf("Ark media %d needs reconciliation: %v", gen.Id, reason))
-	return model.MarkArkMediaUncertain(gen.Id)
+	return retryImageWrite(func(ctx context.Context) error {
+		return model.MarkArkMediaUncertain(ctx, gen.Id)
+	})
 }

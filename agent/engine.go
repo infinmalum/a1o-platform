@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -119,43 +120,31 @@ func (e *Engine) resolveTools(ctx context.Context, turn ChatTurnRequest) *toolSe
 	return set
 }
 
-// addNormaTools registers Norma core tools that run inside the gateway
-// process. Web tools are read-only in the permission pipeline, so they work
-// under the host's dontAsk mode; WebFetch additionally passes the SSRF guard
-// below. Search backend misconfiguration degrades to a tool-level error,
-// never a run error. Image generation reuses the studio pipeline; the tool
-// is offered only when the user's group has an image-capable model.
 func addNormaTools(ctx context.Context, set *toolSet, userId int) {
-	if ws, err := normatool.NewWebSearch(normatool.WebSearchConfig{
-		Backend:      config.ChatWebSearchBackend,
-		BraveAPIKey:  config.ChatWebSearchAPIKey,
-		TavilyAPIKey: config.ChatWebSearchAPIKey,
-		Proxy:        config.ChatWebSearchProxy,
-	}); err == nil {
-		if config.ChatWebToolsEnabled {
-			set.addSDK(ws)
-		}
-	} else {
-		logger.SysError("failed to build web search tool: " + err.Error())
-	}
 	if config.ChatWebToolsEnabled {
+		ws, err := normatool.NewWebSearch(normatool.WebSearchConfig{
+			Backend:      config.ChatWebSearchBackend,
+			BraveAPIKey:  config.ChatWebSearchAPIKey,
+			TavilyAPIKey: config.ChatWebSearchAPIKey,
+			Proxy:        config.ChatWebSearchProxy,
+		})
+		if err == nil {
+			set.addSDK(ws)
+		} else {
+			logger.Error(ctx, "failed to build web search tool: "+err.Error())
+		}
 		set.addSDK(newGuardedWebFetch(normatool.NewWebFetch(normatool.WebFetchConfig{
 			Proxy: config.ChatWebSearchProxy,
 		})))
 	}
-	if hasImageModel(ctx, userId) {
-		set.add(generateImageToolDef(), imageGenExec(userId))
+	if userId > 0 {
+		if _, err := defaultImageModel(ctx, userId); err == nil {
+			set.add(generateImageToolDef(), imageGenExec(userId))
+		} else if !errors.Is(err, errNoImageModel) {
+			logger.Error(ctx, "failed to check image tool availability: "+err.Error())
+		}
 	}
 	addMemoryTools(ctx, set, userId)
-}
-
-// hasImageModel probes the user's group for an image-capable model. A cache
-// or database outage must not kill the chat turn for an optional tool, so
-// any panic or error degrades to "no image tool".
-func hasImageModel(ctx context.Context, userId int) (ok bool) {
-	defer func() { recover() }()
-	_, err := defaultImageModel(ctx, userId)
-	return err == nil
 }
 
 // marshalInputSchema converts an MCP tool schema to raw JSON for the function

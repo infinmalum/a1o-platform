@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/infinmalum/a1o-platform/common/helper"
 	"gorm.io/gorm"
@@ -48,6 +50,7 @@ type ImageGeneration struct {
 	ArkChannelID     int    `json:"-" gorm:"default:0"`
 	ArkQuota         int64  `json:"-" gorm:"default:0"`
 	ArkNextPoll      int64  `json:"-" gorm:"default:0"`
+	LeaseExpiresAt   int64  `json:"-" gorm:"not null;default:0"`
 	Status           string `json:"status" gorm:"type:varchar(24);index"`
 	Error            string `json:"error" gorm:"type:text"`
 	SaveError        string `json:"save_error" gorm:"type:text"`
@@ -117,8 +120,9 @@ func CreateImageGeneration(gen *ImageGeneration) (existing *ImageGeneration, cre
 	return gen, true, nil
 }
 
-// ClaimQueuedImageGeneration atomically moves one queued row to running so
-// two workers on the same database cannot both execute it.
+const ImageGenerationLease = 90 * time.Second
+
+// ClaimQueuedImageGeneration gives one worker the initial execution lease.
 func ClaimQueuedImageGeneration() (*ImageGeneration, error) {
 	for attempts := 0; attempts < 8; attempts++ {
 		// Find (not First) keeps the empty-queue poll from logging a
@@ -132,14 +136,17 @@ func ClaimQueuedImageGeneration() (*ImageGeneration, error) {
 			return nil, nil
 		}
 		candidate := candidates[0]
+		now := time.Now()
+		expires := now.Add(ImageGenerationLease).Unix()
 		claim := DB.Model(&ImageGeneration{Id: candidate.Id}).
 			Where("status = ?", ImageGenStatusQueued).
-			Updates(map[string]any{"status": ImageGenStatusRunning, "updated_time": helper.GetTimestamp()})
+			Updates(map[string]any{"status": ImageGenStatusRunning, "updated_time": now.Unix(), "lease_expires_at": expires})
 		if claim.Error != nil {
 			return nil, claim.Error
 		}
 		if claim.RowsAffected == 1 {
 			candidate.Status = ImageGenStatusRunning
+			candidate.LeaseExpiresAt = expires
 			return candidate, nil
 		}
 		// Another worker claimed it between the read and the write; try the
@@ -212,20 +219,55 @@ func MarkImageGenerationSaveFailed(id int, results, saveError string, consumeLog
 	})
 }
 
-func FailImageGeneration(id int, message string) error {
-	return completeImageGeneration(id, map[string]any{
-		"status": ImageGenStatusFailed, "error": message,
-	})
+func RenewImageGenerationLease(ctx context.Context, id int, now time.Time) (bool, error) {
+	update := DB.WithContext(ctx).Model(&ImageGeneration{Id: id}).
+		Where("status = ? AND lease_expires_at > ?", ImageGenStatusRunning, now.Unix()).
+		UpdateColumn("lease_expires_at", now.Add(ImageGenerationLease).Unix())
+	return update.RowsAffected == 1, update.Error
 }
 
-// ReconcileStuckImageGenerations moves rows left running by a crashed
-// process into needs_reconciliation: the upstream may have accepted and
-// billed the call, so it is never silently retried.
+func StoreImageGenerationResult(ctx context.Context, id int, results string, consumeLogId int) error {
+	return updateRunningImageGeneration(ctx, id, map[string]any{"results": results, "consume_log_id": consumeLogId})
+}
+
+func FinishImageGeneration(ctx context.Context, id int, status, message string, consumeLogId int) error {
+	values := map[string]any{"status": status, "error": message, "consume_log_id": consumeLogId, "lease_expires_at": 0}
+	if status == ImageGenStatusSaveFailed {
+		values["error"], values["save_error"] = "", message
+	}
+	if status == ImageGenStatusCompleted {
+		values["results"], values["save_error"] = nil, ""
+	}
+	return updateRunningImageGeneration(ctx, id, values)
+}
+
+func updateRunningImageGeneration(ctx context.Context, id int, values map[string]any) error {
+	values["updated_time"] = helper.GetTimestamp()
+	update := DB.WithContext(ctx).Model(&ImageGeneration{Id: id}).
+		Where("status = ?", ImageGenStatusRunning).Updates(values)
+	if update.Error == nil && update.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return update.Error
+}
+
+// Recover expired claims without replaying an upstream request.
 func ReconcileStuckImageGenerations() (int64, error) {
-	claim := DB.Model(&ImageGeneration{}).
+	now := time.Now()
+	const recoverable = "CASE WHEN results IS NOT NULL AND results <> '' AND ark_quota = 0 THEN ? ELSE ? END"
+	result := DB.Model(&ImageGeneration{}).
 		Where("status = ? AND (ark_task_id = ? OR ark_task_id IS NULL)", ImageGenStatusRunning, "").
-		Updates(map[string]any{"status": ImageGenStatusNeedsReconciliation, "updated_time": helper.GetTimestamp()})
-	return claim.RowsAffected, claim.Error
+		// Older rows have no lease. Give an in-flight worker time to finish.
+		Where("(lease_expires_at > 0 AND lease_expires_at <= ?) OR (lease_expires_at = 0 AND updated_time <= ?)",
+			now.Unix(), now.Add(-10*time.Minute).Unix()).
+		Updates(map[string]any{
+			"status":           gorm.Expr(recoverable, ImageGenStatusSaveFailed, ImageGenStatusNeedsReconciliation),
+			"save_error":       gorm.Expr(recoverable, "保存未完成，可以重试保存", ""),
+			"error":            gorm.Expr(recoverable, "", "上一次生成结果待核对"),
+			"updated_time":     now.Unix(),
+			"lease_expires_at": 0,
+		})
+	return result.RowsAffected, result.Error
 }
 
 func CreateImageAsset(asset *ImageAsset) error {

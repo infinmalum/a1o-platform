@@ -3,6 +3,7 @@ package model
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -53,6 +54,7 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.False(t, enabled)
 	require.Len(t, entries, 1)
 
+	var pruner privacyPruner
 	start := time.Now().Unix()
 	require.NoError(t, DeleteChatSession(retained.Id, owner.Id))
 	require.Error(t, DeleteChatSession(stranger.Id, owner.Id))
@@ -60,7 +62,7 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chats, 1)
 	require.GreaterOrEqual(t, chats[0].PurgeAt, start+int64(privacyRetention/time.Second))
-	require.NoError(t, prunePrivacyData(t.Context(), chats[0].PurgeAt-1))
+	require.NoError(t, pruner.prune(t.Context(), chats[0].PurgeAt-1))
 	_, err = GetChatSessionById(retained.Id, owner.Id)
 	require.Error(t, err)
 	_, err = GetAgentRun(run.Id, owner.Id)
@@ -116,7 +118,7 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.Empty(t, deleted.Email)
 	require.NoError(t, markAccountDeleted(t.Context(), owner.Id))
 	require.NoError(t, db.Take(&deleted, owner.Id).Error)
-	require.NoError(t, prunePrivacyData(t.Context(), deleted.PrivacyPurgeAt))
+	require.NoError(t, pruner.prune(t.Context(), deleted.PrivacyPurgeAt))
 	require.ErrorIs(t, db.Take(&ChatSession{}, active.Id).Error, gorm.ErrRecordNotFound)
 	require.ErrorIs(t, db.Take(&ChatSession{}, retained.Id).Error, gorm.ErrRecordNotFound)
 	require.ErrorIs(t, db.Take(&AgentRun{}, run.Id).Error, gorm.ErrRecordNotFound)
@@ -129,4 +131,38 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.True(t, os.IsNotExist(err))
 	require.NoError(t, db.Take(&ChatSession{}, stranger.Id).Error)
 	require.NoError(t, db.Take(&payment, "id = ?", payment.ID).Error)
+}
+
+func TestPrivacyBatchResumesPastTimedOutItem(t *testing.T) {
+	db := openAgentRunTestDB(t)
+	require.NoError(t, db.AutoMigrate(&ChatSession{}))
+	for id := 1; id <= 3; id++ {
+		require.NoError(t, db.Create(&ChatSession{Id: id, PrivacyPurgeAt: 1}).Error)
+	}
+	var cursor int
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	err := prunePrivacyBatch(ctx, db.Model(&ChatSession{}), &cursor, 2, 1, "conversation",
+		func(_ context.Context, id int, _ int64) error {
+			require.Equal(t, 1, id)
+			cancel()
+			return context.DeadlineExceeded
+		})
+	require.ErrorContains(t, err, "conversation 1")
+	require.Equal(t, 1, cursor)
+
+	var visited []int
+	require.NoError(t, prunePrivacyBatch(t.Context(), db.Model(&ChatSession{}), &cursor, 2, 1, "conversation",
+		func(_ context.Context, id int, _ int64) error {
+			visited = append(visited, id)
+			return db.Delete(&ChatSession{}, id).Error
+		}))
+	require.Equal(t, []int{2, 3}, visited)
+	require.Equal(t, 3, cursor)
+	require.NoError(t, prunePrivacyBatch(t.Context(), db.Model(&ChatSession{}), &cursor, 2, 1, "conversation",
+		func(_ context.Context, _ int, _ int64) error {
+			t.Fatal("scan should wrap after reaching the end")
+			return nil
+		}))
+	require.Zero(t, cursor)
 }

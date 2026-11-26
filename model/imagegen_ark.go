@@ -33,8 +33,8 @@ func ReserveArkMedia(ctx context.Context, gen *ImageGeneration, channelID int, q
 	return err
 }
 
-func StoreArkVideoTask(gen *ImageGeneration, taskID string) error {
-	return DB.Model(gen).Update("ark_task_id", taskID).Error
+func StoreArkVideoTask(ctx context.Context, id int, taskID string) error {
+	return updateRunningImageGeneration(ctx, id, map[string]any{"ark_task_id": taskID, "lease_expires_at": 0})
 }
 
 func ClaimArkVideoPoll() (*ImageGeneration, error) {
@@ -63,7 +63,8 @@ func FinishArkMedia(ctx context.Context, gen *ImageGeneration, status, message s
 	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		update := tx.Model(&ImageGeneration{Id: gen.Id}).Where("status = ? AND ark_quota > 0", ImageGenStatusRunning).Updates(map[string]any{
 			"status": status, "ark_quota": 0, "updated_time": helper.GetTimestamp(),
-			"results": results, "error": message, "save_error": message,
+			"lease_expires_at": 0,
+			"results":          results, "error": message, "save_error": message,
 		})
 		if update.Error != nil || update.RowsAffected == 0 {
 			return update.Error
@@ -137,9 +138,10 @@ func SaveArkVideoAsset(gen *ImageGeneration, body io.Reader, limit int64) error 
 	return err
 }
 
-func MarkArkMediaUncertain(id int) error {
-	return completeImageGeneration(id, map[string]any{
-		"status": ImageGenStatusNeedsReconciliation,
-		"error":  "Ark generation outcome needs reconciliation",
+func MarkArkMediaUncertain(ctx context.Context, id int) error {
+	return updateRunningImageGeneration(ctx, id, map[string]any{
+		"status":           ImageGenStatusNeedsReconciliation,
+		"error":            "Ark generation outcome needs reconciliation",
+		"lease_expires_at": 0,
 	})
 }

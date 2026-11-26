@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"io"
@@ -71,7 +72,9 @@ func TestStudioMediaWorkerSavesGeminiEditsAndVideo(t *testing.T) {
 
 	mp4Header := append([]byte{0, 0, 0, 20}, []byte("ftypmp42\x00\x00\x00\x00mp42")...)
 	require.Equal(t, "video/mp4", http.DetectContentType(mp4Header))
+	upstreamCalls := 0
 	client.HTTPClient = &http.Client{Transport: mediaTestTransport(func(req *http.Request) (*http.Response, error) {
+		upstreamCalls++
 		require.Equal(t, "provider-key", req.Header.Get("x-goog-api-key"))
 		require.Empty(t, req.Header.Get("Authorization"))
 		body, readErr := io.ReadAll(req.Body)
@@ -93,6 +96,14 @@ func TestStudioMediaWorkerSavesGeminiEditsAndVideo(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
 			Body: io.NopCloser(strings.NewReader(reply))}, nil
 	})}
+	failures := 0
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:transient_image_completion", func(tx *gorm.DB) {
+		values, ok := tx.Statement.Dest.(map[string]any)
+		if tx.Statement.Table == "image_generations" && ok && values["status"] == model.ImageGenStatusCompleted && failures == 0 {
+			failures++
+			tx.AddError(errors.New("temporary image completion write failure"))
+		}
+	}))
 	ctx := context.Background()
 	for _, tc := range []struct {
 		gen  *model.ImageGeneration
@@ -137,6 +148,8 @@ func TestStudioMediaWorkerSavesGeminiEditsAndVideo(t *testing.T) {
 			require.Equal(t, mp4Header[:8], response.Body.Bytes())
 		}
 	}
+	require.Equal(t, 1, failures)
+	require.Equal(t, 2, upstreamCalls, "retrying the completion write must not repeat generation")
 	_, err = parseStudioVideo(json.RawMessage(`{"status":"completed","steps":[{"type":"model_output","content":[{"type":"video","mime_type":"video/mp4","data":"aGVsbG8="}]}]}`))
 	require.Error(t, err)
 }

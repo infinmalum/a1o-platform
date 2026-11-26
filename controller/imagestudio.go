@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
@@ -420,8 +421,10 @@ func RetryImageSave(c *gin.Context) {
 		imageError(c, parseErr)
 		return
 	}
-	if err := persistImageProducts(gen, items); err != nil {
-		_ = model.MarkImageGenerationSaveFailed(gen.Id, *gen.Results, err.Error(), gen.ConsumeLogId)
+	if err := persistImageProducts(c.Request.Context(), gen, items); err != nil {
+		if writeErr := model.MarkImageGenerationSaveFailed(gen.Id, *gen.Results, err.Error(), gen.ConsumeLogId); writeErr != nil {
+			logger.Errorf(c.Request.Context(), "image %d: record save failure: %v", gen.Id, writeErr)
+		}
 		imageError(c, err)
 		return
 	}
@@ -561,15 +564,19 @@ func DeleteImageAsset(c *gin.Context) {
 
 // ---- worker ----
 
-// StartImageWorker reconciles rows a crashed process left running (the
-// upstream may have been billed, so they become needs_reconciliation rather
-// than retried) and starts the claim workers.
 func StartImageWorker() {
-	if count, err := model.ReconcileStuckImageGenerations(); err != nil {
-		logger.SysError("image generation reconciliation failed: " + err.Error())
-	} else if count > 0 {
-		logger.SysLog(fmt.Sprintf("image generation reconciliation: %d running rows moved to needs_reconciliation", count))
-	}
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			if count, err := model.ReconcileStuckImageGenerations(); err != nil {
+				logger.SysError("image generation reconciliation failed: " + err.Error())
+			} else if count > 0 {
+				logger.SysLog(fmt.Sprintf("image generation reconciliation: recovered %d expired claims", count))
+			}
+			<-ticker.C
+		}
+	}()
 	for i := 0; i < imageWorkerCount; i++ {
 		go imageWorkerLoop()
 	}
@@ -596,46 +603,116 @@ func imageWorkerLoop() {
 	}
 }
 
-// executeImageGeneration runs one claimed generation to a terminal state.
-// Every exit marks the row; nothing upstream is retried blindly.
+func maintainImageLease(ctx context.Context, cancel context.CancelFunc, gen *model.ImageGeneration) {
+	expires := time.Unix(gen.LeaseExpiresAt, 0)
+	ticker := time.NewTicker(model.ImageGenerationLease / 3)
+	defer ticker.Stop()
+	for {
+		timer := time.NewTimer(time.Until(expires))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+			cancel()
+			return
+		case <-ticker.C:
+			timer.Stop()
+		}
+		now := time.Now()
+		renewCtx, stop := context.WithTimeout(ctx, 5*time.Second)
+		renewed, err := model.RenewImageGenerationLease(renewCtx, gen.Id, now)
+		stop()
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.Errorf(ctx, "image %d: renew execution lease: %v", gen.Id, err)
+			}
+			continue
+		}
+		if !renewed {
+			cancel()
+			return
+		}
+		expires = now.Add(model.ImageGenerationLease)
+	}
+}
+
+// Retry database writes without repeating the upstream operation.
+func retryImageWrite(write func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(time.Duration(attempt) * 250 * time.Millisecond):
+			}
+		}
+		if err = write(ctx); err == nil || errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+	return err
+}
+
 func executeImageGeneration(ctx context.Context, gen *model.ImageGeneration) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go maintainImageLease(ctx, cancel, gen)
+	finish := func(status, message string, logID int) {
+		if err := retryImageWrite(func(ctx context.Context) error {
+			return model.FinishImageGeneration(ctx, gen.Id, status, message, logID)
+		}); err != nil {
+			logger.Errorf(ctx, "image %d: persist state %s: %v", gen.Id, status, err)
+		}
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.SysError(fmt.Sprintf("image worker panic on generation %d: %v", gen.Id, recovered))
-			_ = model.FailImageGeneration(gen.Id, "图像生成执行异常，请重试")
+			logger.Errorf(ctx, "image worker panic on generation %d (%T)", gen.Id, recovered)
+			// The lease sweep can recover a saved result or flag a charge for review.
 		}
 	}()
 	if gen.ArkChannelID != 0 {
 		if err := startArkMedia(ctx, gen); err != nil {
 			if gen.ArkQuota > 0 {
-				_ = arkMediaUncertain(gen, err)
+				if writeErr := arkMediaUncertain(gen, err); writeErr != nil {
+					logger.Errorf(ctx, "Ark media %d: persist reconciliation state: %v", gen.Id, writeErr)
+				}
 			} else {
-				_ = model.FailImageGeneration(gen.Id, err.Error())
+				finish(model.ImageGenStatusFailed, err.Error(), 0)
 			}
 		}
 		return
 	}
 	responseJSON, consumeLogId, herr := runImageUpstream(ctx, gen)
 	if herr != nil {
-		_ = model.FailImageGeneration(gen.Id, herr.Message)
+		if ctx.Err() == nil {
+			finish(model.ImageGenStatusFailed, herr.Message, consumeLogId)
+		}
 		return
 	}
 	items, err := parseImageResults(responseJSON)
 	if err != nil {
-		_ = model.FailImageGeneration(gen.Id, err.Error())
+		finish(model.ImageGenStatusNeedsReconciliation, err.Error(), consumeLogId)
 		return
 	}
 	if len(items) == 0 {
-		_ = model.FailImageGeneration(gen.Id, "上游未返回图像")
+		finish(model.ImageGenStatusNeedsReconciliation, "上游未返回图像", consumeLogId)
 		return
 	}
-	if err := persistImageProducts(gen, items); err != nil {
-		// The upstream succeeded and was charged; only the save may be
-		// retried, never a regeneration.
-		_ = model.MarkImageGenerationSaveFailed(gen.Id, responseJSON, err.Error(), consumeLogId)
+	if err := retryImageWrite(func(ctx context.Context) error {
+		return model.StoreImageGenerationResult(ctx, gen.Id, responseJSON, consumeLogId)
+	}); err != nil {
+		logger.Errorf(ctx, "image %d: persist charged upstream result: %v", gen.Id, err)
 		return
 	}
-	_ = model.CompleteImageGeneration(gen.Id, consumeLogId)
+	if err := persistImageProducts(ctx, gen, items); err != nil {
+		finish(model.ImageGenStatusSaveFailed, err.Error(), consumeLogId)
+		return
+	}
+	finish(model.ImageGenStatusCompleted, "", consumeLogId)
 }
 
 // runImageUpstream prefers OpenAI-wire image channels and falls back to the
@@ -764,17 +841,20 @@ func parseImageResults(raw string) ([]imageResultItem, error) {
 // in place, URLs are fetched server-side through the public-content client
 // (public addresses only, scheme and redirect checked, size capped). A
 // slot that already has an asset is skipped so a retry-save never duplicates.
-func persistImageProducts(gen *model.ImageGeneration, items []imageResultItem) error {
+func persistImageProducts(ctx context.Context, gen *model.ImageGeneration, items []imageResultItem) error {
 	saved, err := model.GetRunImageAssetSlots(gen.Id, gen.UserId)
 	if err != nil {
 		return err
 	}
 	var failures []string
 	for index, item := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if saved[index] {
 			continue
 		}
-		payload, err := loadImageProductPayload(item)
+		payload, err := loadImageProductPayload(ctx, item)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("第 %d 张: %s", index+1, err.Error()))
 			continue
@@ -800,7 +880,7 @@ func persistImageProducts(gen *model.ImageGeneration, items []imageResultItem) e
 // loadImageProductPayload materializes one product's bytes from base64 or a
 // URL. URL fetches are capped and restricted to public hosts — the same
 // guard the user-content path applies, never weakened for product URLs.
-func loadImageProductPayload(item imageResultItem) ([]byte, error) {
+func loadImageProductPayload(ctx context.Context, item imageResultItem) ([]byte, error) {
 	switch {
 	case item.B64 != "":
 		if len(item.B64) > base64.StdEncoding.EncodedLen(int(maxImageAssetBytes)) {
@@ -815,7 +895,7 @@ func loadImageProductPayload(item imageResultItem) ([]byte, error) {
 		}
 		return payload, nil
 	case item.URL != "":
-		request, err := http.NewRequest(http.MethodGet, item.URL, http.NoBody)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, http.NoBody)
 		if err != nil {
 			return nil, fmt.Errorf("图像地址无效: %w", err)
 		}

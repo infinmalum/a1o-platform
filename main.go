@@ -120,8 +120,6 @@ func main() {
 		go model.PrivacyRetentionLoop()
 	}
 
-	// Image workbench (studio proposal §7): reconcile interrupted
-	// generations, then start the same-process generation workers.
 	controller.StartImageWorker()
 
 	// Initialize i18n

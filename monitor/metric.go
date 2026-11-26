@@ -1,79 +1,48 @@
 package monitor
 
-import (
-	"github.com/infinmalum/a1o-platform/common/config"
-)
+import "github.com/infinmalum/a1o-platform/common/config"
 
-var store = make(map[int][]bool)
-var metricSuccessChan = make(chan int, config.MetricSuccessChanSize)
-var metricFailChan = make(chan int, config.MetricFailChanSize)
-
-func consumeSuccess(channelId int) {
-	if len(store[channelId]) > config.MetricQueueSize {
-		store[channelId] = store[channelId][1:]
-	}
-	store[channelId] = append(store[channelId], true)
+type channelMetric struct {
+	channelID int
+	success   bool
 }
 
-func consumeFail(channelId int) (bool, float64) {
-	if len(store[channelId]) > config.MetricQueueSize {
-		store[channelId] = store[channelId][1:]
-	}
-	store[channelId] = append(store[channelId], false)
-	successCount := 0
-	for _, success := range store[channelId] {
-		if success {
-			successCount++
+var metrics = make(chan channelMetric, config.MetricSuccessChanSize+config.MetricFailChanSize)
+
+func consumeMetrics(events <-chan channelMetric) {
+	history := make(map[int][]bool)
+	for metric := range events {
+		window := history[metric.channelID]
+		if len(window) == config.MetricQueueSize {
+			window = window[1:]
 		}
-	}
-	successRate := float64(successCount) / float64(len(store[channelId]))
-	if len(store[channelId]) < config.MetricQueueSize {
-		return false, successRate
-	}
-	if successRate < config.MetricSuccessRateThreshold {
-		store[channelId] = make([]bool, 0)
-		return true, successRate
-	}
-	return false, successRate
-}
-
-func metricSuccessConsumer() {
-	for {
-		select {
-		case channelId := <-metricSuccessChan:
-			consumeSuccess(channelId)
+		window = append(window, metric.success)
+		history[metric.channelID] = window
+		if metric.success || len(window) < config.MetricQueueSize {
+			continue
 		}
-	}
-}
-
-func metricFailConsumer() {
-	for {
-		select {
-		case channelId := <-metricFailChan:
-			disable, successRate := consumeFail(channelId)
-			if disable {
-				go MetricDisableChannel(channelId, successRate)
+		successes := 0
+		for _, success := range window {
+			if success {
+				successes++
 			}
+		}
+		rate := float64(successes) / float64(len(window))
+		if rate < config.MetricSuccessRateThreshold {
+			delete(history, metric.channelID)
+			go MetricDisableChannel(metric.channelID, rate)
 		}
 	}
 }
 
 func init() {
-	if config.EnableMetric {
-		go metricSuccessConsumer()
-		go metricFailConsumer()
+	if config.EnableMetric && config.MetricQueueSize > 0 {
+		go consumeMetrics(metrics)
 	}
 }
 
 func Emit(channelId int, success bool) {
-	if !config.EnableMetric {
-		return
+	if config.EnableMetric && config.MetricQueueSize > 0 {
+		metrics <- channelMetric{channelID: channelId, success: success}
 	}
-	go func() {
-		if success {
-			metricSuccessChan <- channelId
-		} else {
-			metricFailChan <- channelId
-		}
-	}()
 }

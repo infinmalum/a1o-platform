@@ -3,10 +3,12 @@ package agent
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"testing"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/model"
 )
 
@@ -27,10 +29,17 @@ func openChatTestDB() (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.ChatSession{}, &model.ChatMessage{}, &model.ChatFile{},
-		&model.ChatSkill{}, &model.ChatMCPServer{}, &model.Token{}, &model.User{},
+		&model.ChatSkill{}, &model.ChatMCPServer{}, &model.Token{}, &model.User{}, &model.Ability{},
 		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{},
 		&model.ToolExecution{}); err != nil {
 		return nil, err
 	}
 	return db, nil
+}
+
+func useChatTestDB(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	previousDB, previousRedis := model.DB, common.RedisEnabled
+	model.DB, common.RedisEnabled = db, false
+	t.Cleanup(func() { model.DB, common.RedisEnabled = previousDB, previousRedis })
 }

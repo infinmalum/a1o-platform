@@ -244,12 +244,14 @@ func PreConsumeTokenQuota(tokenId int, quota int64) (err error) {
 		}()
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		if !token.UnlimitedQuota {
-			if err := decreaseTokenQuota(tx, tokenId, quota); err != nil {
-				return err
-			}
+		// Settlement and refunds also lock the user before the token.
+		if err := decreaseUserQuota(tx, token.UserId, quota); err != nil {
+			return err
 		}
-		return decreaseUserQuota(tx, token.UserId, quota)
+		if !token.UnlimitedQuota {
+			return decreaseTokenQuota(tx, tokenId, quota)
+		}
+		return nil
 	})
 }
 

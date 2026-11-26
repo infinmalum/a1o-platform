@@ -259,6 +259,7 @@ func TestTurnLoopHonorsMaxToolIterations(t *testing.T) {
 }
 
 func TestResolveToolsSandboxToggleAndSkillFilter(t *testing.T) {
+	setupExecutorDB(t)
 	if !(&Sandbox{}).Available() {
 		t.Skip("本机没有 python3/node，跳过")
 	}

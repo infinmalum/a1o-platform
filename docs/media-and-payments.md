@@ -16,6 +16,8 @@ This guide is for self-hosted a1o-platform operators. The media channel and each
 
 The worker reserves quota before generation. Confirmed upstream failures release the reservation. If the initial request was interrupted before Ark confirmed its outcome, the task requires reconciliation. Compare its record and the original channel with the Ark console before adjusting quota. A saved Seedance task ID keeps the worker on the original channel for subsequent checks. Keep that channel and its credentials available until the tasks have settled.
 
+Image workers renew a 90-second lease while executing a job. Expired jobs with a saved result can retry saving. Jobs with an unknown upstream outcome go to reconciliation. The first upgrade to this lease format adds a database column. In a shared-database deployment, let active image jobs drain, stop the old instances, and start the upgraded primary so it applies the schema update before starting the other instances.
+
 [Ark image API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en) · [Ark video tutorial](https://docs.volcengine.com/docs/ark/video-generation-tutorial?lang=zh)
 
 ## Online quota packages

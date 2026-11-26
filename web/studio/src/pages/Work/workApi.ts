@@ -97,9 +97,10 @@ export function newIdempotencyKey(): string {
 export const workApi = {
   listTasks: (page: number) =>
     request<WorkTaskView[]>('/api/studio/tasks?' + pageQuery(page), undefined, false),
-  getTask: (taskId: number) =>
-    request<{ task: WorkTask; runs: AgentRun[] }>(`/api/studio/tasks/${taskId}`),
-  getRun: (runId: number) => request<RunProjection>(`/api/studio/runs/${runId}`),
+  getTask: (taskId: number, signal?: AbortSignal) =>
+    request<{ task: WorkTask; runs: AgentRun[] }>(`/api/studio/tasks/${taskId}`, { signal }),
+  getRun: (runId: number, signal?: AbortSignal, notify = true) =>
+    request<RunProjection>(`/api/studio/runs/${runId}`, { signal }, notify),
   createRun: (payload: StudioRunCreatePayload) =>
     request<StudioRunCreateResult>('/api/studio/runs', {
       method: 'POST',

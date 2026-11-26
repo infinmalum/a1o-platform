@@ -113,6 +113,7 @@ func TestRelayProviderToolReplayMapping(t *testing.T) {
 }
 
 func TestAddSubagentTool(t *testing.T) {
+	setupExecutorDB(t)
 	previousEnabled := config.WorkSubagentEnabled
 	previousTurns := config.WorkSubagentMaxTurns
 	config.WorkSubagentEnabled = true

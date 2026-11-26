@@ -17,7 +17,6 @@ import (
 // openWorkTestDB opens an isolated database with the work runtime tables.
 func openWorkTestDB(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
 	db, err := openChatTestDB()
 	if err != nil {
 		t.Fatal(err)
@@ -25,8 +24,7 @@ func openWorkTestDB(t *testing.T) {
 	if err := db.AutoMigrate(&model.WorkTask{}, &model.RunInput{}); err != nil {
 		t.Fatal(err)
 	}
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	useChatTestDB(t, db)
 }
 
 // newWorkFixture creates a task and a queued work run whose initial context

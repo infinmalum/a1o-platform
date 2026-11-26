@@ -13,13 +13,11 @@ import (
 
 func setupChatDB(t *testing.T) {
 	t.Helper()
-	previousDB := model.DB
 	db, err := openChatTestDB()
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	model.DB = db
-	t.Cleanup(func() { model.DB = previousDB })
+	useChatTestDB(t, db)
 }
 
 func TestSystemContentJoinsPromptAndSkills(t *testing.T) {

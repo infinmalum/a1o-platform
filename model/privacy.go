@@ -223,6 +223,9 @@ func purgeDeletedAccount(ctx context.Context, userID int, now int64) error {
 		var files []ChatFile
 		if err := tx.Where("user_id = ?", userID).FindInBatches(&files, 50, func(_ *gorm.DB, _ int) error {
 			for _, file := range files {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if err := deletePrivacyFile(chatFileRoot(), file.Path, false); err != nil {
 					return err
 				}
@@ -234,6 +237,9 @@ func purgeDeletedAccount(ctx context.Context, userID int, now int64) error {
 		var media []ImageAsset
 		if err := tx.Where("user_id = ?", userID).FindInBatches(&media, 50, func(_ *gorm.DB, _ int) error {
 			for _, asset := range media {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if err := deletePrivacyFile(imageAssetRoot(), asset.Path, true); err != nil {
 					return err
 				}
@@ -279,30 +285,46 @@ func purgeDeletedAccount(ctx context.Context, userID int, now int64) error {
 	})
 }
 
-func prunePrivacyData(ctx context.Context, now int64) error {
+type privacyPruner struct {
+	chatCursor    int
+	accountCursor int
+}
+
+func (p *privacyPruner) prune(ctx context.Context, now int64) error {
+	chats := DB.Model(&ChatSession{})
+	accounts := DB.Model(&User{}).Where("status = ?", UserStatusDeleted)
+	chatErr := prunePrivacyBatch(ctx, chats, &p.chatCursor, 100, now, "conversation", purgeRetainedChat)
+	accountErr := prunePrivacyBatch(ctx, accounts, &p.accountCursor, 25, now, "account", purgeDeletedAccount)
+	auditCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	auditErr := DB.WithContext(auditCtx).Where("accessed < ?", now-int64((90*24*time.Hour)/time.Second)).
+		Delete(&PrivacyReviewAccess{}).Error
+	return errors.Join(chatErr, accountErr, auditErr)
+}
+
+func prunePrivacyBatch(ctx context.Context, query *gorm.DB, cursor *int, limit int, now int64,
+	kind string, purge func(context.Context, int, int64) error,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 	var expired []int
-	var failed []error
-	if err := DB.WithContext(ctx).Model(&ChatSession{}).Where("privacy_purge_at BETWEEN 1 AND ?", now).
-		Order("privacy_purge_at, id").Limit(100).Pluck("id", &expired).Error; err != nil {
+	if err := query.WithContext(ctx).Where("privacy_purge_at BETWEEN 1 AND ? AND id > ?", now, *cursor).
+		Order("id").Limit(limit).Pluck("id", &expired).Error; err != nil {
 		return err
 	}
+	var failed []error
 	for _, id := range expired {
-		if err := purgeRetainedChat(ctx, id, now); err != nil {
-			failed = append(failed, fmt.Errorf("conversation %d: %w", id, err))
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(failed, err)...)
+		}
+		// Finish scanning other records before retrying an item that blocked this pass.
+		*cursor = id
+		if err := purge(ctx, id, now); err != nil {
+			failed = append(failed, fmt.Errorf("%s %d: %w", kind, id, err))
 		}
 	}
-	expired = nil
-	if err := DB.WithContext(ctx).Model(&User{}).Where("status = ? AND privacy_purge_at BETWEEN 1 AND ?", UserStatusDeleted, now).
-		Order("privacy_purge_at, id").Limit(25).Pluck("id", &expired).Error; err != nil {
-		return errors.Join(append(failed, err)...)
-	}
-	for _, id := range expired {
-		if err := purgeDeletedAccount(ctx, id, now); err != nil {
-			failed = append(failed, fmt.Errorf("account %d: %w", id, err))
-		}
-	}
-	if err := DB.WithContext(ctx).Where("accessed < ?", now-int64((90*24*time.Hour)/time.Second)).Delete(&PrivacyReviewAccess{}).Error; err != nil {
-		failed = append(failed, err)
+	if len(expired) < limit {
+		*cursor = 0
 	}
 	return errors.Join(failed...)
 }
@@ -310,12 +332,11 @@ func prunePrivacyData(ctx context.Context, now int64) error {
 func PrivacyRetentionLoop() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+	var pruner privacyPruner
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		if err := prunePrivacyData(ctx, time.Now().Unix()); err != nil {
+		if err := pruner.prune(context.Background(), time.Now().Unix()); err != nil {
 			logger.SysError("privacy cleanup: " + strings.ReplaceAll(err.Error(), "\n", "; "))
 		}
-		cancel()
 		<-ticker.C
 	}
 }

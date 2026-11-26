@@ -27,14 +27,8 @@ import {
   workApi,
 } from './workApi';
 
-// Work task detail (R3): the run list, the selected run's transcript, a live
-// event timeline while the run executes, appended input, and cancel. The
-// event stream is an EventSource over GET /api/studio/runs/:id/events — the
-// server replays persisted events after a cursor and keeps streaming until
-// the run is terminal; leaving the page never affects the run itself.
-const WorkTaskDetail: React.FC = () => {
+const WorkTaskDetailView: React.FC<{ taskId: string | undefined }> = ({ taskId }) => {
   const { t } = useTranslation();
-  const { taskId } = useParams<{ taskId: string }>();
   const [task, setTask] = useState<WorkTask | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -50,56 +44,81 @@ const WorkTaskDetail: React.FC = () => {
   // client already showed. activitySeqRef dedupes replayed activity entries.
   const cursorRef = useRef(0);
   const activitySeqRef = useRef(0);
-  const activeRef = useRef(false);
   // What the current observation covers: switching runs, or observing a run
   // again after a terminal state (resume), resets the stream state — a
   // resumed run whose event log was pruned may even restart sequences at 1.
   const observedRunRef = useRef<number | null>(null);
   const observedTerminalRef = useRef(false);
   const projectionRef = useRef<RunProjection | null>(null);
+  const selectedRunRef = useRef<number | null>(null);
+  const projectionRequest = useRef<AbortController | null>(null);
+  const taskRequest = useRef<AbortController | null>(null);
 
   const selectedRun = runs.find((run) => run.id === selectedRunId) || null;
-  const active = selectedRun ? isRunActive(selectedRun.status) : false;
+  const status = selectedRun?.status;
+  const active = status ? isRunActive(status) : false;
+
+  const selectRun = useCallback((runId: number | null) => {
+    if (selectedRunRef.current === runId) return;
+    selectedRunRef.current = runId;
+    projectionRequest.current?.abort();
+    projectionRef.current = null;
+    setProjection(null);
+    setLiveText('');
+    setActivity([]);
+    setSelectedRunId(runId);
+  }, []);
 
   const loadTask = useCallback(
-    async (preferRunId?: number) => {
+    async () => {
       if (!taskId) return;
+      taskRequest.current?.abort();
+      const request = new AbortController();
+      taskRequest.current = request;
       try {
-        const data = await workApi.getTask(Number(taskId));
+        const data = await workApi.getTask(Number(taskId), request.signal);
+        if (request.signal.aborted) return;
         setTask(data.task);
-        setRuns(data.runs || []);
-        const candidate =
-          (preferRunId && data.runs?.find((run) => run.id === preferRunId)) ||
-          data.runs?.[0] ||
-          null;
-        setSelectedRunId(candidate ? candidate.id : null);
+        const nextRuns = data.runs ?? [];
+        setRuns(nextRuns);
+        if (!nextRuns.some((run) => run.id === selectedRunRef.current)) {
+          selectRun(nextRuns[0]?.id ?? null);
+        }
       } catch {
         // toast already surfaced
       }
     },
-    [taskId],
+    [taskId, selectRun],
   );
 
-  const loadProjection = useCallback(async (runId: number) => {
+  const loadProjection = useCallback(async (runId: number, polling = false) => {
+    if (selectedRunRef.current !== runId || (polling && projectionRequest.current)) return;
+    projectionRequest.current?.abort();
+    const request = new AbortController();
+    projectionRequest.current = request;
     try {
-      const data = await workApi.getRun(runId);
+      const data = await workApi.getRun(runId, request.signal, !polling);
+      if (request.signal.aborted) return;
+      if (polling && projectionRef.current?.run.status !== data.run.status) void loadTask();
       setProjection(data);
       projectionRef.current = data;
     } catch {
-      // toast already surfaced
+      // Interactive requests report their own errors. Polling retries on the next tick.
+    } finally {
+      if (projectionRequest.current === request) projectionRequest.current = null;
     }
-  }, []);
-
-  useEffect(() => {
-    loadTask();
   }, [loadTask]);
 
   useEffect(() => {
-    if (selectedRunId == null) {
-      setProjection(null);
-      return;
-    }
-    loadProjection(selectedRunId);
+    void loadTask();
+    return () => {
+      taskRequest.current?.abort();
+      projectionRequest.current?.abort();
+    };
+  }, [loadTask]);
+
+  useEffect(() => {
+    if (selectedRunId !== null) void loadProjection(selectedRunId);
   }, [selectedRunId, loadProjection]);
 
   // Observe the selected run while it is not terminal: replay plus live
@@ -107,11 +126,10 @@ const WorkTaskDetail: React.FC = () => {
   // hiccup does not drop live progress. Leaving the page never affects the
   // run itself.
   useEffect(() => {
-    if (!selectedRunId || !selectedRun) {
+    if (!selectedRunId || !status) {
       return;
     }
-    if (isRunTerminal(selectedRun.status)) {
-      activeRef.current = false;
+    if (isRunTerminal(status)) {
       observedTerminalRef.current = true;
       if (observedRunRef.current !== selectedRunId) {
         // Switching to a terminal run: drop the previous observation's
@@ -135,7 +153,7 @@ const WorkTaskDetail: React.FC = () => {
     }
     observedRunRef.current = selectedRunId;
     observedTerminalRef.current = false;
-    activeRef.current = true;
+    let observing = true;
 
     let source: EventSource | null = null;
     let timer: number | null = null;
@@ -155,6 +173,7 @@ const WorkTaskDetail: React.FC = () => {
       // streaming until the run is terminal.
       source = new EventSource(`/api/studio/runs/${selectedRunId}/events?after=${cursorRef.current}`);
       source.onmessage = (message) => {
+        if (!observing || selectedRunRef.current !== selectedRunId) return;
         backoffMs = 1000;
         let event: RunEvent;
         try {
@@ -172,12 +191,7 @@ const WorkTaskDetail: React.FC = () => {
             break;
           }
           case 'run.resync': {
-            // The server says the cursor was unusable and hands back the log
-            // head. A full reset means the sequence space restarted (pruned
-            // log of a resumed run): re-baseline the cursors and rebuild the
-            // timeline. A pruned-history gap keeps the client's own cursors
-            // — surviving events still replay below and dedupe against what
-            // was already shown, so a mid-replay reconnect stays correct.
+            // A resumed run can restart its sequence numbers after log pruning.
             if (event.payload?.reset === true) {
               cursorRef.current =
                 typeof event.payload?.latest_sequence === 'number'
@@ -212,11 +226,11 @@ const WorkTaskDetail: React.FC = () => {
           case 'run.needs_reconciliation':
           case 'run.waiting_input':
             close();
-            activeRef.current = false;
+            observing = false;
             setLiveText('');
             setActivity([]);
             activitySeqRef.current = 0;
-            loadTask(selectedRunId);
+            loadTask();
             loadProjection(selectedRunId);
             break;
           default:
@@ -228,7 +242,7 @@ const WorkTaskDetail: React.FC = () => {
         // surfaces clean closes as errors too; only reconnect while the run
         // is still active, with exponential backoff (reset on any message).
         close();
-        if (!activeRef.current) return;
+        if (!observing || selectedRunRef.current !== selectedRunId) return;
         timer = window.setTimeout(() => {
           timer = null;
           connect();
@@ -239,30 +253,18 @@ const WorkTaskDetail: React.FC = () => {
     connect();
 
     return () => {
-      activeRef.current = false;
+      observing = false;
       close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRunId, selectedRun?.status]);
+  }, [selectedRunId, status, loadTask, loadProjection, t]);
 
   // A cancel_requested or terminal flip that never produced an SSE event
   // (cross-instance timing) still needs a UI refresh.
   useEffect(() => {
     if (!active || !selectedRunId) return;
-    const timer = setInterval(() => {
-      workApi
-        .getRun(selectedRunId)
-        .then((data) => {
-          if (data.run.status !== projectionRef.current?.run.status) {
-            loadTask(selectedRunId);
-          }
-          setProjection(data);
-          projectionRef.current = data;
-        })
-        .catch(() => undefined);
-    }, 3000);
+    const timer = setInterval(() => void loadProjection(selectedRunId, true), 3000);
     return () => clearInterval(timer);
-  }, [active, selectedRunId, loadTask]);
+  }, [active, selectedRunId, loadProjection]);
 
   const submitInput = async () => {
     if (!selectedRunId || !input.trim() || sending) return;
@@ -282,7 +284,7 @@ const WorkTaskDetail: React.FC = () => {
     if (!selectedRunId) return;
     try {
       await workApi.cancelRun(selectedRunId);
-      loadTask(selectedRunId);
+      loadTask();
     } catch {
       // toast already surfaced
     }
@@ -296,7 +298,7 @@ const WorkTaskDetail: React.FC = () => {
     try {
       await workApi.resumeRun(selectedRunId);
       setResumeDialogOpen(false);
-      loadTask(selectedRunId);
+      loadTask();
       loadProjection(selectedRunId);
     } catch {
       // toast already surfaced
@@ -314,7 +316,6 @@ const WorkTaskDetail: React.FC = () => {
   }
 
   const messages = projection?.messages ?? [];
-  const status = selectedRun?.status;
 
   return (
     <div className='mx-auto w-full max-w-4xl px-4 py-10'>
@@ -361,7 +362,7 @@ const WorkTaskDetail: React.FC = () => {
               key={run.id}
               size='sm'
               variant={run.id === selectedRunId ? 'default' : 'outline'}
-              onClick={() => setSelectedRunId(run.id)}
+              onClick={() => selectRun(run.id)}
             >
               #{run.id}
               <Badge variant={statusBadgeVariant(run.status)}>
@@ -495,4 +496,7 @@ const WorkTaskDetail: React.FC = () => {
   );
 };
 
-export default WorkTaskDetail;
+export default function WorkTaskDetail() {
+  const { taskId } = useParams<{ taskId: string }>();
+  return <WorkTaskDetailView key={taskId} taskId={taskId} />;
+}

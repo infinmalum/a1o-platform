@@ -108,6 +108,7 @@ func TestUserMemoryStoreIsolation(t *testing.T) {
 }
 
 func TestResolveWorkToolsTodosAndWeb(t *testing.T) {
+	setupExecutorDB(t)
 	setWebTools(t, true)
 	engine := &Engine{}
 	set := engine.resolveWorkTools(context.Background(), WorkTurnRequest{

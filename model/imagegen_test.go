@@ -3,6 +3,7 @@ package model
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func openImageGenTestDB(t *testing.T) {
@@ -91,12 +92,25 @@ func TestImageGenerationCancelAndReconcile(t *testing.T) {
 	if err != nil || stuck != nil {
 		t.Fatalf("nothing left queued: %v %v", stuck, err)
 	}
-	// Simulate a crashed process leaving a running row, then reconcile.
-	if err := DB.Model(&ImageGeneration{Id: running.Id}).Update("status", ImageGenStatusRunning).Error; err != nil {
+	if moved, err := ReconcileStuckImageGenerations(); err != nil || moved != 0 {
+		t.Fatalf("active lease was not preserved: moved=%d err=%v", moved, err)
+	}
+	saved, _, err := CreateImageGeneration(&ImageGeneration{UserId: 7, IdempotencyKey: "charged-result"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ClaimQueuedImageGeneration(); err != nil {
+		t.Fatal(err)
+	}
+	if err := StoreImageGenerationResult(t.Context(), saved.Id, `{"data":[{"b64_json":"image"}]}`, 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := DB.Model(&ImageGeneration{}).Where("id IN ?", []int{running.Id, saved.Id}).
+		Update("lease_expires_at", time.Now().Unix()-1).Error; err != nil {
 		t.Fatal(err)
 	}
 	moved, err := ReconcileStuckImageGenerations()
-	if err != nil || moved != 1 {
+	if err != nil || moved != 2 {
 		t.Fatalf("reconcile: moved=%d err=%v", moved, err)
 	}
 	stored, err := GetImageGeneration(running.Id, 7)
@@ -105,6 +119,13 @@ func TestImageGenerationCancelAndReconcile(t *testing.T) {
 	}
 	if stored.Status != ImageGenStatusNeedsReconciliation {
 		t.Fatalf("stuck row must need reconciliation, got %s", stored.Status)
+	}
+	result, err := GetImageGeneration(saved.Id, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != ImageGenStatusSaveFailed || result.Results == nil || result.ConsumeLogId != 42 {
+		t.Fatalf("expired job lost its charged result: %+v", result)
 	}
 }
 

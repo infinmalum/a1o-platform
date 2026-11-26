@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -24,6 +25,8 @@ const generateImageToolName = "generate_image"
 const generateImagePollInterval = time.Second
 
 const generateImageWaitTimeout = 3 * time.Minute
+
+var errNoImageModel = errors.New("没有可用图像模型")
 
 func generateImageToolDef() Tool {
 	return Tool{
@@ -186,7 +189,7 @@ func defaultImageModel(ctx context.Context, userId int) (string, error) {
 		}
 	}
 	if fallback == "" {
-		return "", fmt.Errorf("分组 %q 没有可用图像模型", group)
+		return "", fmt.Errorf("分组 %q: %w", group, errNoImageModel)
 	}
 	return fallback, nil
 }
