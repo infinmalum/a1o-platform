@@ -128,6 +128,8 @@ func (c *streamCollector) event(eventType string, payload []byte) error {
 	switch eventType {
 	case "response.created":
 		c.responseID = envelope.Response.ID
+	case "response.queued", "response.in_progress":
+		// The response is still open. Wait for output items or a terminal event.
 	case "response.output_item.added":
 		item, err := parseItem(envelope.Item)
 		if err != nil {
@@ -148,9 +150,16 @@ func (c *streamCollector) event(eventType string, payload []byte) error {
 			}
 			item.Summary[0].Text += envelope.Delta
 		})
+	case "response.reasoning_text.delta":
+		if c.onReasoningDelta != nil {
+			c.onReasoningDelta(envelope.Delta)
+		}
+		c.addItemDelta(envelope.ItemID, func(item *Item) {
+			item.Content = appendOrExtend(item.Content, PartReasoningText, envelope.Delta, "")
+		})
 	case "response.content_part.added", "response.content_part.done",
 		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done",
-		"response.reasoning_summary_text.done":
+		"response.reasoning_summary_text.done", "response.reasoning_text.done":
 		// Part boundaries and done snapshots carry no payload the item
 		// snapshot does not.
 	case "response.output_text.delta":

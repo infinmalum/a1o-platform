@@ -14,6 +14,31 @@ func feedLines(t *testing.T, c *streamCollector, lines ...string) {
 	}
 }
 
+func TestStreamCollectorStreamsReasoningText(t *testing.T) {
+	var reasoning string
+	c := newStreamCollector(nil, func(delta string) { reasoning += delta })
+	feedLines(t, c,
+		`data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`,
+		`data: {"type":"response.in_progress","response":{"id":"resp_1","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"rsn_1","summary":[]}}`,
+		`data: {"type":"response.reasoning_text.delta","item_id":"rsn_1","delta":"think "}`,
+		`data: {"type":"response.reasoning_text.delta","item_id":"rsn_1","delta":"first"}`,
+		`data: {"type":"response.reasoning_text.done","item_id":"rsn_1","text":"think first"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed"}}`,
+	)
+	outcome := c.finalize()
+	if outcome.Err != nil || outcome.Status != ItemStatusCompleted {
+		t.Fatalf("reasoning stream did not complete: status=%q err=%v", outcome.Status, outcome.Err)
+	}
+	if reasoning != "think first" {
+		t.Fatalf("streamed reasoning = %q", reasoning)
+	}
+	if len(outcome.Items) != 1 || len(outcome.Items[0].Content) != 1 ||
+		outcome.Items[0].Content[0].Type != PartReasoningText || outcome.Items[0].Content[0].Text != reasoning {
+		t.Fatalf("reasoning content = %+v", outcome.Items)
+	}
+}
+
 // A terminal event that omits the output field must keep the items the
 // stream accumulated — absence is not an empty result.
 func TestStreamCollectorKeepsItemsWhenTerminalOmitsOutput(t *testing.T) {

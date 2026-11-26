@@ -169,6 +169,8 @@ func newResponsesUpstream(t *testing.T, bodies *[]string) *httptest.Server {
 		if hit == 1 {
 			_, _ = fmt.Fprint(w,
 				"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"agent-model\"}}\n\n"+
+					"data: {\"type\":\"response.queued\",\"response\":{\"id\":\"resp_1\",\"status\":\"queued\"}}\n\n"+
+					"data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\n"+
 					"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rsn_1\",\"summary\":[]}}\n\n"+
 					"data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rsn_1\",\"output_index\":0,\"summary_index\":0,\"delta\":\"盘算\"}\n\n"+
 					"data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rsn_1\",\"status\":\"completed\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"盘算一下\"}],\"encrypted_content\":\"enc-sealed-blob\"}}\n\n"+
