@@ -1,4 +1,4 @@
-import { Label, Message } from 'semantic-ui-react';
+import { Tag } from 'antd';
 import { getChannelOption } from './helper';
 import React from 'react';
 
@@ -11,7 +11,7 @@ export function renderText(text, limit) {
 
 export function renderGroup(group) {
   if (group === '') {
-    return <Label>default</Label>;
+    return <Tag>default</Tag>;
   }
   let groups = group.split(',');
   groups.sort();
@@ -27,11 +27,11 @@ export function renderGroup(group) {
     >
       {groups.map((group) => {
         if (group === 'vip' || group === 'pro') {
-          return <Label color='yellow'>{group}</Label>;
+          return <Tag color='gold'>{group}</Tag>;
         } else if (group === 'svip' || group === 'premium') {
-          return <Label color='red'>{group}</Label>;
+          return <Tag color='red'>{group}</Tag>;
         }
-        return <Label>{group}</Label>;
+        return <Tag>{group}</Tag>;
       })}
     </div>
   );
@@ -92,17 +92,16 @@ export function formatAmount(amount) {
 const colors = [
   'red',
   'orange',
-  'yellow',
-  'olive',
+  'gold',
+  'lime',
   'green',
-  'teal',
+  'cyan',
   'blue',
-  'violet',
+  'geekblue',
   'purple',
-  'pink',
-  'brown',
-  'grey',
-  'black',
+  'magenta',
+  'volcano',
+  'default',
 ] as const;
 
 export function renderColorLabel(text) {
@@ -111,11 +110,7 @@ export function renderColorLabel(text) {
     hash = text.charCodeAt(i) + ((hash << 5) - hash);
   }
   let index = Math.abs(hash % colors.length);
-  return (
-    <Label basic color={colors[index]}>
-      {text}
-    </Label>
-  );
+  return <Tag color={colors[index]}>{text}</Tag>;
 }
 
 export function renderChannelTip(channelId) {
@@ -124,8 +119,6 @@ export function renderChannelTip(channelId) {
     return <></>;
   }
   return (
-    <Message>
-      <div dangerouslySetInnerHTML={{ __html: channel.tip }}></div>
-    </Message>
+    <div className='channel-tip'>{channel.tip}</div>
   );
 }

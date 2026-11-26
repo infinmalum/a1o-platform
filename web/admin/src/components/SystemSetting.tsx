@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Alert,
   Button,
+  Checkbox,
   Divider,
-  Form,
-  Grid,
-  Header,
+  Input,
   Modal,
-  Message,
-} from 'semantic-ui-react';
+  Select,
+  Space,
+  Typography,
+} from 'antd';
 import { API, removeTrailingSlash, showError } from '../helpers';
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const SystemSetting = () => {
   const { t } = useTranslation();
@@ -57,14 +62,19 @@ const SystemSetting = () => {
       setInputs({
         ...inputs,
         ...newInputs,
-        EmailDomainWhitelist: (newInputs.EmailDomainWhitelist ?? '').split(','),
+        EmailDomainWhitelist: (newInputs.EmailDomainWhitelist ?? '')
+          .split(',')
+          .filter((item) => item !== ''),
       });
       setOriginInputs(newInputs);
 
       setEmailDomainWhitelist(
-        (newInputs.EmailDomainWhitelist ?? '').split(',').map((item) => {
-          return { key: item, text: item, value: item };
-        })
+        (newInputs.EmailDomainWhitelist ?? '')
+          .split(',')
+          .filter((item) => item !== '')
+          .map((item) => {
+            return { key: item, label: item, value: item };
+          })
       );
     } else {
       showError(message);
@@ -109,7 +119,7 @@ const SystemSetting = () => {
     setLoading(false);
   };
 
-  const handleInputChange = async (e, { name, value }) => {
+  const handleInputChange = async (name, value) => {
     if (name === 'PasswordLoginEnabled' && inputs[name] === 'true') {
       // block disabling password login
       setShowPasswordWarningModal(true);
@@ -226,7 +236,7 @@ const SystemSetting = () => {
     }
   };
 
-  const submitNewRestrictedDomain = () => {
+  const addRestrictedDomain = () => {
     const localDomainList = inputs.EmailDomainWhitelist;
     if (
       restrictedDomainInput !== '' &&
@@ -241,7 +251,7 @@ const SystemSetting = () => {
         ...EmailDomainWhitelist,
         {
           key: restrictedDomainInput,
-          text: restrictedDomainInput,
+          label: restrictedDomainInput,
           value: restrictedDomainInput,
         },
       ]);
@@ -249,332 +259,422 @@ const SystemSetting = () => {
   };
 
   return (
-    <Grid columns={1}>
-      <Grid.Column>
-        <Form loading={loading}>
-          <Header as='h3'>{t('setting.system.general.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.Input
-              label={t('setting.system.general.server_address')}
-              placeholder={t(
-                'setting.system.general.server_address_placeholder'
-              )}
-              value={inputs.ServerAddress}
-              name='ServerAddress'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitServerAddress}>
-            {t('setting.system.general.buttons.update')}
-          </Form.Button>
-          <Divider />
-          <Header as='h3'>{t('setting.system.login.title')}</Header>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.PasswordLoginEnabled === 'true'}
-              label={t('setting.system.login.password_login')}
-              name='PasswordLoginEnabled'
-              onChange={handleInputChange}
-            />
-            {showPasswordWarningModal && (
-              <Modal
-                open={showPasswordWarningModal}
-                onClose={() => setShowPasswordWarningModal(false)}
-                size={'tiny'}
-                style={{ maxWidth: '450px' }}
-              >
-                <Modal.Header>
-                  {t('setting.system.password_login.warning.title')}
-                </Modal.Header>
-                <Modal.Content>
-                  <p>{t('setting.system.password_login.warning.content')}</p>
-                </Modal.Content>
-                <Modal.Actions>
-                  <Button onClick={() => setShowPasswordWarningModal(false)}>
-                    {t('setting.system.password_login.warning.buttons.cancel')}
-                  </Button>
-                  <Button
-                    color='yellow'
-                    onClick={async () => {
-                      setShowPasswordWarningModal(false);
-                      await updateOption('PasswordLoginEnabled', 'false');
-                    }}
-                  >
-                    {t('setting.system.password_login.warning.buttons.confirm')}
-                  </Button>
-                </Modal.Actions>
-              </Modal>
+    <div style={{ maxWidth: 860 }}>
+      <Typography.Title level={5}>
+        {t('setting.system.general.title')}
+      </Typography.Title>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>
+          {t('setting.system.general.server_address')}
+        </label>
+        <Input
+          placeholder={t('setting.system.general.server_address_placeholder')}
+          value={inputs.ServerAddress}
+          onChange={(e) => handleInputChange('ServerAddress', e.target.value)}
+          style={{ maxWidth: 420 }}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitServerAddress}>
+          {t('setting.system.general.buttons.update')}
+        </Button>
+      </div>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.login.title')}
+      </Typography.Title>
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 12 }}>
+        <Checkbox
+          checked={inputs.PasswordLoginEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange('PasswordLoginEnabled', e.target.checked ? 'true' : 'false')
+          }
+        >
+          {t('setting.system.login.password_login')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.PasswordRegisterEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'PasswordRegisterEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.system.login.password_register')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.EmailVerificationEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'EmailVerificationEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.system.login.email_verification')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.GitHubOAuthEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'GitHubOAuthEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.system.login.github_oauth')}
+        </Checkbox>
+      </Space>
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 24 }}>
+        <Checkbox
+          checked={inputs.RegisterEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange('RegisterEnabled', e.target.checked ? 'true' : 'false')
+          }
+        >
+          {t('setting.system.login.registration')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.TurnstileCheckEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'TurnstileCheckEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.system.login.turnstile')}
+        </Checkbox>
+      </Space>
+      <Modal
+        open={showPasswordWarningModal}
+        onCancel={() => setShowPasswordWarningModal(false)}
+        title={t('setting.system.password_login.warning.title')}
+        footer={[
+          <Button key='cancel' onClick={() => setShowPasswordWarningModal(false)}>
+            {t('setting.system.password_login.warning.buttons.cancel')}
+          </Button>,
+          <Button
+            key='confirm'
+            color='gold'
+            variant='solid'
+            onClick={async () => {
+              setShowPasswordWarningModal(false);
+              await updateOption('PasswordLoginEnabled', 'false');
+            }}
+          >
+            {t('setting.system.password_login.warning.buttons.confirm')}
+          </Button>,
+        ]}
+      >
+        <p>{t('setting.system.password_login.warning.content')}</p>
+      </Modal>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.email_restriction.title')}
+      </Typography.Title>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.system.email_restriction.subtitle')}
+        style={{ marginBottom: 12 }}
+      />
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 12 }}>
+        <Checkbox
+          checked={inputs.EmailDomainRestrictionEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'EmailDomainRestrictionEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.system.email_restriction.enable')}
+        </Checkbox>
+      </Space>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>
+          {t('setting.system.email_restriction.add_domain')}
+        </label>
+        <Space.Compact style={{ width: 420 }}>
+          <Input
+            placeholder={t(
+              'setting.system.email_restriction.add_domain_placeholder'
             )}
-            <Form.Checkbox
-              checked={inputs.PasswordRegisterEnabled === 'true'}
-              label={t('setting.system.login.password_register')}
-              name='PasswordRegisterEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.EmailVerificationEnabled === 'true'}
-              label={t('setting.system.login.email_verification')}
-              name='EmailVerificationEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.GitHubOAuthEnabled === 'true'}
-              label={t('setting.system.login.github_oauth')}
-              name='GitHubOAuthEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.RegisterEnabled === 'true'}
-              label={t('setting.system.login.registration')}
-              name='RegisterEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.TurnstileCheckEnabled === 'true'}
-              label={t('setting.system.login.turnstile')}
-              name='TurnstileCheckEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Divider />
-          <Header as='h3'>{t('setting.system.email_restriction.title')}</Header>
-          <Message>{t('setting.system.email_restriction.subtitle')}</Message>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.EmailDomainRestrictionEnabled === 'true'}
-              label={t('setting.system.email_restriction.enable')}
-              name='EmailDomainRestrictionEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.email_restriction.add_domain')}
-              placeholder={t(
-                'setting.system.email_restriction.add_domain_placeholder'
-              )}
-              value={restrictedDomainInput}
-              onChange={(e, { value }) => {
-                setRestrictedDomainInput(value);
-              }}
-              action={
-                <Button
-                  onClick={() => {
-                    if (restrictedDomainInput === '') return;
-                    setEmailDomainWhitelist([
-                      ...EmailDomainWhitelist,
-                      {
-                        key: restrictedDomainInput,
-                        text: restrictedDomainInput,
-                        value: restrictedDomainInput,
-                      },
-                    ]);
-                    setRestrictedDomainInput('');
-                  }}
-                >
-                  {t('setting.system.email_restriction.buttons.fill')}
-                </Button>
-              }
-            />
-          </Form.Group>
-          <Form.Dropdown
-            label={t('setting.system.email_restriction.allowed_domains')}
-            placeholder={t('setting.system.email_restriction.allowed_domains')}
-            fluid
-            multiple
-            search
-            selection
-            allowAdditions
-            value={EmailDomainWhitelist.map((item) => item.value)}
-            options={EmailDomainWhitelist}
-            onAddItem={(e, { value }) => {
+            value={restrictedDomainInput}
+            onChange={(e) => setRestrictedDomainInput(e.target.value)}
+            onPressEnter={addRestrictedDomain}
+          />
+          <Button
+            onClick={() => {
+              if (restrictedDomainInput === '') return;
               setEmailDomainWhitelist([
                 ...EmailDomainWhitelist,
                 {
-                  key: value,
-                  text: value,
-                  value: value,
+                  key: restrictedDomainInput,
+                  label: restrictedDomainInput,
+                  value: restrictedDomainInput,
                 },
               ]);
+              setRestrictedDomainInput('');
             }}
-            onChange={(e, { value }) => {
-              if (!Array.isArray(value)) return;
-              let newEmailDomainWhitelist = [];
-              value.forEach((item) => {
-                newEmailDomainWhitelist.push({
-                  key: String(item),
-                  text: String(item),
-                  value: String(item),
-                });
+          >
+            {t('setting.system.email_restriction.buttons.fill')}
+          </Button>
+        </Space.Compact>
+      </div>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>
+          {t('setting.system.email_restriction.allowed_domains')}
+        </label>
+        <Select
+          mode='tags'
+          style={{ maxWidth: 420 }}
+          placeholder={t('setting.system.email_restriction.allowed_domains')}
+          value={EmailDomainWhitelist.map((item) => item.value)}
+          options={EmailDomainWhitelist}
+          onChange={(value) => {
+            if (!Array.isArray(value)) return;
+            let newEmailDomainWhitelist = [];
+            value.forEach((item) => {
+              newEmailDomainWhitelist.push({
+                key: String(item),
+                label: String(item),
+                value: String(item),
               });
-              setEmailDomainWhitelist(newEmailDomainWhitelist);
-            }}
+            });
+            setEmailDomainWhitelist(newEmailDomainWhitelist);
+          }}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitEmailDomainWhitelist}>
+          {t('setting.system.email_restriction.buttons.save')}
+        </Button>
+      </div>
+
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.smtp.title')}
+      </Typography.Title>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.system.smtp.subtitle')}
+        style={{ marginBottom: 12 }}
+      />
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>{t('setting.system.smtp.server')}</label>
+          <Input
+            placeholder={t('setting.system.smtp.server_placeholder')}
+            value={inputs.SMTPServer}
+            onChange={(e) => handleInputChange('SMTPServer', e.target.value)}
+            style={{ width: 240 }}
           />
-          <Form.Button onClick={submitEmailDomainWhitelist}>
-            {t('setting.system.email_restriction.buttons.save')}
-          </Form.Button>
+        </div>
+        <div>
+          <label style={labelStyle}>{t('setting.system.smtp.port')}</label>
+          <Input
+            placeholder={t('setting.system.smtp.port_placeholder')}
+            value={inputs.SMTPPort}
+            onChange={(e) => handleInputChange('SMTPPort', e.target.value)}
+            style={{ width: 160 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('setting.system.smtp.account')}</label>
+          <Input
+            placeholder={t('setting.system.smtp.account_placeholder')}
+            value={inputs.SMTPAccount}
+            onChange={(e) => handleInputChange('SMTPAccount', e.target.value)}
+            style={{ width: 240 }}
+          />
+        </div>
+      </Space>
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>{t('setting.system.smtp.from')}</label>
+          <Input
+            placeholder={t('setting.system.smtp.from_placeholder')}
+            value={inputs.SMTPFrom}
+            onChange={(e) => handleInputChange('SMTPFrom', e.target.value)}
+            style={{ width: 240 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('setting.system.smtp.token')}</label>
+          <Input.Password
+            placeholder={t('setting.system.smtp.token_placeholder')}
+            value={inputs.SMTPToken}
+            onChange={(e) => handleInputChange('SMTPToken', e.target.value)}
+            style={{ width: 240 }}
+          />
+        </div>
+      </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitSMTP}>
+          {t('setting.system.smtp.buttons.save')}
+        </Button>
+      </div>
 
-          <Divider />
-          <Header as='h3'>{t('setting.system.smtp.title')}</Header>
-          <Message>{t('setting.system.smtp.subtitle')}</Message>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.smtp.server')}
-              placeholder={t('setting.system.smtp.server_placeholder')}
-              name='SMTPServer'
-              onChange={handleInputChange}
-              value={inputs.SMTPServer}
-            />
-            <Form.Input
-              label={t('setting.system.smtp.port')}
-              placeholder={t('setting.system.smtp.port_placeholder')}
-              name='SMTPPort'
-              onChange={handleInputChange}
-              value={inputs.SMTPPort}
-            />
-            <Form.Input
-              label={t('setting.system.smtp.account')}
-              placeholder={t('setting.system.smtp.account_placeholder')}
-              name='SMTPAccount'
-              onChange={handleInputChange}
-              value={inputs.SMTPAccount}
-            />
-          </Form.Group>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.smtp.from')}
-              placeholder={t('setting.system.smtp.from_placeholder')}
-              name='SMTPFrom'
-              onChange={handleInputChange}
-              value={inputs.SMTPFrom}
-            />
-            <Form.Input
-              label={t('setting.system.smtp.token')}
-              placeholder={t('setting.system.smtp.token_placeholder')}
-              name='SMTPToken'
-              onChange={handleInputChange}
-              type='password'
-              value={inputs.SMTPToken}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitSMTP}>
-            {t('setting.system.smtp.buttons.save')}
-          </Form.Button>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.github.title')}
+      </Typography.Title>
+      <Typography.Paragraph type='secondary'>
+        {t('setting.system.github.subtitle')}
+        <a href='https://github.com/settings/developers' target='_blank' rel='noreferrer'>
+          {t('setting.system.github.manage_link')}
+        </a>
+        {t('setting.system.github.manage_text')}
+      </Typography.Paragraph>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.system.github.url_notice', {
+          server_url: originInputs.ServerAddress,
+          callback_url: `${originInputs.ServerAddress}/oauth/github`,
+        })}
+        style={{ marginBottom: 12 }}
+      />
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>{t('setting.system.github.client_id')}</label>
+          <Input
+            placeholder={t('setting.system.github.client_id_placeholder')}
+            value={inputs.GitHubClientId}
+            onChange={(e) =>
+              handleInputChange('GitHubClientId', e.target.value)
+            }
+            style={{ width: 280 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.system.github.client_secret')}
+          </label>
+          <Input.Password
+            placeholder={t('setting.system.github.client_secret_placeholder')}
+            value={inputs.GitHubClientSecret}
+            onChange={(e) =>
+              handleInputChange('GitHubClientSecret', e.target.value)
+            }
+            style={{ width: 280 }}
+          />
+        </div>
+      </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitGitHubOAuth}>
+          {t('setting.system.github.buttons.save')}
+        </Button>
+      </div>
 
-          <Divider />
-          <Header as='h3'>{t('setting.system.github.title')}</Header>
-          <Message>
-            {t('setting.system.github.subtitle')}
-            <a href='https://github.com/settings/developers' target='_blank'>
-              {t('setting.system.github.manage_link')}
-            </a>
-            {t('setting.system.github.manage_text')}
-          </Message>
-          <Message>
-            {t('setting.system.github.url_notice', {
-              server_url: originInputs.ServerAddress,
-              callback_url: `${originInputs.ServerAddress}/oauth/github`,
-            })}
-          </Message>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.github.client_id')}
-              placeholder={t('setting.system.github.client_id_placeholder')}
-              name='GitHubClientId'
-              onChange={handleInputChange}
-              value={inputs.GitHubClientId}
-            />
-            <Form.Input
-              label={t('setting.system.github.client_secret')}
-              placeholder={t('setting.system.github.client_secret_placeholder')}
-              name='GitHubClientSecret'
-              onChange={handleInputChange}
-              type='password'
-              value={inputs.GitHubClientSecret}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitGitHubOAuth}>
-            {t('setting.system.github.buttons.save')}
-          </Form.Button>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.lark.title')}
+        <Typography.Text
+          type='secondary'
+          style={{ display: 'block', fontSize: '0.85em', fontWeight: 400 }}
+        >
+          {t('setting.system.lark.subtitle')}
+          <a href='https://open.feishu.cn/app' target='_blank' rel='noreferrer'>
+            {t('setting.system.lark.manage_link')}
+          </a>
+          {t('setting.system.lark.manage_text')}
+        </Typography.Text>
+      </Typography.Title>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.system.lark.url_notice', {
+          server_url: inputs.ServerAddress,
+          callback_url: `${inputs.ServerAddress}/oauth/lark`,
+        })}
+        style={{ marginBottom: 12 }}
+      />
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>{t('setting.system.lark.client_id')}</label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.LarkClientId}
+            placeholder={t('setting.system.lark.client_id_placeholder')}
+            onChange={(e) => handleInputChange('LarkClientId', e.target.value)}
+            style={{ width: 280 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.system.lark.client_secret')}
+          </label>
+          <Input.Password
+            type='password'
+            autoComplete='new-password'
+            value={inputs.LarkClientSecret}
+            placeholder={t('setting.system.lark.client_secret_placeholder')}
+            onChange={(e) =>
+              handleInputChange('LarkClientSecret', e.target.value)
+            }
+            style={{ width: 280 }}
+          />
+        </div>
+      </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitLarkOAuth}>
+          {t('setting.system.lark.buttons.save')}
+        </Button>
+      </div>
 
-          <Divider />
-          <Header as='h3'>
-            {t('setting.system.lark.title')}
-            <Header.Subheader>
-              {t('setting.system.lark.subtitle')}
-              <a href='https://open.feishu.cn/app' target='_blank'>
-                {t('setting.system.lark.manage_link')}
-              </a>
-              {t('setting.system.lark.manage_text')}
-            </Header.Subheader>
-          </Header>
-          <Message>
-            {t('setting.system.lark.url_notice', {
-              server_url: inputs.ServerAddress,
-              callback_url: `${inputs.ServerAddress}/oauth/lark`,
-            })}
-          </Message>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.lark.client_id')}
-              name='LarkClientId'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.LarkClientId}
-              placeholder={t('setting.system.lark.client_id_placeholder')}
-            />
-            <Form.Input
-              label={t('setting.system.lark.client_secret')}
-              name='LarkClientSecret'
-              onChange={handleInputChange}
-              type='password'
-              autoComplete='new-password'
-              value={inputs.LarkClientSecret}
-              placeholder={t('setting.system.lark.client_secret_placeholder')}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitLarkOAuth}>
-            {t('setting.system.lark.buttons.save')}
-          </Form.Button>
-
-          <Divider />
-          <Header as='h3'>
-            {t('setting.system.turnstile.title')}
-            <Header.Subheader>
-              {t('setting.system.turnstile.subtitle')}
-              <a href='https://dash.cloudflare.com/' target='_blank'>
-                {t('setting.system.turnstile.manage_link')}
-              </a>
-              {t('setting.system.turnstile.manage_text')}
-            </Header.Subheader>
-          </Header>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.system.turnstile.site_key')}
-              name='TurnstileSiteKey'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.TurnstileSiteKey}
-              placeholder={t('setting.system.turnstile.site_key_placeholder')}
-            />
-            <Form.Input
-              label={t('setting.system.turnstile.secret_key')}
-              name='TurnstileSecretKey'
-              onChange={handleInputChange}
-              type='password'
-              autoComplete='new-password'
-              value={inputs.TurnstileSecretKey}
-              placeholder={t('setting.system.turnstile.secret_key_placeholder')}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitTurnstile}>
-            {t('setting.system.turnstile.buttons.save')}
-          </Form.Button>
-        </Form>
-      </Grid.Column>
-    </Grid>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.system.turnstile.title')}
+        <Typography.Text
+          type='secondary'
+          style={{ display: 'block', fontSize: '0.85em', fontWeight: 400 }}
+        >
+          {t('setting.system.turnstile.subtitle')}
+          <a href='https://dash.cloudflare.com/' target='_blank' rel='noreferrer'>
+            {t('setting.system.turnstile.manage_link')}
+          </a>
+          {t('setting.system.turnstile.manage_text')}
+        </Typography.Text>
+      </Typography.Title>
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.system.turnstile.site_key')}
+          </label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.TurnstileSiteKey}
+            placeholder={t('setting.system.turnstile.site_key_placeholder')}
+            onChange={(e) =>
+              handleInputChange('TurnstileSiteKey', e.target.value)
+            }
+            style={{ width: 280 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.system.turnstile.secret_key')}
+          </label>
+          <Input.Password
+            autoComplete='new-password'
+            value={inputs.TurnstileSecretKey}
+            placeholder={t('setting.system.turnstile.secret_key_placeholder')}
+            onChange={(e) =>
+              handleInputChange('TurnstileSecretKey', e.target.value)
+            }
+            style={{ width: 280 }}
+          />
+        </div>
+      </Space>
+      <Button loading={loading} onClick={submitTurnstile}>
+        {t('setting.system.turnstile.buttons.save')}
+      </Button>
+    </div>
   );
 };
 

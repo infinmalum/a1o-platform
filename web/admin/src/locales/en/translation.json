@@ -1,26 +1,4 @@
 {
-  "privacyReview": {
-    "title": "Chat abuse review",
-    "description": "Review deleted chat text within the 15-day retention window. Opening each page requires a reason and is logged.",
-    "queue": "Retained chats",
-    "audit": "Access log",
-    "failed": "The review request failed.",
-    "retry": "Retry",
-    "loading": "Loading…",
-    "session": "Conversation ID",
-    "user": "User",
-    "reviewer": "Reviewer ID",
-    "until": "Available until",
-    "viewed": "Viewed at",
-    "action": "Review",
-    "reason": "Review reason",
-    "open": "Open messages",
-    "close": "Close",
-    "empty": "No records to display.",
-    "next": "Next page",
-    "first": "First page",
-    "assistant": "Assistant"
-  },
   "header": {
     "channel": "Channel",
     "upstreamAccount": "Upstream Accounts",
@@ -337,7 +315,7 @@
       "unknown": "Unknown"
     },
     "buttons": {
-      "connect": "Connect ChatGPT Account",
+      "connect": "Connect Account",
       "reconnect": "Reconnect",
       "enable": "Enable",
       "disable": "Disable",
@@ -356,7 +334,7 @@
       "cancel": "Cancel"
     },
     "wizard": {
-      "titleConnect": "Connect a ChatGPT Subscription Account",
+      "titleConnect": "Connect a Subscription Account",
       "titleReconnect": "Reconnect Account",
       "name": "Account Name",
       "namePlaceholder": "Optional, defaults to the account email",
@@ -375,13 +353,35 @@
       "complete": "Complete Connection",
       "cancel": "Cancel",
       "success": "Account connected successfully",
-      "reconnectSuccess": "Account reconnected successfully"
+      "reconnectSuccess": "Account reconnected successfully",
+      "profileLabel": "Subscription type",
+      "disclaimerAgree": "I have read and understood the disclaimer above and confirm personal use only",
+      "steps": {
+        "chatgpt1": "Open the authorization page below and complete ChatGPT sign-in in the browser",
+        "chatgpt2": "After sign-in the browser redirects to a loopback address (the page may show an error, which is expected)",
+        "chatgpt3": "Copy the full URL from the browser address bar and paste it below to finish",
+        "claude1": "Open the authorization page below and complete Claude sign-in in the browser",
+        "claude2": "After authorization the page shows a code#state pair (or redirects to the console callback address)",
+        "claude3": "Copy that text or the full URL and paste it below to finish",
+        "gemini1": "Open the authorization page below and complete Google sign-in in the browser",
+        "gemini2": "After authorization the browser redirects to http://localhost:8085/oauth2callback (the page may show an error, which is expected)",
+        "gemini3": "Copy the full URL from the browser address bar and paste it below to finish"
+      },
+      "callbackPlaceholderClaude": "Paste the code#state text shown on the page, or the full https://console.anthropic.com/oauth/code/callback?... address",
+      "callbackPlaceholderGemini": "Paste the full http://localhost:8085/oauth2callback?... address the browser redirected to"
     },
     "messages": {
       "updateSuccess": "Upstream account updated successfully!",
       "deleteSuccess": "Upstream account deleted successfully!",
       "invalidConcurrency": "Concurrency limit must be an integer >= 0"
-    }
+    },
+    "profiles": {
+      "chatgpt": "ChatGPT Subscription (Sign in with ChatGPT)",
+      "claude": "Claude Subscription (Claude Code)",
+      "gemini": "Google Subscription (Gemini CLI)"
+    },
+    "disclaimer": "Disclaimer: the account pool / reverse proxy feature is for personal use only. The subscription quota comes from your own paid account and is limited to your own use on this platform; sharing across multiple users, offering it to others, or reselling it violates the upstream (OpenAI / Anthropic / Google) terms of service and may lead to account suspension or termination. Evaluate and assume the risk yourself.",
+    "disclaimerBanner": "Notice: subscription account pools are for personal use only. Sharing, offering, or reselling subscription quota violates the upstream terms of service and may get the account banned; assume the risk yourself."
   },
   "log": {
     "title": "Operation Log",
@@ -826,7 +826,7 @@
     "built_by": "based on",
     "built_by_name": "One API",
     "license": "by JustSong; upstream MIT, A1O Platform changes under",
-    "apache": "Apache 2.0"
+    "licenseName": "AGPL v3.0"
   },
   "home": {
     "welcome": {

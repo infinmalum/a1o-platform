@@ -2,18 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
-  Form,
-  Label,
-  Popup,
-  Pagination,
+  Input,
+  Popconfirm,
+  Space,
   Table,
-} from 'semantic-ui-react';
+  Tag,
+} from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import {
   API,
   copy,
   showError,
-  showInfo,
   showSuccess,
   showWarning,
   timestamp2string,
@@ -22,36 +22,16 @@ import {
 import { ITEMS_PER_PAGE } from '../constants';
 import { renderQuota } from '../helpers/render';
 
-function renderTimestamp(timestamp) {
-  return <>{timestamp2string(timestamp)}</>;
-}
-
 function renderStatus(status, t) {
   switch (status) {
     case 1:
-      return (
-        <Label basic color='green'>
-          {t('redemption.status.unused')}
-        </Label>
-      );
+      return <Tag color='green'>{t('redemption.status.unused')}</Tag>;
     case 2:
-      return (
-        <Label basic color='red'>
-          {t('redemption.status.disabled')}
-        </Label>
-      );
+      return <Tag color='red'>{t('redemption.status.disabled')}</Tag>;
     case 3:
-      return (
-        <Label basic color='grey'>
-          {t('redemption.status.used')}
-        </Label>
-      );
+      return <Tag>{t('redemption.status.used')}</Tag>;
     default:
-      return (
-        <Label basic color='black'>
-          {t('redemption.status.unknown')}
-        </Label>
-      );
+      return <Tag>{t('redemption.status.unknown')}</Tag>;
   }
 }
 
@@ -70,7 +50,7 @@ const RedemptionsTable = () => {
       if (startIdx === 0) {
         setRedemptions(data);
       } else {
-        let newRedemptions = redemptions;
+        let newRedemptions = [...redemptions];
         newRedemptions.push(...data);
         setRedemptions(newRedemptions);
       }
@@ -80,15 +60,13 @@ const RedemptionsTable = () => {
     setLoading(false);
   };
 
-  const onPaginationChange = (e, { activePage: rawPage }: { activePage?: number | string }) => {
-    const activePage = Number(rawPage);
-    if (!Number.isFinite(activePage)) return;
+  const onPaginationChange = (page: number) => {
     (async () => {
-      if (activePage === Math.ceil(redemptions.length / ITEMS_PER_PAGE) + 1) {
+      if (page === Math.ceil(redemptions.length / ITEMS_PER_PAGE) + 1) {
         // In this case we have to load more data and then append them.
-        await loadRedemptions(activePage - 1);
+        await loadRedemptions(page - 1);
       }
-      setActivePage(activePage);
+      setActivePage(page);
     })();
   };
 
@@ -154,10 +132,6 @@ const RedemptionsTable = () => {
     setSearching(false);
   };
 
-  const handleKeywordChange = async (e, { value }) => {
-    setSearchKeyword(value.trim());
-  };
-
   const sortRedemption = (key) => {
     if (redemptions.length === 0) return;
     setLoading(true);
@@ -184,192 +158,144 @@ const RedemptionsTable = () => {
     setActivePage(1);
   };
 
+  const sortableTitle = (key, label) => (
+    <span style={{ cursor: 'pointer' }} onClick={() => sortRedemption(key)}>
+      {label}
+    </span>
+  );
+
+  const pageRedemptions = redemptions
+    .slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE)
+    .map((redemption, idx) => ({ ...redemption, __idx: idx }))
+    .filter((redemption) => !redemption.deleted);
+
+  const columns = [
+    {
+      title: sortableTitle('id', t('redemption.table.id')),
+      dataIndex: 'id',
+      width: 60,
+    },
+    {
+      title: sortableTitle('name', t('redemption.table.name')),
+      dataIndex: 'name',
+      render: (name) => (name ? name : t('redemption.table.no_name')),
+    },
+    {
+      title: sortableTitle('status', t('redemption.table.status')),
+      dataIndex: 'status',
+      render: (status) => renderStatus(status, t),
+    },
+    {
+      title: sortableTitle('quota', t('redemption.table.quota')),
+      dataIndex: 'quota',
+      render: (quota) => renderQuota(quota, t),
+    },
+    {
+      title: sortableTitle('created_time', t('redemption.table.created_time')),
+      dataIndex: 'created_time',
+      render: (value) => timestamp2string(value),
+    },
+    {
+      title: sortableTitle('redeemed_time', t('redemption.table.redeemed_time')),
+      dataIndex: 'redeemed_time',
+      render: (value) =>
+        value ? timestamp2string(value) : t('redemption.table.not_redeemed'),
+    },
+    {
+      title: t('redemption.table.actions'),
+      key: 'actions',
+      render: (_, redemption) => {
+        const idx = redemption.__idx;
+        return (
+          <Space size={4} wrap>
+            <Button
+              size='small'
+              type='primary'
+              ghost
+              onClick={async () => {
+                if (await copy(redemption.key)) {
+                  showSuccess(t('token.messages.copy_success'));
+                } else {
+                  showWarning(t('token.messages.copy_failed'));
+                  setSearchKeyword(redemption.key);
+                }
+              }}
+            >
+              {t('redemption.buttons.copy')}
+            </Button>
+            <Popconfirm
+              title={t('redemption.buttons.confirm_delete')}
+              onConfirm={() => manageRedemption(redemption.id, 'delete', idx)}
+            >
+              <Button size='small' danger>
+                {t('redemption.buttons.delete')}
+              </Button>
+            </Popconfirm>
+            <Button
+              size='small'
+              disabled={redemption.status === 3} // used
+              onClick={() => {
+                manageRedemption(
+                  redemption.id,
+                  redemption.status === 1 ? 'disable' : 'enable',
+                  idx
+                );
+              }}
+            >
+              {redemption.status === 1
+                ? t('redemption.buttons.disable')
+                : t('redemption.buttons.enable')}
+            </Button>
+            <Link to={'/redemption/edit/' + redemption.id}>
+              <Button size='small'>{t('redemption.buttons.edit')}</Button>
+            </Link>
+          </Space>
+        );
+      },
+    },
+  ];
+
   return (
     <>
-      <Form onSubmit={searchRedemptions}>
-        <Form.Input
-          icon='search'
-          fluid
-          iconPosition='left'
-          placeholder={t('redemption.search')}
-          value={searchKeyword}
-          loading={searching}
-          onChange={handleKeywordChange}
-        />
-      </Form>
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder={t('redemption.search')}
+        value={searchKeyword}
+        onChange={(e) => setSearchKeyword(e.target.value.trim())}
+        onPressEnter={searchRedemptions}
+        suffix={
+          <Button type='link' size='small' loading={searching} onClick={searchRedemptions}>
+            {t('redemption.search')}
+          </Button>
+        }
+        style={{ maxWidth: 360, marginBottom: 16 }}
+      />
 
-      <Table basic={'very'} compact size='small'>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('id');
-              }}
-            >
-              {t('redemption.table.id')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('name');
-              }}
-            >
-              {t('redemption.table.name')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('status');
-              }}
-            >
-              {t('redemption.table.status')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('quota');
-              }}
-            >
-              {t('redemption.table.quota')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('created_time');
-              }}
-            >
-              {t('redemption.table.created_time')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortRedemption('redeemed_time');
-              }}
-            >
-              {t('redemption.table.redeemed_time')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>{t('redemption.table.actions')}</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
+      <Space style={{ marginBottom: 16 }}>
+        <Link to='/redemption/add'>
+          <Button type='primary' loading={loading}>
+            {t('redemption.buttons.add')}
+          </Button>
+        </Link>
+        <Button onClick={refresh} loading={loading}>
+          {t('redemption.buttons.refresh')}
+        </Button>
+      </Space>
 
-        <Table.Body>
-          {redemptions
-            .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE
-            )
-            .map((redemption, idx) => {
-              if (redemption.deleted) return <></>;
-              return (
-                <Table.Row key={redemption.id}>
-                  <Table.Cell>{redemption.id}</Table.Cell>
-                  <Table.Cell>
-                    {redemption.name ? redemption.name : t('redemption.table.no_name')}
-                  </Table.Cell>
-                  <Table.Cell>{renderStatus(redemption.status, t)}</Table.Cell>
-                  <Table.Cell>{renderQuota(redemption.quota, t)}</Table.Cell>
-                  <Table.Cell>
-                    {renderTimestamp(redemption.created_time)}
-                  </Table.Cell>
-                  <Table.Cell>
-                    {redemption.redeemed_time
-                      ? renderTimestamp(redemption.redeemed_time)
-                      : t('redemption.table.not_redeemed')}{' '}
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div>
-                      <Button
-                        size={'tiny'}
-                        positive
-                        onClick={async () => {
-                          if (await copy(redemption.key)) {
-                            showSuccess(t('token.messages.copy_success'));
-                          } else {
-                            showWarning(t('token.messages.copy_failed'));
-                            setSearchKeyword(redemption.key);
-                          }
-                        }}
-                      >
-                        {t('redemption.buttons.copy')}
-                      </Button>
-                      <Popup
-                        trigger={
-                          <Button size='tiny' negative>
-                            {t('redemption.buttons.delete')}
-                          </Button>
-                        }
-                        on='click'
-                        flowing
-                        hoverable
-                      >
-                        <Button
-                          negative
-                          onClick={() => {
-                            manageRedemption(redemption.id, 'delete', idx);
-                          }}
-                        >
-                          {t('redemption.buttons.confirm_delete')}
-                        </Button>
-                      </Popup>
-                      <Button
-                        size={'tiny'}
-                        disabled={redemption.status === 3} // used
-                        onClick={() => {
-                          manageRedemption(
-                            redemption.id,
-                            redemption.status === 1 ? 'disable' : 'enable',
-                            idx
-                          );
-                        }}
-                      >
-                        {redemption.status === 1
-                          ? t('redemption.buttons.disable')
-                          : t('redemption.buttons.enable')}
-                      </Button>
-                      <Button
-                        size={'tiny'}
-                        as={Link}
-                        to={'/redemption/edit/' + redemption.id}
-                      >
-                        {t('redemption.buttons.edit')}
-                      </Button>
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              );
-            })}
-        </Table.Body>
-
-        <Table.Footer>
-          <Table.Row>
-            <Table.HeaderCell colSpan='7'>
-              <Button
-                size='small'
-                as={Link}
-                to='/redemption/add'
-                loading={loading}
-              >
-                {t('redemption.buttons.add')}
-              </Button>
-              <Button size='small' onClick={refresh} loading={loading}>
-                {t('redemption.buttons.refresh')}
-              </Button>
-              <Pagination
-                floated='right'
-                activePage={activePage}
-                onPageChange={onPaginationChange}
-                size='small'
-                siblingRange={1}
-                totalPages={
-                  Math.ceil(redemptions.length / ITEMS_PER_PAGE) +
-                  (redemptions.length % ITEMS_PER_PAGE === 0 ? 1 : 0)
-                }
-              />
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Footer>
-      </Table>
+      <Table
+        size='small'
+        columns={columns}
+        dataSource={pageRedemptions}
+        rowKey='id'
+        pagination={{
+          current: activePage,
+          pageSize: ITEMS_PER_PAGE,
+          total: redemptions.length,
+          showSizeChanger: false,
+          onChange: onPaginationChange,
+        }}
+      />
     </>
   );
 };

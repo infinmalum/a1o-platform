@@ -1,27 +1,22 @@
 import React, { useContext, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserContext } from '../context/User';
 import { useTranslation } from 'react-i18next';
-
+import { Button, Dropdown, Drawer, Menu, Space } from 'antd';
 import {
-  Button,
-  Container,
-  Dropdown,
-  Icon,
-  Menu,
-  Segment,
-} from 'semantic-ui-react';
-import {
-  API,
-  getLogo,
-  getSystemName,
-  isAdmin,
-  isMobile,
-  isRoot,
-  showSuccess,
-} from '../helpers';
-import '../index.css';
-import type { IconProps } from 'semantic-ui-react';
+  ApiOutlined,
+  BarChartOutlined,
+  ClusterOutlined,
+  DollarOutlined,
+  FileTextOutlined,
+  GlobalOutlined,
+  InfoCircleOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  SettingOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
+import { API, getLogo, getSystemName, isAdmin, isMobile, isRoot, showSuccess } from '../helpers';
 
 // Operations console navigation: channel wiring, accounts, billing history and
 // system configuration. End-user surfaces (chat, playgrounds, keys, top-up)
@@ -29,74 +24,37 @@ import type { IconProps } from 'semantic-ui-react';
 let headerButtons: {
   name: string;
   to: string;
-  icon: IconProps['name'];
+  icon: React.ReactNode;
   admin?: boolean;
   root?: boolean;
 }[] = [
-  {
-    name: 'header.channel',
-    to: '/channel',
-    icon: 'sitemap',
-    admin: true,
-  },
-  {
-    name: 'header.upstreamAccount',
-    to: '/upstream_account',
-    icon: 'plug',
-    admin: true,
-  },
-  {
-    name: 'header.redemption',
-    to: '/redemption',
-    icon: 'dollar sign',
-    admin: true,
-  },
-  {
-    name: 'header.user',
-    to: '/user',
-    icon: 'user',
-    admin: true,
-  },
-  {
-    name: 'header.dashboard',
-    to: '/dashboard',
-    icon: 'chart bar',
-    admin: true,
-  },
-  {
-    name: 'header.log',
-    to: '/log',
-    icon: 'book',
-  },
-  {
-    name: 'privacyReview.title',
-    to: '/privacy-review',
-    icon: 'shield',
-    root: true,
-  },
-  {
-    name: 'header.setting',
-    to: '/setting',
-    icon: 'setting',
-  },
-  {
-    name: 'header.about',
-    to: '/about',
-    icon: 'info circle',
-  },
+  { name: 'header.channel', to: '/channel', icon: <ClusterOutlined />, admin: true },
+  { name: 'header.upstreamAccount', to: '/upstream_account', icon: <ApiOutlined />, admin: true },
+  { name: 'header.redemption', to: '/redemption', icon: <DollarOutlined />, admin: true },
+  { name: 'header.user', to: '/user', icon: <TeamOutlined />, admin: true },
+  { name: 'header.dashboard', to: '/dashboard', icon: <BarChartOutlined />, admin: true },
+  { name: 'header.log', to: '/log', icon: <FileTextOutlined /> },
+  { name: 'header.setting', to: '/setting', icon: <SettingOutlined /> },
+  { name: 'header.about', to: '/about', icon: <InfoCircleOutlined /> },
+];
+
+const languageOptions = [
+  { key: 'zh', label: '中文' },
+  { key: 'en', label: 'English' },
 ];
 
 const Header = () => {
   const { t, i18n } = useTranslation();
   const [userState, userDispatch] = useContext(UserContext);
-  let navigate = useNavigate();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const systemName = getSystemName();
   const logo = getLogo();
 
   async function logout() {
-    setShowSidebar(false);
+    setMobileNavOpen(false);
     await API.get('/api/user/logout');
     showSuccess('注销成功!');
     userDispatch({ type: 'logout' });
@@ -104,232 +62,140 @@ const Header = () => {
     navigate('/login');
   }
 
-  const toggleSidebar = () => {
-    setShowSidebar(!showSidebar);
-  };
+  const visibleButtons = headerButtons.filter(
+    (button) => !(button.admin && !isAdmin()) && !(button.root && !isRoot())
+  );
 
-  const renderButtons = (isMobile) => {
-    return headerButtons.map((button) => {
-      if ((button.admin && !isAdmin()) || (button.root && !isRoot())) return null;
-      if (isMobile) {
-        return (
-          <Menu.Item
-            key={button.name}
-            onClick={() => {
-              navigate(button.to);
-              setShowSidebar(false);
-            }}
-            style={{ fontSize: '15px' }}
-          >
-            {t(button.name)}
-          </Menu.Item>
-        );
-      }
-      return (
-        <Menu.Item
-          key={button.name}
-          as={Link}
-          to={button.to}
-          style={{
-            fontSize: '15px',
-            fontWeight: '400',
-            color: '#666',
-          }}
-        >
-          <Icon name={button.icon} style={{ marginRight: '4px' }} />
-          {t(button.name)}
-        </Menu.Item>
-      );
-    });
-  };
-
-  // Add language switcher dropdown
-  const languageOptions = [
-    { key: 'zh', text: '中文', value: 'zh' },
-    { key: 'en', text: 'English', value: 'en' },
-  ];
+  const menuItems = visibleButtons.map((button) => ({
+    key: button.to,
+    icon: button.icon,
+    label: t(button.name),
+  }));
 
   const changeLanguage = (language) => {
     i18n.changeLanguage(language);
   };
 
+  const languageDropdown = (
+    <Dropdown
+      menu={{
+        items: languageOptions.map((opt) => ({ key: opt.key, label: opt.label })),
+        selectable: true,
+        selectedKeys: [i18n.language],
+        onClick: ({ key }) => changeLanguage(key),
+      }}
+      trigger={['click']}
+    >
+      <Button type='text' icon={<GlobalOutlined />} aria-label='language' />
+    </Dropdown>
+  );
+
   if (isMobile()) {
     return (
       <>
-        <Menu
-          borderless
-          size='large'
-          style={
-            showSidebar
-              ? {
-                  borderBottom: 'none',
-                  marginBottom: '0',
-                  borderTop: 'none',
-                  height: '51px',
-                }
-              : { borderTop: 'none', height: '52px' }
-          }
+        <div className='admin-topbar'>
+          <Link to='/' className='admin-topbar-brand'>
+            <img src={logo} alt='logo' />
+            <b>{systemName}</b>
+          </Link>
+          <Button
+            type='text'
+            icon={<MenuOutlined />}
+            onClick={() => setMobileNavOpen(true)}
+            aria-label='menu'
+          />
+        </div>
+        <Drawer
+          title={systemName}
+          placement='right'
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          width={260}
         >
-          <Container
-            style={{
-              width: '100%',
-              maxWidth: isMobile() ? '100%' : '1200px',
-              padding: isMobile() ? '0 10px' : '0 20px',
+          <Menu
+            mode='inline'
+            items={menuItems}
+            selectedKeys={[location.pathname]}
+            style={{ borderInlineEnd: 'none' }}
+            onClick={({ key }) => {
+              navigate(key);
+              setMobileNavOpen(false);
             }}
-          >
-            <Menu.Item as={Link} to='/'>
-              <img src={logo} alt='logo' style={{ marginRight: '0.75em' }} />
-              <div style={{ fontSize: '20px' }}>
-                <b>{systemName}</b>
-              </div>
-            </Menu.Item>
-            <Menu.Menu position='right'>
-              <Menu.Item onClick={toggleSidebar}>
-                <Icon name={showSidebar ? 'close' : 'sidebar'} />
-              </Menu.Item>
-            </Menu.Menu>
-          </Container>
-        </Menu>
-        {showSidebar ? (
-          <Segment style={{ marginTop: 0, borderTop: '0' }}>
-            <Menu secondary vertical style={{ width: '100%', margin: 0 }}>
-              {renderButtons(true)}
-              <Menu.Item>
-                <Dropdown
-                  selection
-                  trigger={
-                    <Icon
-                      name='language'
-                      style={{ margin: 0, fontSize: '18px' }}
-                    />
-                  }
-                  options={languageOptions}
-                  value={i18n.language}
-                  onChange={(_, { value }) => changeLanguage(value)}
-                />
-              </Menu.Item>
-              <Menu.Item>
-                {userState.user ? (
-                  <Button onClick={logout} style={{ color: '#666666' }}>
-                    {t('header.logout')}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      onClick={() => {
-                        setShowSidebar(false);
-                        navigate('/login');
-                      }}
-                    >
-                      {t('header.login')}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setShowSidebar(false);
-                        navigate('/register');
-                      }}
-                    >
-                      {t('header.register')}
-                    </Button>
-                  </>
-                )}
-              </Menu.Item>
-            </Menu>
-          </Segment>
-        ) : (
-          <></>
-        )}
+          />
+          <Space style={{ marginTop: 16, width: '100%' }} direction='vertical'>
+            <div>{languageDropdown}</div>
+            {userState.user ? (
+              <Button block onClick={logout}>
+                {t('header.logout')}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  block
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    navigate('/login');
+                  }}
+                >
+                  {t('header.login')}
+                </Button>
+                <Button
+                  block
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    navigate('/register');
+                  }}
+                >
+                  {t('header.register')}
+                </Button>
+              </>
+            )}
+          </Space>
+        </Drawer>
       </>
     );
   }
 
   return (
-    <>
-      <Menu
-        borderless
-        style={{
-          borderTop: 'none',
-          boxShadow: 'rgba(0, 0, 0, 0.04) 0px 2px 12px 0px',
-          border: 'none',
-        }}
-      >
-        <Container
-          style={{
-            width: '100%',
-            maxWidth: isMobile() ? '100%' : '1200px',
-            padding: isMobile() ? '0 10px' : '0 20px',
-          }}
-        >
-          <Menu.Item as={Link} to='/' className={'hide-on-mobile'}>
-            <img src={logo} alt='logo' style={{ marginRight: '0.75em' }} />
-            <div
-              style={{
-                fontSize: '18px',
-                fontWeight: '500',
-                color: '#333',
-              }}
-            >
-              {systemName}
-            </div>
-          </Menu.Item>
-          {renderButtons(false)}
-          <Menu.Menu position='right'>
+    <div className='admin-topbar'>
+      <div className='container admin-topbar-inner'>
+        <Link to='/' className='admin-topbar-brand hide-on-mobile'>
+          <img src={logo} alt='logo' />
+          <span className='admin-topbar-title'>{systemName}</span>
+        </Link>
+        <Menu
+          mode='horizontal'
+          items={menuItems}
+          selectedKeys={[location.pathname]}
+          style={{ flex: 1, minWidth: 0, borderBottom: 'none', background: 'transparent' }}
+          onClick={({ key }) => navigate(key)}
+        />
+        <Space size={4}>
+          {languageDropdown}
+          {userState.user ? (
             <Dropdown
-              item
-              trigger={
-                <Icon name='language' style={{ margin: 0, fontSize: '18px' }} />
-              }
-              options={languageOptions}
-              value={i18n.language}
-              onChange={(_, { value }) => changeLanguage(value)}
-              style={{
-                fontSize: '16px',
-                fontWeight: '400',
-                color: '#666',
-                padding: '0 10px',
+              menu={{
+                items: [
+                  {
+                    key: 'logout',
+                    icon: <LogoutOutlined />,
+                    label: t('header.logout'),
+                    onClick: logout,
+                  },
+                ],
               }}
-            />
-            {userState.user ? (
-              <Dropdown
-                text={userState.user.username}
-                pointing
-                className='link item'
-                style={{
-                  fontSize: '15px',
-                  fontWeight: '400',
-                  color: '#666',
-                }}
-              >
-                <Dropdown.Menu>
-                  <Dropdown.Item
-                    onClick={logout}
-                    style={{
-                      fontSize: '15px',
-                      fontWeight: '400',
-                      color: '#666',
-                    }}
-                  >
-                    {t('header.logout')}
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown>
-            ) : (
-              <Menu.Item
-                name={t('header.login')}
-                as={Link}
-                to='/login'
-                className='btn btn-link'
-                style={{
-                  fontSize: '15px',
-                  fontWeight: '400',
-                  color: '#666',
-                }}
-              />
-            )}
-          </Menu.Menu>
-        </Container>
-      </Menu>
-    </>
+              trigger={['click']}
+            >
+              <Button type='text'>{userState.user.username}</Button>
+            </Dropdown>
+          ) : (
+            <Link to='/login' className='hide-on-mobile'>
+              <Button type='text'>{t('header.login')}</Button>
+            </Link>
+          )}
+        </Space>
+      </div>
+    </div>
   );
 };
 

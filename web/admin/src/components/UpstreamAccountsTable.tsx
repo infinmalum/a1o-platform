@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Alert,
   Button,
   Form,
-  Header,
-  Label,
+  Input,
+  InputNumber,
   Modal,
-  Pagination,
-  Popup,
+  Popconfirm,
+  Space,
   Table,
-} from 'semantic-ui-react';
+  Tag,
+} from 'antd';
 import {
   API,
   showError,
@@ -23,34 +25,19 @@ import UpstreamAccountOAuthWizard from './UpstreamAccountOAuthWizard';
 function renderStatus(status, t) {
   switch (status) {
     case 1:
-      return (
-        <Label basic color='green'>
-          {t('upstreamAccount.status.enabled')}
-        </Label>
-      );
+      return <Tag color='green'>{t('upstreamAccount.status.enabled')}</Tag>;
     case 2:
-      return (
-        <Label basic color='red'>
-          {t('upstreamAccount.status.disabled')}
-        </Label>
-      );
+      return <Tag color='red'>{t('upstreamAccount.status.disabled')}</Tag>;
     case 3:
-      return (
-        <Label basic color='yellow'>
-          {t('upstreamAccount.status.reauthRequired')}
-        </Label>
-      );
+      return <Tag color='gold'>{t('upstreamAccount.status.reauthRequired')}</Tag>;
     default:
-      return (
-        <Label basic color='black'>
-          {t('upstreamAccount.status.unknown')}
-        </Label>
-      );
+      return <Tag>{t('upstreamAccount.status.unknown')}</Tag>;
   }
 }
 
 const UpstreamAccountsTable = () => {
   const { t } = useTranslation();
+  const [form] = Form.useForm();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
@@ -61,9 +48,10 @@ const UpstreamAccountsTable = () => {
   const [wizardAccountName, setWizardAccountName] = useState<string | undefined>(
     undefined
   );
+  const [wizardProfile, setWizardProfile] = useState<string | undefined>(
+    undefined
+  );
   const [editing, setEditing] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [editConcurrency, setEditConcurrency] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadAccounts = async (startIdx) => {
@@ -73,7 +61,7 @@ const UpstreamAccountsTable = () => {
       if (startIdx === 0) {
         setAccounts(data);
       } else {
-        let newAccounts = accounts;
+        let newAccounts = [...accounts];
         newAccounts.push(...data);
         setAccounts(newAccounts);
       }
@@ -83,17 +71,12 @@ const UpstreamAccountsTable = () => {
     setLoading(false);
   };
 
-  const onPaginationChange = (
-    e,
-    { activePage: rawPage }: { activePage?: number | string }
-  ) => {
-    const activePage = Number(rawPage);
-    if (!Number.isFinite(activePage)) return;
+  const onPaginationChange = (page: number) => {
     (async () => {
-      if (activePage === Math.ceil(accounts.length / ITEMS_PER_PAGE) + 1) {
-        await loadAccounts(activePage - 1);
+      if (page === Math.ceil(accounts.length / ITEMS_PER_PAGE) + 1) {
+        await loadAccounts(page - 1);
       }
-      setActivePage(activePage);
+      setActivePage(page);
     })();
   };
 
@@ -108,12 +91,14 @@ const UpstreamAccountsTable = () => {
   const openConnectWizard = () => {
     setWizardAccountId(undefined);
     setWizardAccountName(undefined);
+    setWizardProfile(undefined);
     setWizardOpen(true);
   };
 
   const openReconnectWizard = (account) => {
     setWizardAccountId(account.id);
     setWizardAccountName(account.name);
+    setWizardProfile(account.profile);
     setWizardOpen(true);
   };
 
@@ -178,20 +163,18 @@ const UpstreamAccountsTable = () => {
 
   const openEditModal = (account) => {
     setEditing(account);
-    setEditName(account.name);
-    setEditConcurrency(String(account.concurrency_limit || 0));
+    form.setFieldsValue({
+      name: account.name,
+      concurrency_limit: account.concurrency_limit || 0,
+    });
   };
 
   const submitEdit = async () => {
-    const concurrency = parseInt(editConcurrency, 10);
-    if (!Number.isFinite(concurrency) || concurrency < 0) {
-      showError(t('upstreamAccount.messages.invalidConcurrency'));
-      return;
-    }
+    const values = await form.validateFields();
     setSaving(true);
     const ok = await saveAccount(
       editing,
-      { name: editName.trim(), concurrency_limit: concurrency },
+      { name: values.name.trim(), concurrency_limit: values.concurrency_limit },
       t('upstreamAccount.messages.updateSuccess')
     );
     setSaving(false);
@@ -206,195 +189,165 @@ const UpstreamAccountsTable = () => {
     await loadAccounts(0);
   };
 
+  const columns = [
+    {
+      title: t('upstreamAccount.table.id'),
+      dataIndex: 'id',
+      width: 60,
+    },
+    {
+      title: t('upstreamAccount.table.name'),
+      dataIndex: 'name',
+    },
+    {
+      title: t('upstreamAccount.table.profile'),
+      key: 'profile',
+      render: (_, account) => `${account.provider} / ${account.profile}`,
+    },
+    {
+      title: t('upstreamAccount.table.status'),
+      dataIndex: 'status',
+      render: (status) => renderStatus(status, t),
+    },
+    {
+      title: t('upstreamAccount.table.externalId'),
+      dataIndex: 'external_id',
+    },
+    {
+      title: t('upstreamAccount.table.credentialExpiry'),
+      dataIndex: 'credential_expires_at',
+      render: (value) =>
+        value
+          ? timestamp2string(value)
+          : t('upstreamAccount.table.unknown'),
+    },
+    {
+      title: t('upstreamAccount.table.concurrencyLimit'),
+      dataIndex: 'concurrency_limit',
+      render: (value) =>
+        value > 0 ? value : t('upstreamAccount.table.unlimited'),
+    },
+    {
+      title: t('upstreamAccount.table.createdTime'),
+      dataIndex: 'created_time',
+      render: (value) => timestamp2string(value),
+    },
+    {
+      title: t('upstreamAccount.table.actions'),
+      key: 'actions',
+      render: (_, account) => (
+        <Space size={4} wrap>
+          {account.status === 3 ? (
+            <Button
+              size='small'
+              type='primary'
+              onClick={() => openReconnectWizard(account)}
+            >
+              {t('upstreamAccount.buttons.reconnect')}
+            </Button>
+          ) : (
+            <Button size='small' onClick={() => openReconnectWizard(account)}>
+              {t('upstreamAccount.buttons.reconnect')}
+            </Button>
+          )}
+          {account.status === 2 ? (
+            <Button size='small' onClick={() => toggleStatus(account, 1)}>
+              {t('upstreamAccount.buttons.enable')}
+            </Button>
+          ) : (
+            <Button size='small' onClick={() => toggleStatus(account, 2)}>
+              {t('upstreamAccount.buttons.disable')}
+            </Button>
+          )}
+          <Button size='small' onClick={() => openEditModal(account)}>
+            {t('upstreamAccount.buttons.edit')}
+          </Button>
+          <Popconfirm
+            title={t('upstreamAccount.buttons.confirmDelete')}
+            onConfirm={() => deleteAccount(account)}
+          >
+            <Button size='small' danger>
+              {t('upstreamAccount.buttons.delete')}
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const pageAccounts = accounts.filter((account) => !account.deleted);
+
   return (
     <>
-      <Table basic={'very'} compact size='small'>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>{t('upstreamAccount.table.id')}</Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.name')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.profile')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.status')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.externalId')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.credentialExpiry')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.concurrencyLimit')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.createdTime')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('upstreamAccount.table.actions')}
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-
-        <Table.Body>
-          {accounts
-            .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE
-            )
-            .map((account) => {
-              if (account.deleted) return <></>;
-              return (
-                <Table.Row key={account.id}>
-                  <Table.Cell>{account.id}</Table.Cell>
-                  <Table.Cell>{account.name}</Table.Cell>
-                  <Table.Cell>
-                    {account.provider} / {account.profile}
-                  </Table.Cell>
-                  <Table.Cell>{renderStatus(account.status, t)}</Table.Cell>
-                  <Table.Cell>{account.external_id}</Table.Cell>
-                  <Table.Cell>
-                    {account.credential_expires_at
-                      ? timestamp2string(account.credential_expires_at)
-                      : t('upstreamAccount.table.unknown')}
-                  </Table.Cell>
-                  <Table.Cell>
-                    {account.concurrency_limit > 0
-                      ? account.concurrency_limit
-                      : t('upstreamAccount.table.unlimited')}
-                  </Table.Cell>
-                  <Table.Cell>
-                    {timestamp2string(account.created_time)}
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div>
-                      <Button
-                        size={'tiny'}
-                        primary={account.status === 3}
-                        onClick={() => openReconnectWizard(account)}
-                      >
-                        {t('upstreamAccount.buttons.reconnect')}
-                      </Button>
-                      {account.status === 2 && (
-                        <Button
-                          size={'tiny'}
-                          onClick={() => toggleStatus(account, 1)}
-                        >
-                          {t('upstreamAccount.buttons.enable')}
-                        </Button>
-                      )}
-                      {account.status !== 2 && (
-                        <Button
-                          size={'tiny'}
-                          onClick={() => toggleStatus(account, 2)}
-                        >
-                          {t('upstreamAccount.buttons.disable')}
-                        </Button>
-                      )}
-                      <Button
-                        size={'tiny'}
-                        onClick={() => openEditModal(account)}
-                      >
-                        {t('upstreamAccount.buttons.edit')}
-                      </Button>
-                      <Popup
-                        trigger={
-                          <Button size='tiny' negative>
-                            {t('upstreamAccount.buttons.delete')}
-                          </Button>
-                        }
-                        on='click'
-                        flowing
-                        hoverable
-                      >
-                        <Button
-                          negative
-                          onClick={() => {
-                            deleteAccount(account);
-                          }}
-                        >
-                          {t('upstreamAccount.buttons.confirmDelete')}
-                        </Button>
-                      </Popup>
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              );
-            })}
-        </Table.Body>
-
-        <Table.Footer>
-          <Table.Row>
-            <Table.HeaderCell colSpan='9'>
-              <Button
-                size='small'
-                primary
-                loading={loading}
-                onClick={openConnectWizard}
-              >
-                {t('upstreamAccount.buttons.connect')}
-              </Button>
-              <Button size='small' onClick={refresh} loading={loading}>
-                {t('upstreamAccount.buttons.refresh')}
-              </Button>
-              <Pagination
-                floated='right'
-                activePage={activePage}
-                onPageChange={onPaginationChange}
-                size='small'
-                siblingRange={1}
-                totalPages={
-                  Math.ceil(accounts.length / ITEMS_PER_PAGE) +
-                  (accounts.length % ITEMS_PER_PAGE === 0 ? 1 : 0)
-                }
-              />
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Footer>
-      </Table>
+      <Alert
+        type='warning'
+        showIcon
+        message={t('upstreamAccount.disclaimerBanner')}
+        style={{ marginBottom: 16 }}
+      />
+      <Space style={{ marginBottom: 16 }}>
+        <Button type='primary' loading={loading} onClick={openConnectWizard}>
+          {t('upstreamAccount.buttons.connect')}
+        </Button>
+        <Button onClick={refresh} loading={loading}>
+          {t('upstreamAccount.buttons.refresh')}
+        </Button>
+      </Space>
+      <Table
+        size='small'
+        columns={columns}
+        dataSource={pageAccounts.slice(
+          (activePage - 1) * ITEMS_PER_PAGE,
+          activePage * ITEMS_PER_PAGE
+        )}
+        rowKey='id'
+        pagination={{
+          current: activePage,
+          pageSize: ITEMS_PER_PAGE,
+          total: pageAccounts.length,
+          showSizeChanger: false,
+          onChange: onPaginationChange,
+        }}
+      />
 
       <UpstreamAccountOAuthWizard
         open={wizardOpen}
         accountId={wizardAccountId}
         accountName={wizardAccountName}
+        profile={wizardProfile}
         onClose={() => setWizardOpen(false)}
         onCompleted={onWizardCompleted}
       />
 
       <Modal
         open={editing !== null}
-        onClose={() => setEditing(null)}
-        size='small'
-        closeIcon
-      >
-        <Header>{t('upstreamAccount.edit.title')}</Header>
-        <Modal.Content>
-          <Form>
-            <Form.Input
-              label={t('upstreamAccount.edit.name')}
-              placeholder={t('upstreamAccount.edit.namePlaceholder')}
-              value={editName}
-              onChange={(e, { value }) => setEditName(value)}
-            />
-            <Form.Input
-              label={t('upstreamAccount.edit.concurrencyLimit')}
-              placeholder={t('upstreamAccount.edit.concurrencyPlaceholder')}
-              value={editConcurrency}
-              onChange={(e, { value }) => setEditConcurrency(value)}
-            />
-          </Form>
-        </Modal.Content>
-        <Modal.Actions>
-          <Button onClick={() => setEditing(null)}>
+        onCancel={() => setEditing(null)}
+        title={t('upstreamAccount.edit.title')}
+        footer={[
+          <Button key='cancel' onClick={() => setEditing(null)}>
             {t('upstreamAccount.edit.cancel')}
-          </Button>
-          <Button primary loading={saving} disabled={saving} onClick={submitEdit}>
+          </Button>,
+          <Button key='submit' type='primary' loading={saving} onClick={submitEdit}>
             {t('upstreamAccount.edit.submit')}
-          </Button>
-        </Modal.Actions>
+          </Button>,
+        ]}
+      >
+        <Form form={form} layout='vertical'>
+          <Form.Item
+            name='name'
+            label={t('upstreamAccount.edit.name')}
+            rules={[{ required: true }]}
+          >
+            <Input placeholder={t('upstreamAccount.edit.namePlaceholder')} />
+          </Form.Item>
+          <Form.Item name='concurrency_limit' label={t('upstreamAccount.edit.concurrencyLimit')}>
+            <InputNumber
+              min={0}
+              style={{ width: '100%' }}
+              placeholder={t('upstreamAccount.edit.concurrencyPlaceholder')}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </>
   );

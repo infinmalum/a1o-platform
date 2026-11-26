@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Form, Header, Input, Message, Table } from 'semantic-ui-react';
+import { Alert, Input, Table, Typography } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 
 import { API } from '../helpers';
 
@@ -203,109 +204,105 @@ const PriceEditor = ({
 
   return (
     <>
-      <Message>{t('setting.operation.ratio.price.hint')}</Message>
-      <Form.Input
-        icon='search'
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.operation.ratio.price.hint')}
+        style={{ marginBottom: 12 }}
+      />
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
         placeholder={t('setting.operation.ratio.price.search')}
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
+        style={{ maxWidth: 360, marginBottom: 12 }}
       />
-      <Table celled compact>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>
-              {t('setting.operation.ratio.price.model')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('setting.operation.ratio.price.input')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('setting.operation.ratio.price.output')}
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {rows.map((model) => (
-            <Table.Row key={model}>
-              <Table.Cell>{model}</Table.Cell>
-              <Table.Cell>
-                <Input
-                  size='small'
-                  value={value(`${model}:in`, priceOf(model))}
-                  placeholder={t('setting.operation.ratio.price.unpriced')}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [`${model}:in`]: event.target.value,
-                    }))
-                  }
-                  onBlur={(event) => commitInputPrice(model, event.target.value)}
-                />
-              </Table.Cell>
-              <Table.Cell>
-                <Input
-                  size='small'
-                  value={value(`${model}:out`, outputPriceOf(model))}
-                  placeholder={t('setting.operation.ratio.price.unpriced')}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [`${model}:out`]: event.target.value,
-                    }))
-                  }
-                  onBlur={(event) => commitOutputPrice(model, event.target.value)}
-                />
-              </Table.Cell>
-            </Table.Row>
-          ))}
-          {rows.length === 0 && (
-            <Table.Row>
-              <Table.Cell colSpan={3} style={{ color: '#999' }}>
-                {t('setting.operation.ratio.price.empty')}
-              </Table.Cell>
-            </Table.Row>
-          )}
-        </Table.Body>
-      </Table>
-      <p style={{ color: '#999', fontSize: '0.85em' }}>
+      <Table
+        size='small'
+        pagination={false}
+        dataSource={rows}
+        rowKey={(model) => model}
+        locale={{ emptyText: t('setting.operation.ratio.price.empty') }}
+        columns={[
+          {
+            title: t('setting.operation.ratio.price.model'),
+            dataIndex: 'model',
+            render: (model) => model,
+          },
+          {
+            title: t('setting.operation.ratio.price.input'),
+            key: 'in',
+            render: (_, model) => (
+              <Input
+                size='small'
+                value={value(`${model}:in`, priceOf(model))}
+                placeholder={t('setting.operation.ratio.price.unpriced')}
+                onChange={(event) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [`${model}:in`]: event.target.value,
+                  }))
+                }
+                onBlur={(event) => commitInputPrice(model, event.target.value)}
+              />
+            ),
+          },
+          {
+            title: t('setting.operation.ratio.price.output'),
+            key: 'out',
+            render: (_, model) => (
+              <Input
+                size='small'
+                value={value(`${model}:out`, outputPriceOf(model))}
+                placeholder={t('setting.operation.ratio.price.unpriced')}
+                onChange={(event) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [`${model}:out`]: event.target.value,
+                  }))
+                }
+                onBlur={(event) => commitOutputPrice(model, event.target.value)}
+              />
+            ),
+          },
+        ]}
+      />
+      <Typography.Text type='secondary' style={{ fontSize: '0.85em' }}>
         {t('setting.operation.ratio.price.perMillion')}
-      </p>
+      </Typography.Text>
 
-      <Header as='h4'>{t('setting.operation.ratio.price.groupTitle')}</Header>
-      <Table celled compact>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell>
-              {t('setting.operation.ratio.price.group')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>
-              {t('setting.operation.ratio.price.groupRatio')}
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {Object.keys(groups)
-            .sort()
-            .map((group) => (
-              <Table.Row key={group}>
-                <Table.Cell>{group}</Table.Cell>
-                <Table.Cell>
-                  <Input
-                    size='small'
-                    value={value(`group:${group}`, String(groups[group]))}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [`group:${group}`]: event.target.value,
-                      }))
-                    }
-                    onBlur={(event) => commitGroupRatio(group, event.target.value)}
-                  />
-                </Table.Cell>
-              </Table.Row>
-            ))}
-        </Table.Body>
-      </Table>
+      <Typography.Title level={5}>
+        {t('setting.operation.ratio.price.groupTitle')}
+      </Typography.Title>
+      <Table
+        size='small'
+        pagination={false}
+        dataSource={Object.keys(groups).sort()}
+        rowKey={(group) => group}
+        columns={[
+          {
+            title: t('setting.operation.ratio.price.group'),
+            render: (group) => group,
+          },
+          {
+            title: t('setting.operation.ratio.price.groupRatio'),
+            render: (group) => (
+              <Input
+                size='small'
+                value={value(`group:${group}`, String(groups[group]))}
+                onChange={(event) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [`group:${group}`]: event.target.value,
+                  }))
+                }
+                onBlur={(event) => commitGroupRatio(group, event.target.value)}
+              />
+            ),
+          },
+        ]}
+      />
     </>
   );
 };

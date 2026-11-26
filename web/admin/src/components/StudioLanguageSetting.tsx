@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Form, Header, Message } from 'semantic-ui-react';
+import { Alert, Button, Checkbox, Space, Spin, Typography } from 'antd';
 import { API, showError, showSuccess } from '../helpers';
 
 interface StudioLanguage {
@@ -45,24 +45,56 @@ export default function StudioLanguageSetting() {
     }
   }
 
+  if (loading) {
+    return <Spin />;
+  }
+
   return (
-    <Form loading={loading || saving} onSubmit={save}>
-      <Header as='h3'>{t('setting.tabs.studio_languages')}</Header>
-      <p>{t('setting.studio_languages.description')}</p>
-      {!loading && languages.length === 0 && <Message negative content={t('setting.studio_languages.load_failed')} />}
-      {languages.map(({ code, enabled: checked }) => (
-        <Form.Checkbox
-          key={code}
-          id={'studio-language-' + code}
-          label={new Intl.DisplayNames([code], { type: 'language' }).of(code)}
-          checked={checked}
-          disabled={saving || (checked && enabled === 1)}
-          onChange={(_, { checked }) => setLanguages((current) => current.map((language) =>
-            language.code === code ? { ...language, enabled: Boolean(checked) } : language
-          ))}
+    <div>
+      <Typography.Title level={5}>
+        {t('setting.tabs.studio_languages')}
+      </Typography.Title>
+      <Typography.Paragraph type='secondary'>
+        {t('setting.studio_languages.description')}
+      </Typography.Paragraph>
+      {!loading && languages.length === 0 && (
+        <Alert
+          type='error'
+          showIcon
+          message={t('setting.studio_languages.load_failed')}
+          style={{ marginBottom: 12 }}
         />
-      ))}
-      <Form.Button type='submit' disabled={enabled === 0 || saving}>{t('setting.studio_languages.save')}</Form.Button>
-    </Form>
+      )}
+      <Space direction='vertical' style={{ display: 'flex', marginBottom: 16 }}>
+        {languages.map(({ code, enabled: checked }) => (
+          <Checkbox
+            key={code}
+            checked={checked}
+            disabled={saving || (checked && enabled === 1)}
+            onChange={(e) =>
+              setLanguages((current) =>
+                current.map((language) =>
+                  language.code === code
+                    ? { ...language, enabled: e.target.checked }
+                    : language
+                )
+              )
+            }
+          >
+            {new Intl.DisplayNames([code], { type: 'language' }).of(code)}
+          </Checkbox>
+        ))}
+      </Space>
+      <div>
+        <Button
+          type='primary'
+          disabled={enabled === 0 || saving}
+          loading={saving}
+          onClick={save}
+        >
+          {t('setting.studio_languages.save')}
+        </Button>
+      </div>
+    </div>
   );
 }

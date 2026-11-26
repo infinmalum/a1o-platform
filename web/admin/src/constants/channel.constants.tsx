@@ -79,4 +79,25 @@ export const CHANNEL_OPTIONS = [
   { key: 42, text: 'Google Vertex', value: 42, color: 'blue' },
   { key: 56, text: 'Volcengine Ark · Seedream / Seedance', value: 56, color: 'blue' },
   { key: 46, text: 'Replicate', value: 46, color: 'blue' },
+  {
+    key: 57,
+    text: 'Gemini CLI（订阅）',
+    value: 57,
+    color: 'orange',
+    description: 'Google 订阅 OAuth，无需 Base URL',
+    tip: '两步使用：先在「订阅账号管理」连接 Google 账号（向导选「Google 订阅（Gemini CLI）」，授权后自动完成 Code Assist 项目开通），再回到本渠道在「绑定订阅账号」里选中该账号。走 Code Assist 官方端点（https://cloudcode-pa.googleapis.com），无需填写 Base URL，Key 留空。模型填 Gemini CLI 可用模型（如 gemini-3-pro-preview、gemini-2.5-flash）。仅供个人自用，账号池共享与对外转售违反上游服务条款，风险自担。',
+  },
 ];
+
+// PROFILE_CHANNEL_TYPES mirrors the backend profileChannelTypes mapping: a
+// subscription profile can only bind to the channel kinds its wire serves.
+export const PROFILE_CHANNEL_TYPES = {
+  chatgpt_plan_public: [1, 53],
+  anthropic_claude_code: [14],
+  gemini_cli: [57],
+};
+
+export const profileFitsChannelType = (profile, type) => {
+  const kinds = PROFILE_CHANNEL_TYPES[profile];
+  return Array.isArray(kinds) ? kinds.includes(type) : true;
+};

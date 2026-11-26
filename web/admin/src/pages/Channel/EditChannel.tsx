@@ -1,16 +1,19 @@
-import React, {useEffect, useState} from 'react';
-import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Input, Message} from 'semantic-ui-react';
-import {useNavigate, useParams} from 'react-router-dom';
-import {API, copy, getChannelModels, showError, showInfo, showSuccess, verifyJSON,} from '../../helpers';
-import {BASE_URL_INPUT_KINDS, CHANNEL_OPTIONS} from '../../constants';
-import {renderChannelTip} from '../../helpers/render';
+import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Alert, Button, Card, Checkbox, Input, Select, Space } from 'antd';
+import { useNavigate, useParams } from 'react-router-dom';
+import { API, getChannelModels, showError, showInfo, showSuccess, verifyJSON } from '../../helpers';
+import { BASE_URL_INPUT_KINDS, CHANNEL_OPTIONS, profileFitsChannelType } from '../../constants';
+import { renderChannelTip } from '../../helpers/render';
 
 const MODEL_MAPPING_EXAMPLE = {
   'gpt-3.5-turbo-0301': 'gpt-3.5-turbo',
   'gpt-4-0314': 'gpt-4',
   'gpt-4-32k-0314': 'gpt-4-32k',
 };
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const EditChannel = () => {
   const { t } = useTranslation();
@@ -55,7 +58,8 @@ const EditChannel = () => {
     cloudflare_gateway_id: '',
     cloudflare_gateway_token: '',
   });
-  const handleInputChange = (e, { name, value }) => {
+
+  const changeInputs = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
     if (name === 'type') {
       let localModels = getChannelModels(value);
@@ -66,7 +70,7 @@ const EditChannel = () => {
     }
   };
 
-  const handleConfigChange = (e, { name, value }) => {
+  const changeConfig = (name, value) => {
     setConfig((inputs) => ({ ...inputs, [name]: value }));
   };
 
@@ -115,7 +119,7 @@ const EditChannel = () => {
       }
       let localModelOptions = res.data.data.map((model) => ({
         key: model.id,
-        text: model.id,
+        label: model.id,
         value: model.id,
       }));
       setOriginModelOptions(localModelOptions);
@@ -132,7 +136,7 @@ const EditChannel = () => {
         setGroupOptions(
           res.data.data.map((group) => ({
             key: group,
-            text: group,
+            label: group,
             value: group,
           }))
         );
@@ -146,13 +150,7 @@ const EditChannel = () => {
     try {
       let res = await API.get(`/api/upstream_account/?p=0`);
       if (res.data.success && Array.isArray(res.data.data)) {
-        setAccountOptions(
-          res.data.data.map((account) => ({
-            key: account.id,
-            text: `${account.name}（${account.profile}）`,
-            value: account.id,
-          }))
-        );
+        setAccountOptions(res.data.data);
       }
     } catch (error) {
       showError(error.message);
@@ -165,7 +163,7 @@ const EditChannel = () => {
       if (!localModelOptions.find((option) => option.key === model)) {
         localModelOptions.push({
           key: model,
-          text: model,
+          label: model,
           value: model,
         });
       }
@@ -269,14 +267,14 @@ const EditChannel = () => {
     let localModelOptions = [];
     localModelOptions.push({
       key: customModel,
-      text: customModel,
+      label: customModel,
       value: customModel,
     });
     setModelOptions((modelOptions) => {
       return [...modelOptions, ...localModelOptions];
     });
     setCustomModel('');
-    handleInputChange(null, { name: 'models', value: localModels });
+    changeInputs('models', localModels);
   };
 
   // Pulls the vendor's live model list so the picker never goes stale. For
@@ -295,12 +293,12 @@ const EditChannel = () => {
       const { success, message, data, synced_prices: syncedPrices } = res.data;
       if (success && Array.isArray(data)) {
         const merged = Array.from(new Set([...inputs.models, ...data]));
-        handleInputChange(null, { name: 'models', value: merged });
+        changeInputs('models', merged);
         setModelOptions((options) => {
           const known = new Set(options.map((option) => option.value));
           const fresh = data
             .filter((model) => !known.has(model))
-            .map((model) => ({ key: model, text: model, value: model }));
+            .map((model) => ({ key: model, label: model, value: model }));
           return [...options, ...fresh];
         });
         // Vendors that publish prices (OpenRouter) sync them alongside the
@@ -324,405 +322,446 @@ const EditChannel = () => {
     setFetchingModels(false);
   };
 
+  const cloudflareGateway = Boolean(
+    config.cloudflare_gateway_id ||
+      (inputs.base_url || '').includes('gateway.ai.cloudflare.com')
+  );
+
   return (
-    <div className='dashboard-container'>
-      <Card fluid className='chart-card'>
-        <Card.Content>
-          <Card.Header className='header'>
-            {isEdit
-              ? t('channel.edit.title_edit')
-              : t('channel.edit.title_create')}
-          </Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
-            <Form.Field>
-              <Form.Select
-                label={t('channel.edit.type')}
-                name='type'
-                required
-                search
-                options={CHANNEL_OPTIONS}
-                value={inputs.type}
-                onChange={handleInputChange}
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Input
-                label={t('channel.edit.name')}
-                name='name'
-                placeholder={t('channel.edit.name_placeholder')}
-                onChange={handleInputChange}
-                value={inputs.name}
-                required
-              />
-            </Form.Field>
-            <Form.Field>
-              <Form.Dropdown
-                label={t('channel.edit.group')}
-                placeholder={t('channel.edit.group_placeholder')}
-                name='groups'
-                required
-                fluid
-                multiple
-                selection
-                allowAdditions
-                additionLabel={t('channel.edit.group_addition')}
-                onChange={handleInputChange}
-                value={inputs.groups}
-                autoComplete='new-password'
-                options={groupOptions}
-              />
-            </Form.Field>
-            {renderChannelTip(inputs.type)}
+    <Card
+      title={isEdit ? t('channel.edit.title_edit') : t('channel.edit.title_create')}
+      loading={loading}
+    >
+      <div style={{ maxWidth: 760 }}>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>
+            {t('channel.edit.type')} <span style={{ color: '#ff4d4f' }}>*</span>
+          </label>
+          <Select
+            showSearch
+            style={{ width: '100%' }}
+            options={CHANNEL_OPTIONS.map((option) => ({
+              key: option.value,
+              label: option.text,
+              value: option.value,
+            }))}
+            optionFilterProp='label'
+            value={inputs.type}
+            onChange={(value) => changeInputs('type', value)}
+          />
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>
+            {t('channel.edit.name')}{' '}
+            <span style={{ color: '#ff4d4f' }}>*</span>
+          </label>
+          <Input
+            placeholder={t('channel.edit.name_placeholder')}
+            onChange={(e) => changeInputs('name', e.target.value)}
+            value={inputs.name}
+          />
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>
+            {t('channel.edit.group')}{' '}
+            <span style={{ color: '#ff4d4f' }}>*</span>
+          </label>
+          <Select
+            mode='tags'
+            style={{ width: '100%' }}
+            placeholder={t('channel.edit.group_placeholder')}
+            value={inputs.groups}
+            onChange={(value) => changeInputs('groups', value)}
+            options={groupOptions}
+          />
+        </div>
+        {renderChannelTip(inputs.type)}
 
-            <Form.Field>
-              <Form.Select
-                label={t('channel.edit.upstream_account')}
-                name='upstream_account_id'
-                search
-                options={[
-                  {
-                    key: 0,
-                    text: t('channel.edit.upstream_account_none'),
-                    value: 0,
-                  },
-                  ...accountOptions,
-                ]}
-                value={inputs.upstream_account_id || 0}
-                onChange={handleInputChange}
-              />
-            </Form.Field>
-            {inputs.upstream_account_id > 0 && (
-              <Message info>
-                {t('channel.edit.upstream_account_tip')}
-              </Message>
-            )}
+        <div style={fieldStyle}>
+          <label style={labelStyle}>{t('channel.edit.upstream_account')}</label>
+          <Select
+            showSearch
+            optionFilterProp='label'
+            style={{ width: '100%' }}
+            options={[
+              {
+                key: 0,
+                label: t('channel.edit.upstream_account_none'),
+                value: 0,
+              },
+              ...accountOptions
+                .filter((account) =>
+                  profileFitsChannelType(account.profile, inputs.type)
+                )
+                .map((account) => ({
+                  key: account.id,
+                  label: `${account.name}（${account.profile}）`,
+                  value: account.id,
+                })),
+            ]}
+            value={inputs.upstream_account_id || 0}
+            onChange={(value) => changeInputs('upstream_account_id', value)}
+          />
+        </div>
+        {inputs.upstream_account_id > 0 && (
+          <Alert
+            type='info'
+            showIcon
+            message={t('channel.edit.upstream_account_tip')}
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
-            {/* Azure OpenAI specific fields */}
-            {inputs.type === 3 && (
-              <>
-                <Message>
-                  模型映射的目标值填写实际部署名称，名称中的点会原样保留。API 版本留空或填写 v1 使用 Azure v1；填写日期版本使用部署式接口。
-                </Message>
-                <Form.Field>
-                  <Form.Input
-                    label='AZURE_OPENAI_ENDPOINT'
-                    name='base_url'
-                    placeholder='请输入 AZURE_OPENAI_ENDPOINT，例如：https://docs-test-001.openai.azure.com'
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-                <Form.Field>
-                  <Form.Input
-                    label='默认 API 版本'
-                    name='api_version'
-                    placeholder='留空或 v1；旧部署可填写受支持的日期版本'
-                    onChange={handleConfigChange}
-                    value={config.api_version}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              </>
-            )}
-
-            {BASE_URL_INPUT_KINDS.has(inputs.type) && (
-              <Form.Field>
-                <Form.Input
-                  label={t('channel.edit.base_url')}
-                  name='base_url'
-                  placeholder={t('channel.edit.base_url_placeholder')}
-                  onChange={handleInputChange}
-                  value={inputs.base_url}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            )}
-
-            <Form.Field>
-              <Form.Dropdown
-                label={t('channel.edit.models')}
-                placeholder={t('channel.edit.models_placeholder')}
-                name='models'
-                required
-                fluid
-                multiple
-                search
-                onLabelClick={(e, { value }) => {
-                  copy(value).then();
-                }}
-                selection
-                onChange={handleInputChange}
-                value={inputs.models}
-                autoComplete='new-password'
-                options={modelOptions}
-              />
-            </Form.Field>
-            <div style={{ lineHeight: '40px', marginBottom: '12px' }}>
-              {basicModels.length > 0 && (
-                <Button
-                  type={'button'}
-                  onClick={() => {
-                    handleInputChange(null, {
-                      name: 'models',
-                      value: basicModels,
-                    });
-                  }}
-                >
-                  {t('channel.edit.buttons.fill_models')}
-                </Button>
-              )}
-              <Button
-                type={'button'}
-                onClick={() => {
-                  handleInputChange(null, {
-                    name: 'models',
-                    value: fullModels,
-                  });
-                }}
-              >
-                {t('channel.edit.buttons.fill_all')}
-              </Button>
-              <Button
-                type={'button'}
-                loading={fetchingModels}
-                onClick={fetchUpstreamModels}
-              >
-                {t('channel.edit.buttons.fetch_models')}
-              </Button>
-              <Button
-                type={'button'}
-                onClick={() => {
-                  handleInputChange(null, { name: 'models', value: [] });
-                }}
-              >
-                {t('channel.edit.buttons.clear')}
-              </Button>
+        {/* Azure OpenAI specific fields */}
+        {inputs.type === 3 && (
+          <>
+            <Alert
+              type='info'
+              showIcon
+              message='模型映射的目标值填写实际部署名称，名称中的点会原样保留。API 版本留空或填写 v1 使用 Azure v1；填写日期版本使用部署式接口。'
+              style={{ marginBottom: 16 }}
+            />
+            <div style={fieldStyle}>
+              <label style={labelStyle}>AZURE_OPENAI_ENDPOINT</label>
               <Input
-                action={
-                  <Button type={'button'} onClick={addCustomModel}>
-                    {t('channel.edit.buttons.add_custom')}
-                  </Button>
-                }
-                placeholder={t('channel.edit.buttons.custom_placeholder')}
-                value={customModel}
-                onChange={(e, { value }) => {
-                  setCustomModel(value);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    addCustomModel();
-                    e.preventDefault();
-                  }
-                }}
+                placeholder='请输入 AZURE_OPENAI_ENDPOINT，例如：https://docs-test-001.openai.azure.com'
+                onChange={(e) => changeInputs('base_url', e.target.value)}
+                value={inputs.base_url}
+                autoComplete='new-password'
               />
             </div>
-            <>
-              <Form.Field>
-                <Form.TextArea
-                  label={t('channel.edit.model_mapping')}
-                  placeholder={`${t(
-                    'channel.edit.model_mapping_placeholder'
-                  )}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
-                  name='model_mapping'
-                  onChange={handleInputChange}
-                  value={inputs.model_mapping}
-                  style={{
-                    minHeight: 150,
-                    fontFamily: 'JetBrains Mono, Consolas',
-                  }}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-              <Form.Field>
-                <Form.TextArea
-                  label={t('channel.edit.system_prompt')}
-                  placeholder={t('channel.edit.system_prompt_placeholder')}
-                  name='system_prompt'
-                  onChange={handleInputChange}
-                  value={inputs.system_prompt}
-                  style={{
-                    minHeight: 150,
-                    fontFamily: 'JetBrains Mono, Consolas',
-                  }}
-                  autoComplete='new-password'
-                />
-              </Form.Field>
-            </>
-            {inputs.type === 33 && (
-              <Form.Field>
-                <Form.Select label='Bedrock 推理接口' name='api_version' value={config.api_version || ''} onChange={handleConfigChange} options={[{key:'invoke',text:'Claude InvokeModel',value:''},{key:'converse',text:'Converse（跨模型）',value:'converse'},{key:'messages',text:'Claude Messages',value:'messages'}]} />
-                <Form.Input
-                  label='Region'
-                  name='region'
-                  required
-                  placeholder={t('channel.edit.aws_region_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.region}
-                  autoComplete=''
-                />
-                <Form.Input
-                  label='AK'
-                  name='ak'
-                  required
-                  placeholder={t('channel.edit.aws_ak_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.ak}
-                  autoComplete=''
-                />
-                <Form.Input
-                  label='SK'
-                  name='sk'
-                  required
-                  placeholder={t('channel.edit.aws_sk_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.sk}
-                  autoComplete=''
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 42 && (
-              <Form.Field>
-                <Form.Input
-                  label='Region'
-                  name='region'
-                  required
-                  placeholder={t('channel.edit.vertex_region_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.region}
-                  autoComplete=''
-                />
-                <Form.Input
-                  label={t('channel.edit.vertex_project_id')}
-                  name='vertex_ai_project_id'
-                  required
-                  placeholder={t('channel.edit.vertex_project_id_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.vertex_ai_project_id}
-                  autoComplete=''
-                />
-                <Form.Input
-                  label={t('channel.edit.vertex_credentials')}
-                  name='vertex_ai_adc'
-                  required
-                  placeholder={t('channel.edit.vertex_credentials_placeholder')}
-                  onChange={handleConfigChange}
-                  value={config.vertex_ai_adc}
-                  autoComplete=''
-                />
-              </Form.Field>
-            )}
-            {inputs.type === 34 && (
-              <Form.Input
-                label={t('channel.edit.user_id')}
-                name='user_id'
-                required
-                placeholder={t('channel.edit.user_id_placeholder')}
-                onChange={handleConfigChange}
-                value={config.user_id}
-                autoComplete=''
+            <div style={fieldStyle}>
+              <label style={labelStyle}>默认 API 版本</label>
+              <Input
+                placeholder='留空或 v1；旧部署可填写受支持的日期版本'
+                onChange={(e) => changeConfig('api_version', e.target.value)}
+                value={config.api_version}
+                autoComplete='new-password'
               />
-            )}
-            {inputs.type !== 33 &&
-              inputs.type !== 42 &&
-              (batch ? (
-                <Form.Field>
-                  <Form.TextArea
-                    label={t('channel.edit.key')}
-                    name='key'
-                    required
-                    placeholder={t('channel.edit.batch_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.key}
-                    style={{
-                      minHeight: 150,
-                      fontFamily: 'JetBrains Mono, Consolas',
-                    }}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              ) : (
-                <Form.Field>
-                  <Form.Input
-                    label={t('channel.edit.key')}
-                    name='key'
-                    required
-                    placeholder={t('channel.edit.key_prompts.default')}
-                    onChange={handleInputChange}
-                    value={inputs.key}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              ))}
-            {inputs.type === 37 && (
-              <>
-              <Form.Field>
-                <Form.Input
-                  label='Account ID'
-                  name='user_id'
-                  required
-                  placeholder={
-                    '请输入 Account ID，例如：d8d7c61dbc334c32d3ced580e4bf42b4'
-                  }
-                  onChange={handleConfigChange}
-                  value={config.user_id}
-                  autoComplete=''
-                />
-              </Form.Field>
-              <Form.Checkbox
-                label='使用 AI Gateway'
-                checked={Boolean(config.cloudflare_gateway_id || (inputs.base_url || '').includes('gateway.ai.cloudflare.com'))}
-                onChange={(_, {checked}) => {
-                  setConfig(current => ({...current, cloudflare_gateway_id: checked ? (current.cloudflare_gateway_id || 'default') : '', cloudflare_gateway_token: checked ? current.cloudflare_gateway_token : ''}));
-                  setInputs(current => ({...current, base_url: ''}));
-                }}
-              />
-              {Boolean(config.cloudflare_gateway_id || (inputs.base_url || '').includes('gateway.ai.cloudflare.com')) && <>
-                <Form.Input label='Gateway ID' name='cloudflare_gateway_id' required value={config.cloudflare_gateway_id || ''} onChange={handleConfigChange} placeholder='例如 default' />
-                <Form.Input label='Gateway Token（可选）' type='password' name='cloudflare_gateway_token' value={config.cloudflare_gateway_token || ''} onChange={handleConfigChange} autoComplete='new-password' />
-                <Message info>网关地址由 Account ID 和 Gateway ID 自动生成，无需填写。</Message>
-              </>}
+            </div>
+          </>
+        )}
 
-              </>
+        {BASE_URL_INPUT_KINDS.has(inputs.type) && (
+          <div style={fieldStyle}>
+            <label style={labelStyle}>{t('channel.edit.base_url')}</label>
+            <Input
+              placeholder={t('channel.edit.base_url_placeholder')}
+              onChange={(e) => changeInputs('base_url', e.target.value)}
+              value={inputs.base_url}
+              autoComplete='new-password'
+            />
+          </div>
+        )}
+
+        <div style={fieldStyle}>
+          <label style={labelStyle}>
+            {t('channel.edit.models')}{' '}
+            <span style={{ color: '#ff4d4f' }}>*</span>
+          </label>
+          <Select
+            mode='multiple'
+            showSearch
+            style={{ width: '100%' }}
+            placeholder={t('channel.edit.models_placeholder')}
+            value={inputs.models}
+            onChange={(value) => changeInputs('models', value)}
+            options={modelOptions}
+          />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <Space wrap>
+            {basicModels.length > 0 && (
+              <Button
+                onClick={() => {
+                  changeInputs('models', basicModels);
+                }}
+              >
+                {t('channel.edit.buttons.fill_models')}
+              </Button>
             )}
-            {inputs.type !== 33 && !isEdit && (
-              <Form.Checkbox
-                checked={batch}
-                label={t('channel.edit.batch')}
-                name='batch'
-                onChange={() => setBatch(!batch)}
-              />
-            )}
-            {inputs.type !== 3 &&
-              inputs.type !== 33 &&
-              inputs.type !== 37 &&
-              inputs.type !== 50 &&
-              inputs.type !== 53 && (
-                <Form.Field>
-                  <Form.Input
-                      label={t('channel.edit.proxy_url')}
-                    name='base_url'
-                      placeholder={t('channel.edit.proxy_url_placeholder')}
-                    onChange={handleInputChange}
-                    value={inputs.base_url}
-                    autoComplete='new-password'
-                  />
-                </Form.Field>
-              )}
-            <Button onClick={handleCancel}>
-              {t('channel.edit.buttons.cancel')}
+            <Button
+              onClick={() => {
+                changeInputs('models', fullModels);
+              }}
+            >
+              {t('channel.edit.buttons.fill_all')}
+            </Button>
+            <Button loading={fetchingModels} onClick={fetchUpstreamModels}>
+              {t('channel.edit.buttons.fetch_models')}
             </Button>
             <Button
-              type={isEdit ? 'button' : 'submit'}
-              positive
-              onClick={submit}
+              onClick={() => {
+                changeInputs('models', []);
+              }}
             >
-              {t('channel.edit.buttons.submit')}
+              {t('channel.edit.buttons.clear')}
             </Button>
-          </Form>
-        </Card.Content>
-      </Card>
-    </div>
+          </Space>
+          <Space.Compact style={{ width: '100%', marginTop: 8 }}>
+            <Input
+              placeholder={t('channel.edit.buttons.custom_placeholder')}
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+              onPressEnter={() => {
+                addCustomModel();
+              }}
+            />
+            <Button onClick={addCustomModel}>
+              {t('channel.edit.buttons.add_custom')}
+            </Button>
+          </Space.Compact>
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>{t('channel.edit.model_mapping')}</label>
+          <Input.TextArea
+            placeholder={`${t('channel.edit.model_mapping_placeholder')}\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`}
+            onChange={(e) => changeInputs('model_mapping', e.target.value)}
+            value={inputs.model_mapping}
+            rows={6}
+            style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+            autoComplete='new-password'
+          />
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>{t('channel.edit.system_prompt')}</label>
+          <Input.TextArea
+            placeholder={t('channel.edit.system_prompt_placeholder')}
+            onChange={(e) => changeInputs('system_prompt', e.target.value)}
+            value={inputs.system_prompt}
+            rows={6}
+            style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+            autoComplete='new-password'
+          />
+        </div>
+        {inputs.type === 33 && (
+          <>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Bedrock 推理接口</label>
+              <Select
+                style={{ width: '100%' }}
+                value={config.api_version || ''}
+                onChange={(value) => changeConfig('api_version', value)}
+                options={[
+                  { key: 'invoke', label: 'Claude InvokeModel', value: '' },
+                  { key: 'converse', label: 'Converse（跨模型）', value: 'converse' },
+                  { key: 'messages', label: 'Claude Messages', value: 'messages' },
+                ]}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                Region <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.aws_region_placeholder')}
+                onChange={(e) => changeConfig('region', e.target.value)}
+                value={config.region}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                AK <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.aws_ak_placeholder')}
+                onChange={(e) => changeConfig('ak', e.target.value)}
+                value={config.ak}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                SK <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.aws_sk_placeholder')}
+                onChange={(e) => changeConfig('sk', e.target.value)}
+                value={config.sk}
+              />
+            </div>
+          </>
+        )}
+        {inputs.type === 42 && (
+          <>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                Region <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.vertex_region_placeholder')}
+                onChange={(e) => changeConfig('region', e.target.value)}
+                value={config.region}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('channel.edit.vertex_project_id')}{' '}
+                <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.vertex_project_id_placeholder')}
+                onChange={(e) =>
+                  changeConfig('vertex_ai_project_id', e.target.value)
+                }
+                value={config.vertex_ai_project_id}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('channel.edit.vertex_credentials')}{' '}
+                <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder={t('channel.edit.vertex_credentials_placeholder')}
+                onChange={(e) => changeConfig('vertex_ai_adc', e.target.value)}
+                value={config.vertex_ai_adc}
+              />
+            </div>
+          </>
+        )}
+        {inputs.type === 34 && (
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              {t('channel.edit.user_id')}{' '}
+              <span style={{ color: '#ff4d4f' }}>*</span>
+            </label>
+            <Input
+              placeholder={t('channel.edit.user_id_placeholder')}
+              onChange={(e) => changeConfig('user_id', e.target.value)}
+              value={config.user_id}
+            />
+          </div>
+        )}
+        {inputs.type !== 33 &&
+          inputs.type !== 42 &&
+          (batch ? (
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('channel.edit.key')}{' '}
+                <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input.TextArea
+                placeholder={t('channel.edit.batch_placeholder')}
+                onChange={(e) => changeInputs('key', e.target.value)}
+                value={inputs.key}
+                rows={6}
+                style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+                autoComplete='new-password'
+              />
+            </div>
+          ) : (
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('channel.edit.key')}{' '}
+                <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input.Password
+                placeholder={t('channel.edit.key_prompts.default')}
+                onChange={(e) => changeInputs('key', e.target.value)}
+                value={inputs.key}
+                autoComplete='new-password'
+              />
+            </div>
+          ))}
+        {inputs.type === 37 && (
+          <>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                Account ID <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                placeholder='请输入 Account ID，例如：d8d7c61dbc334c32d3ced580e4bf42b4'
+                onChange={(e) => changeConfig('user_id', e.target.value)}
+                value={config.user_id}
+              />
+            </div>
+            <Checkbox
+              checked={cloudflareGateway}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setConfig((current) => ({
+                  ...current,
+                  cloudflare_gateway_id: checked
+                    ? current.cloudflare_gateway_id || 'default'
+                    : '',
+                  cloudflare_gateway_token: checked
+                    ? current.cloudflare_gateway_token
+                    : '',
+                }));
+                setInputs((current) => ({ ...current, base_url: '' }));
+              }}
+              style={{ display: 'block', marginBottom: 12 }}
+            >
+              使用 AI Gateway
+            </Checkbox>
+            {cloudflareGateway && (
+              <>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>
+                    Gateway ID <span style={{ color: '#ff4d4f' }}>*</span>
+                  </label>
+                  <Input
+                    value={config.cloudflare_gateway_id || ''}
+                    onChange={(e) =>
+                      changeConfig('cloudflare_gateway_id', e.target.value)
+                    }
+                    placeholder='例如 default'
+                  />
+                </div>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>Gateway Token（可选）</label>
+                  <Input.Password
+                    value={config.cloudflare_gateway_token || ''}
+                    onChange={(e) =>
+                      changeConfig('cloudflare_gateway_token', e.target.value)
+                    }
+                    autoComplete='new-password'
+                  />
+                </div>
+                <Alert
+                  type='info'
+                  showIcon
+                  message='网关地址由 Account ID 和 Gateway ID 自动生成，无需填写。'
+                  style={{ marginBottom: 16 }}
+                />
+              </>
+            )}
+          </>
+        )}
+        {inputs.type !== 33 && !isEdit && (
+          <Checkbox
+            checked={batch}
+            onChange={(e) => setBatch(e.target.checked)}
+            style={{ display: 'block', marginBottom: 12 }}
+          >
+            {t('channel.edit.batch')}
+          </Checkbox>
+        )}
+        {inputs.type !== 3 &&
+          inputs.type !== 33 &&
+          inputs.type !== 37 &&
+          inputs.type !== 50 &&
+          inputs.type !== 53 && (
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('channel.edit.proxy_url')}</label>
+              <Input
+                placeholder={t('channel.edit.proxy_url_placeholder')}
+                onChange={(e) => changeInputs('base_url', e.target.value)}
+                value={inputs.base_url}
+                autoComplete='new-password'
+              />
+            </div>
+          )}
+        <Space>
+          <Button onClick={handleCancel}>
+            {t('channel.edit.buttons.cancel')}
+          </Button>
+          <Button type='primary' onClick={submit} loading={loading}>
+            {t('channel.edit.buttons.submit')}
+          </Button>
+        </Space>
+      </div>
+    </Card>
   );
 };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Tab } from 'semantic-ui-react';
+import { Card, Tabs } from 'antd';
 import SystemSetting from '../../components/SystemSetting';
 import { isRoot } from '../../helpers';
 import OtherSetting from '../../components/OtherSetting';
@@ -12,76 +12,48 @@ import StudioLanguageSetting from '../../components/StudioLanguageSetting';
 const Setting = () => {
   const { t } = useTranslation();
 
-  let panes = [
+  const items = [
     {
-      menuItem: t('setting.tabs.personal'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <PersonalSetting />
-        </Tab.Pane>
-      ),
+      key: 'personal',
+      label: t('setting.tabs.personal'),
+      children: <PersonalSetting />,
     },
   ];
 
   if (isRoot()) {
-    panes.push({
-      menuItem: t('setting.tabs.operation'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <OperationSetting />
-        </Tab.Pane>
-      ),
-    });
-    panes.push({
-      menuItem: t('setting.tabs.chat'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <ChatAdminSetting />
-        </Tab.Pane>
-      ),
-    });
-    panes.push({
-      menuItem: t('setting.tabs.system'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <SystemSetting />
-        </Tab.Pane>
-      ),
-    });
-    panes.push({
-      menuItem: t('setting.tabs.studio_languages'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <StudioLanguageSetting />
-        </Tab.Pane>
-      ),
-    });
-    panes.push({
-      menuItem: t('setting.tabs.other'),
-      render: () => (
-        <Tab.Pane attached={false}>
-          <OtherSetting />
-        </Tab.Pane>
-      ),
-    });
+    items.push(
+      {
+        key: 'operation',
+        label: t('setting.tabs.operation'),
+        children: <OperationSetting />,
+      },
+      {
+        key: 'chat',
+        label: t('setting.tabs.chat'),
+        children: <ChatAdminSetting />,
+      },
+      {
+        key: 'system',
+        label: t('setting.tabs.system'),
+        children: <SystemSetting />,
+      },
+      {
+        key: 'studio_languages',
+        label: t('setting.tabs.studio_languages'),
+        children: <StudioLanguageSetting />,
+      },
+      {
+        key: 'other',
+        label: t('setting.tabs.other'),
+        children: <OtherSetting />,
+      }
+    );
   }
 
   return (
-    <div className='dashboard-container'>
-      <Card fluid className='chart-card'>
-        <Card.Content>
-          <Card.Header className='header'>{t('setting.title')}</Card.Header>
-          <Tab
-            menu={{
-              secondary: true,
-              pointing: true,
-              className: 'settings-tab',
-            }}
-            panes={panes}
-          />
-        </Card.Content>
-      </Card>
-    </div>
+    <Card title={t('setting.title')}>
+      <Tabs items={items} destroyInactiveTabPane />
+    </Card>
   );
 };
 

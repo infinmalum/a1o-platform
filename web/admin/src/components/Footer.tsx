@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Container, Segment } from 'semantic-ui-react';
 import { getFooterHTML, getSystemName } from '../helpers';
 
 const Footer = () => {
@@ -25,34 +24,32 @@ const Footer = () => {
       remainCheckTimes--;
       loadFooter();
     }, 200);
-    return () => clearTimeout(timer);
+    return () => clearInterval(timer);
   }, []);
 
   return (
-    <Segment vertical>
-      <Container textAlign='center' style={{ color: '#666666' }}>
-        {footer ? (
-          <div
-            className='custom-footer'
-            dangerouslySetInnerHTML={{ __html: footer }}
-          ></div>
-        ) : (
-          <div className='custom-footer'>
-            <a href='https://github.com/infinmalum/a1o-platform' target='_blank'>
-              {systemName} {import.meta.env.REACT_APP_VERSION}{' '}
-            </a>
-            {t('footer.built_by')}{' '}
-            <a href='https://github.com/songquanpeng/one-api' target='_blank'>
-              {t('footer.built_by_name')}
-            </a>{' '}
-            {t('footer.license')}{' '}
-            <a href='https://github.com/infinmalum/a1o-platform/blob/main/LICENSE'>
-              {t('footer.apache')}
-            </a>
-          </div>
-        )}
-      </Container>
-    </Segment>
+    <footer className='custom-footer'>
+      {footer ? (
+        <div
+          className='custom-footer-inner'
+          dangerouslySetInnerHTML={{ __html: footer }}
+        ></div>
+      ) : (
+        <div className='custom-footer-inner'>
+          <a href='https://github.com/infinmalum/a1o-platform' target='_blank'>
+            {systemName} {import.meta.env.REACT_APP_VERSION}{' '}
+          </a>
+          {t('footer.built_by')}{' '}
+          <a href='https://github.com/songquanpeng/one-api' target='_blank'>
+            {t('footer.built_by_name')}
+          </a>{' '}
+          {t('footer.license')}{' '}
+          <a href='https://github.com/infinmalum/a1o-platform/blob/main/LICENSE'>
+            {t('footer.licenseName')}
+          </a>
+        </div>
+      )}
+    </footer>
   );
 };
 

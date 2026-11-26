@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Form, Card } from 'semantic-ui-react';
+import { Button, Card, Input, InputNumber, Space } from 'antd';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
 import QuotaInput from '../../components/QuotaInput';
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const EditRedemption = () => {
   const { t } = useTranslation();
@@ -18,13 +21,12 @@ const EditRedemption = () => {
     count: 1,
   };
   const [inputs, setInputs] = useState(originInputs);
-  const { name, quota, count } = inputs;
 
   const handleCancel = () => {
     navigate('/redemption');
   };
 
-  const handleInputChange = (e, { name, value }) => {
+  const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
 
@@ -83,58 +85,56 @@ const EditRedemption = () => {
   };
 
   return (
-    <div className='dashboard-container'>
-      <Card fluid className='chart-card'>
-        <Card.Content>
-          <Card.Header className='header'>
-            {isEdit ? t('redemption.edit.title_edit') : t('redemption.edit.title_create')}
-          </Card.Header>
-          <Form loading={loading} autoComplete='new-password'>
-            <Form.Field>
-              <Form.Input
-                label={t('redemption.edit.name')}
-                name='name'
-                placeholder={t('redemption.edit.name_placeholder')}
-                onChange={handleInputChange}
-                value={name}
-                autoComplete='new-password'
-                required={!isEdit}
-              />
-            </Form.Field>
-            <QuotaInput
-              label={t('redemption.edit.quota')}
-              name='quota'
-              quota={quota}
-              onQuotaChange={(name, value) =>
-                handleInputChange(null, { name, value })
-              }
-              placeholder={t('redemption.edit.quota_placeholder')}
+    <Card
+      title={
+        isEdit ? t('redemption.edit.title_edit') : t('redemption.edit.title_create')
+      }
+      loading={loading}
+    >
+      <div style={{ maxWidth: 560 }}>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>
+            {t('redemption.edit.name')}{' '}
+            {!isEdit && <span style={{ color: '#ff4d4f' }}>*</span>}
+          </label>
+          <Input
+            placeholder={t('redemption.edit.name_placeholder')}
+            onChange={(e) => handleInputChange('name', e.target.value)}
+            value={inputs.name}
+            autoComplete='new-password'
+          />
+        </div>
+        <div style={fieldStyle}>
+          <QuotaInput
+            label={t('redemption.edit.quota')}
+            name='quota'
+            quota={inputs.quota}
+            onQuotaChange={(name, value) => handleInputChange(name, value)}
+            placeholder={t('redemption.edit.quota_placeholder')}
+          />
+        </div>
+        {!isEdit && (
+          <div style={fieldStyle}>
+            <label style={labelStyle}>{t('redemption.edit.count')}</label>
+            <InputNumber
+              min={1}
+              style={{ width: '100%' }}
+              placeholder={t('redemption.edit.count_placeholder')}
+              onChange={(value) => handleInputChange('count', value)}
+              value={inputs.count}
             />
-            {!isEdit && (
-              <>
-                <Form.Field>
-                  <Form.Input
-                    label={t('redemption.edit.count')}
-                    name='count'
-                    placeholder={t('redemption.edit.count_placeholder')}
-                    onChange={handleInputChange}
-                    value={count}
-                    autoComplete='new-password'
-                    type='number'
-                  />
-                </Form.Field>
-              </>
-            )}
-            <Button positive onClick={submit}>
-              {t('redemption.edit.buttons.submit')}
-            </Button>
-            <Button onClick={handleCancel}>
-              {t('redemption.edit.buttons.cancel')}
-            </Button>
-          </Form>
-        </Card.Content>
-      </Card>
-    </div>
+          </div>
+        )}
+        <Space>
+          <Button type='primary' onClick={submit}>
+            {t('redemption.edit.buttons.submit')}
+          </Button>
+          <Button onClick={handleCancel}>
+            {t('redemption.edit.buttons.cancel')}
+          </Button>
+        </Space>
+      </div>
+    </Card>
   );
 };
 

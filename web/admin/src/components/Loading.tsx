@@ -1,13 +1,14 @@
 import React from 'react';
-import { Segment, Dimmer, Loader } from 'semantic-ui-react';
+import { Spin } from 'antd';
 
 const Loading = ({ prompt: name = 'page' }) => {
   return (
-    <Segment style={{ height: 100 }}>
-      <Dimmer active inverted>
-        <Loader indeterminate>加载{name}中...</Loader>
-      </Dimmer>
-    </Segment>
+    <div style={{ padding: '64px 0', textAlign: 'center' }}>
+      <Spin size='large'>
+        <div style={{ minHeight: 80, minWidth: 200 }} />
+      </Spin>
+      <div style={{ marginTop: 12, color: '#999' }}>加载{name}中...</div>
+    </div>
   );
 };
 

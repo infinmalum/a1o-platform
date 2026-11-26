@@ -2,18 +2,21 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
+  Card,
   Checkbox,
-  Form,
-  Grid,
-  Header,
   Input,
   Modal,
-  Segment,
-  Tab,
-  TextArea,
-} from 'semantic-ui-react';
+  Popconfirm,
+  Select,
+  Space,
+  Tabs,
+  Typography,
+} from 'antd';
 import { API, showSuccess } from '../helpers';
 import { chatApi, type ChatMCPServer, type ChatSkill } from '../helpers/chatApi';
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 // GlobalChatOptions edits the chat runtime's administrator options through
 // the standard option endpoint.
@@ -85,117 +88,106 @@ const GlobalChatOptions: React.FC = () => {
   };
 
   return (
-    <Form loading={loading}>
-      <Form.Field>
+    <div>
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 12 }}>
+        <Checkbox checked={sandbox} onChange={() => setSandbox(!sandbox)}>
+          {t('chat.sandboxToggle')}
+        </Checkbox>
         <Checkbox
-          toggle
-          label={t('chat.sandboxToggle')}
-          checked={sandbox}
-          onChange={() => setSandbox(!sandbox)}
-        />
-      </Form.Field>
-      <Form.Field>
-        <Checkbox
-          toggle
-          label={t('chat.sandboxNetworkToggle')}
           checked={sandboxNetwork}
           onChange={() => setSandboxNetwork(!sandboxNetwork)}
-        />
-      </Form.Field>
-      <Form.Group widths='three'>
-        <Form.Field>
-          <label>{t('chat.contextBudget')}</label>
+        >
+          {t('chat.sandboxNetworkToggle')}
+        </Checkbox>
+        <Checkbox checked={webTools} onChange={() => setWebTools(!webTools)}>
+          {t('chat.webToolsToggle')}
+        </Checkbox>
+        <Checkbox checked={memory} onChange={() => setMemory(!memory)}>
+          {t('chat.memoryToggle')}
+        </Checkbox>
+        <Checkbox
+          checked={workSubagent}
+          onChange={() => setWorkSubagent(!workSubagent)}
+        >
+          {t('chat.workSubagentToggle')}
+        </Checkbox>
+      </Space>
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>{t('chat.contextBudget')}</label>
           <Input
             type='number'
             value={budget}
-            onChange={(event, data) => setBudget(Number(data.value) || 0)}
+            style={{ width: 160 }}
+            onChange={(event) => setBudget(Number(event.target.value) || 0)}
           />
-        </Form.Field>
-        <Form.Field>
-          <label>{t('chat.maxToolIterations')}</label>
+        </div>
+        <div>
+          <label style={labelStyle}>{t('chat.maxToolIterations')}</label>
           <Input
             type='number'
             value={maxIterations}
-            onChange={(event, data) => setMaxIterations(Number(data.value) || 0)}
+            style={{ width: 160 }}
+            onChange={(event) => setMaxIterations(Number(event.target.value) || 0)}
           />
-        </Form.Field>
-        <Form.Field>
-          <label>{t('chat.maxFileBytes')}</label>
+        </div>
+        <div>
+          <label style={labelStyle}>{t('chat.maxFileBytes')}</label>
           <Input
             type='number'
             value={maxFileBytes}
-            onChange={(event, data) => setMaxFileBytes(Number(data.value) || 0)}
+            style={{ width: 160 }}
+            onChange={(event) => setMaxFileBytes(Number(event.target.value) || 0)}
           />
-        </Form.Field>
-      </Form.Group>
-      <Form.Field>
-        <Checkbox
-          toggle
-          label={t('chat.webToolsToggle')}
-          checked={webTools}
-          onChange={() => setWebTools(!webTools)}
-        />
-      </Form.Field>
-      <Form.Group widths='three'>
-        <Form.Field>
-          <label>{t('chat.webSearchBackend')}</label>
-          <Form.Select
-            value={webSearchBackend}
-            options={[
-              { key: 'ddgs', value: 'ddgs', text: t('chat.webSearchBackendDDGS') },
-              { key: 'brave-free', value: 'brave-free', text: t('chat.webSearchBackendBrave') },
-              { key: 'tavily', value: 'tavily', text: t('chat.webSearchBackendTavily') },
-            ]}
-            onChange={(event, data) => setWebSearchBackend(String(data.value ?? 'ddgs'))}
-          />
-        </Form.Field>
-        <Form.Field>
-          <label>{t('chat.webSearchAPIKey')}</label>
-          <Input
-            type='password'
-            value={webSearchAPIKey}
-            onChange={(event, data) => setWebSearchAPIKey(String(data.value ?? ''))}
-          />
-        </Form.Field>
-        <Form.Field>
-          <label>{t('chat.webSearchProxy')}</label>
-          <Input
-            placeholder='http://127.0.0.1:7890'
-            value={webSearchProxy}
-            onChange={(event, data) => setWebSearchProxy(String(data.value ?? ''))}
-          />
-        </Form.Field>
-      </Form.Group>
-      <Form.Field>
-        <Checkbox
-          toggle
-          label={t('chat.memoryToggle')}
-          checked={memory}
-          onChange={() => setMemory(!memory)}
-        />
-      </Form.Field>
-      <Form.Field>
-        <Checkbox
-          toggle
-          label={t('chat.workSubagentToggle')}
-          checked={workSubagent}
-          onChange={() => setWorkSubagent(!workSubagent)}
-        />
-      </Form.Field>
-      <Form.Group widths='three'>
-        <Form.Field>
-          <label>{t('chat.workSubagentMaxTurns')}</label>
+        </div>
+        <div>
+          <label style={labelStyle}>{t('chat.workSubagentMaxTurns')}</label>
           <Input
             type='number'
             value={workSubagentMaxTurns}
-            onChange={(event, data) => setWorkSubagentMaxTurns(Number(data.value) || 0)}
+            style={{ width: 160 }}
+            onChange={(event) =>
+              setWorkSubagentMaxTurns(Number(event.target.value) || 0)
+            }
           />
-        </Form.Field>
-      </Form.Group>
-      <Button color='blue' onClick={save}>
+        </div>
+      </Space>
+      <Space size={24} wrap align='start' style={{ display: 'flex', marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>{t('chat.webSearchBackend')}</label>
+          <Select
+            value={webSearchBackend}
+            style={{ width: 200 }}
+            options={[
+              { key: 'ddgs', value: 'ddgs', label: t('chat.webSearchBackendDDGS') },
+              { key: 'brave-free', value: 'brave-free', label: t('chat.webSearchBackendBrave') },
+              { key: 'tavily', value: 'tavily', label: t('chat.webSearchBackendTavily') },
+            ]}
+            onChange={(value) => setWebSearchBackend(String(value ?? 'ddgs'))}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('chat.webSearchAPIKey')}</label>
+          <Input.Password
+            value={webSearchAPIKey}
+            style={{ width: 280 }}
+            onChange={(event) => setWebSearchAPIKey(String(event.target.value ?? ''))}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('chat.webSearchProxy')}</label>
+          <Input
+            placeholder='http://127.0.0.1:7890'
+            value={webSearchProxy}
+            style={{ width: 280 }}
+            onChange={(event) => setWebSearchProxy(String(event.target.value ?? ''))}
+          />
+        </div>
+      </Space>
+      <Button type='primary' loading={loading} onClick={save}>
         {t('chat.save')}
       </Button>
-    </Form>
+    </div>
   );
 };
 
@@ -272,11 +264,21 @@ const GlobalMCPPane: React.FC = () => {
 
   return (
     <div>
-      <Button primary size='small' style={{ marginBottom: 10 }} onClick={() => startEdit({ ...emptyServer })}>
+      <Button
+        type='primary'
+        size='small'
+        style={{ marginBottom: 10 }}
+        onClick={() => startEdit({ ...emptyServer })}
+      >
         {t('chat.newMCPServer')}
       </Button>
       {servers.map((server) => (
-        <Segment key={server.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Card
+          key={server.id}
+          size='small'
+          style={{ marginBottom: 10 }}
+          styles={{ body: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }}
+        >
           <div>
             <strong>{server.name}</strong>{' '}
             <span style={{ color: '#999' }}>
@@ -284,96 +286,119 @@ const GlobalMCPPane: React.FC = () => {
               {!server.enabled && ` · ${t('chat.disabled')}`}
             </span>
           </div>
-          <div>
-            <Button size='mini' basic onClick={() => startEdit(server)}>
+          <Space size={8}>
+            <Button size='small' onClick={() => startEdit(server)}>
               {t('chat.edit')}
             </Button>
-            <Button size='mini' basic color='red' onClick={() => remove(server.id)}>
-              {t('chat.delete')}
-            </Button>
-          </div>
-        </Segment>
+            <Popconfirm
+              title={t('chat.delete')}
+              onConfirm={() => remove(server.id)}
+            >
+              <Button size='small' danger>
+                {t('chat.delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Card>
       ))}
-      <Modal open={!!editing} onClose={() => setEditing(null)} size='small' closeIcon>
-        <Modal.Header>{t('chat.editMCPServer')}</Modal.Header>
-        <Modal.Content>
-          {editing && (
-            <Form>
-              <Form.Field required>
-                <label>{t('chat.mcpName')}</label>
-                <Input value={editing.name} onChange={(event, data) => setEditing({ ...editing, name: String(data.value) })} />
-              </Form.Field>
-              <Form.Field>
-                <label>{t('chat.mcpTransport')}</label>
-                <Button.Group>
-                  <Button
-                    basic={editing.transport !== 'http'}
-                    color={editing.transport === 'http' ? 'blue' : undefined}
-                    onClick={() => setEditing({ ...editing, transport: 'http' })}
-                  >
-                    HTTP
-                  </Button>
-                  <Button
-                    basic={editing.transport !== 'stdio'}
-                    color={editing.transport === 'stdio' ? 'blue' : undefined}
-                    onClick={() => setEditing({ ...editing, transport: 'stdio' })}
-                  >
-                    stdio
-                  </Button>
-                </Button.Group>
-              </Form.Field>
-              {editing.transport === 'http' ? (
-                <Form.Field required>
-                  <label>URL</label>
-                  <Input value={editing.url} onChange={(event, data) => setEditing({ ...editing, url: String(data.value) })} />
-                </Form.Field>
-              ) : (
-                <>
-                  <Form.Field required>
-                    <label>{t('chat.mcpCommand')}</label>
-                    <Input
-                      placeholder='npx'
-                      value={editing.command}
-                      onChange={(event, data) => setEditing({ ...editing, command: String(data.value) })}
-                    />
-                  </Form.Field>
-                  <Form.Field>
-                    <label>{t('chat.mcpArgs')}</label>
-                    <TextArea
-                      value={argsText}
-                      placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/tmp'}
-                      onChange={(event, data) => setArgsText(String(data.value ?? ''))}
-                      style={{ minHeight: 80 }}
-                    />
-                  </Form.Field>
-                </>
-              )}
-              <Form.Field>
-                <label>{t('chat.mcpHeaders')}</label>
-                <TextArea
-                  value={headersText}
-                  placeholder={'Authorization: Bearer xxx'}
-                  onChange={(event, data) => setHeadersText(String(data.value ?? ''))}
-                  style={{ minHeight: 70 }}
-                />
-              </Form.Field>
-              <Form.Field>
-                <Checkbox
-                  toggle
-                  label={t('chat.enabled')}
-                  checked={editing.enabled}
-                  onChange={() => setEditing({ ...editing, enabled: !editing.enabled })}
-                />
-              </Form.Field>
-            </Form>
-          )}
-        </Modal.Content>
-        <Modal.Actions>
-          <Button onClick={() => setEditing(null)}>{t('chat.cancel')}</Button>
-          <Button color='blue' onClick={save}>
+      <Modal
+        open={!!editing}
+        onCancel={() => setEditing(null)}
+        title={t('chat.editMCPServer')}
+        footer={[
+          <Button key='cancel' onClick={() => setEditing(null)}>
+            {t('chat.cancel')}
+          </Button>,
+          <Button key='save' type='primary' onClick={save}>
             {t('chat.save')}
-          </Button>
-        </Modal.Actions>
+          </Button>,
+        ]}
+      >
+        {editing && (
+          <div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('chat.mcpName')} <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('chat.mcpTransport')}</label>
+              <Space.Compact>
+                <Button
+                  type={editing.transport === 'http' ? 'primary' : 'default'}
+                  onClick={() => setEditing({ ...editing, transport: 'http' })}
+                >
+                  HTTP
+                </Button>
+                <Button
+                  type={editing.transport === 'stdio' ? 'primary' : 'default'}
+                  onClick={() => setEditing({ ...editing, transport: 'stdio' })}
+                >
+                  stdio
+                </Button>
+              </Space.Compact>
+            </div>
+            {editing.transport === 'http' ? (
+              <div style={fieldStyle}>
+                <label style={labelStyle}>
+                  URL <span style={{ color: '#ff4d4f' }}>*</span>
+                </label>
+                <Input
+                  value={editing.url}
+                  onChange={(event) =>
+                    setEditing({ ...editing, url: event.target.value })
+                  }
+                />
+              </div>
+            ) : (
+              <>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>
+                    {t('chat.mcpCommand')}{' '}
+                    <span style={{ color: '#ff4d4f' }}>*</span>
+                  </label>
+                  <Input
+                    placeholder='npx'
+                    value={editing.command}
+                    onChange={(event) =>
+                      setEditing({ ...editing, command: event.target.value })
+                    }
+                  />
+                </div>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>{t('chat.mcpArgs')}</label>
+                  <Input.TextArea
+                    value={argsText}
+                    placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/tmp'}
+                    onChange={(event) => setArgsText(event.target.value)}
+                    rows={4}
+                  />
+                </div>
+              </>
+            )}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('chat.mcpHeaders')}</label>
+              <Input.TextArea
+                value={headersText}
+                placeholder={'Authorization: Bearer xxx'}
+                onChange={(event) => setHeadersText(event.target.value)}
+                rows={3}
+              />
+            </div>
+            <Checkbox
+              checked={editing.enabled}
+              onChange={() => setEditing({ ...editing, enabled: !editing.enabled })}
+            >
+              {t('chat.enabled')}
+            </Checkbox>
+          </div>
+        )}
       </Modal>
     </div>
   );
@@ -436,11 +461,21 @@ const GlobalSkillPane: React.FC = () => {
 
   return (
     <div>
-      <Button primary size='small' style={{ marginBottom: 10 }} onClick={() => startEdit({ ...emptySkill })}>
+      <Button
+        type='primary'
+        size='small'
+        style={{ marginBottom: 10 }}
+        onClick={() => startEdit({ ...emptySkill })}
+      >
         {t('chat.newSkill')}
       </Button>
       {skills.map((skill) => (
-        <Segment key={skill.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Card
+          key={skill.id}
+          size='small'
+          style={{ marginBottom: 10 }}
+          styles={{ body: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }}
+        >
           <div>
             <strong>{skill.name}</strong>{' '}
             <span style={{ color: '#999' }}>
@@ -448,65 +483,82 @@ const GlobalSkillPane: React.FC = () => {
               {!skill.enabled && ` · ${t('chat.disabled')}`}
             </span>
           </div>
-          <div>
-            <Button size='mini' basic onClick={() => startEdit(skill)}>
+          <Space size={8}>
+            <Button size='small' onClick={() => startEdit(skill)}>
               {t('chat.edit')}
             </Button>
-            <Button size='mini' basic color='red' onClick={() => remove(skill.id)}>
-              {t('chat.delete')}
-            </Button>
-          </div>
-        </Segment>
+            <Popconfirm
+              title={t('chat.delete')}
+              onConfirm={() => remove(skill.id)}
+            >
+              <Button size='small' danger>
+                {t('chat.delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Card>
       ))}
-      <Modal open={!!editing} onClose={() => setEditing(null)} size='small' closeIcon>
-        <Modal.Header>{t('chat.editSkill')}</Modal.Header>
-        <Modal.Content>
-          {editing && (
-            <Form>
-              <Form.Field required>
-                <label>{t('chat.skillName')}</label>
-                <Input value={editing.name} onChange={(event, data) => setEditing({ ...editing, name: String(data.value) })} />
-              </Form.Field>
-              <Form.Field>
-                <label>{t('chat.skillDescription')}</label>
-                <Input
-                  value={editing.description}
-                  onChange={(event, data) => setEditing({ ...editing, description: String(data.value) })}
-                />
-              </Form.Field>
-              <Form.Field>
-                <label>{t('chat.skillInstructions')}</label>
-                <TextArea
-                  value={editing.instructions}
-                  onChange={(event, data) => setEditing({ ...editing, instructions: String(data.value ?? '') })}
-                  style={{ minHeight: 120 }}
-                />
-              </Form.Field>
-              <Form.Field>
-                <label>{t('chat.skillTools')}</label>
-                <Input
-                  value={toolText}
-                  placeholder='sandbox, mcp_server_tool'
-                  onChange={(event, data) => setToolText(String(data.value))}
-                />
-              </Form.Field>
-              <Form.Field>
-                <Checkbox
-                  toggle
-                  label={t('chat.enabled')}
-                  checked={editing.enabled}
-                  onChange={() => setEditing({ ...editing, enabled: !editing.enabled })}
-                />
-              </Form.Field>
-            </Form>
-          )}
-        </Modal.Content>
-        <Modal.Actions>
-          <Button onClick={() => setEditing(null)}>{t('chat.cancel')}</Button>
-          <Button color='blue' onClick={save}>
+      <Modal
+        open={!!editing}
+        onCancel={() => setEditing(null)}
+        title={t('chat.editSkill')}
+        footer={[
+          <Button key='cancel' onClick={() => setEditing(null)}>
+            {t('chat.cancel')}
+          </Button>,
+          <Button key='save' type='primary' onClick={save}>
             {t('chat.save')}
-          </Button>
-        </Modal.Actions>
+          </Button>,
+        ]}
+      >
+        {editing && (
+          <div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>
+                {t('chat.skillName')} <span style={{ color: '#ff4d4f' }}>*</span>
+              </label>
+              <Input
+                value={editing.name}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('chat.skillDescription')}</label>
+              <Input
+                value={editing.description}
+                onChange={(event) =>
+                  setEditing({ ...editing, description: event.target.value })
+                }
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('chat.skillInstructions')}</label>
+              <Input.TextArea
+                value={editing.instructions}
+                onChange={(event) =>
+                  setEditing({ ...editing, instructions: event.target.value })
+                }
+                rows={6}
+              />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{t('chat.skillTools')}</label>
+              <Input
+                value={toolText}
+                placeholder='sandbox, mcp_server_tool'
+                onChange={(event) => setToolText(event.target.value)}
+              />
+            </div>
+            <Checkbox
+              checked={editing.enabled}
+              onChange={() => setEditing({ ...editing, enabled: !editing.enabled })}
+            >
+              {t('chat.enabled')}
+            </Checkbox>
+          </div>
+        )}
       </Modal>
     </div>
   );
@@ -515,20 +567,16 @@ const GlobalSkillPane: React.FC = () => {
 const ChatAdminSetting: React.FC = () => {
   const { t } = useTranslation();
   return (
-    <Grid stackable>
-      <Grid.Row>
-        <Grid.Column width={16}>
-          <Header as='h4'>{t('chat.adminTitle')}</Header>
-          <Tab
-            panes={[
-              { menuItem: t('chat.options'), render: () => <Tab.Pane><GlobalChatOptions /></Tab.Pane> },
-              { menuItem: t('chat.globalMCPServers'), render: () => <Tab.Pane><GlobalMCPPane /></Tab.Pane> },
-              { menuItem: t('chat.globalSkills'), render: () => <Tab.Pane><GlobalSkillPane /></Tab.Pane> },
-            ]}
-          />
-        </Grid.Column>
-      </Grid.Row>
-    </Grid>
+    <div>
+      <Typography.Title level={5}>{t('chat.adminTitle')}</Typography.Title>
+      <Tabs
+        items={[
+          { key: 'options', label: t('chat.options'), children: <GlobalChatOptions /> },
+          { key: 'mcp', label: t('chat.globalMCPServers'), children: <GlobalMCPPane /> },
+          { key: 'skills', label: t('chat.globalSkills'), children: <GlobalSkillPane /> },
+        ]}
+      />
+    </div>
   );
 };
 

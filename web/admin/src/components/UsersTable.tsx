@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   Button,
-  Form,
-  Label,
+  Input,
   Modal,
-  Pagination,
-  Popup,
+  Popconfirm,
+  Select,
+  Space,
   Table,
-  Dropdown,
-} from 'semantic-ui-react';
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { API, showError, showSuccess } from '../helpers';
 import { useTranslation } from 'react-i18next';
@@ -25,15 +28,13 @@ import {
 function renderRole(role, t) {
   switch (role) {
     case 1:
-      return <Label>{t('user.table.role_types.normal')}</Label>;
+      return <Tag>{t('user.table.role_types.normal')}</Tag>;
     case 10:
-      return <Label color='yellow'>{t('user.table.role_types.admin')}</Label>;
+      return <Tag color='gold'>{t('user.table.role_types.admin')}</Tag>;
     case 100:
-      return (
-        <Label color='orange'>{t('user.table.role_types.super_admin')}</Label>
-      );
+      return <Tag color='orange'>{t('user.table.role_types.super_admin')}</Tag>;
     default:
-      return <Label color='red'>{t('user.table.role_types.unknown')}</Label>;
+      return <Tag color='red'>{t('user.table.role_types.unknown')}</Tag>;
   }
 }
 
@@ -60,7 +61,7 @@ const UsersTable = () => {
       if (startIdx === 0) {
         setUsers(data);
       } else {
-        let newUsers = users;
+        let newUsers = [...users];
         newUsers.push(...data);
         setUsers(newUsers);
       }
@@ -70,15 +71,13 @@ const UsersTable = () => {
     setLoading(false);
   };
 
-  const onPaginationChange = (e, { activePage: rawPage }: { activePage?: number | string }) => {
-    const activePage = Number(rawPage);
-    if (!Number.isFinite(activePage)) return;
+  const onPaginationChange = (page: number) => {
     (async () => {
-      if (activePage === Math.ceil(users.length / ITEMS_PER_PAGE) + 1) {
+      if (page === Math.ceil(users.length / ITEMS_PER_PAGE) + 1) {
         // In this case we have to load more data and then append them.
-        await loadUsers(activePage - 1);
+        await loadUsers(page - 1);
       }
-      setActivePage(activePage);
+      setActivePage(page);
     })();
   };
 
@@ -158,19 +157,11 @@ const UsersTable = () => {
   const renderStatus = (status) => {
     switch (status) {
       case 1:
-        return <Label basic>{t('user.table.status_types.activated')}</Label>;
+        return <Tag>{t('user.table.status_types.activated')}</Tag>;
       case 2:
-        return (
-          <Label basic color='red'>
-            {t('user.table.status_types.banned')}
-          </Label>
-        );
+        return <Tag color='red'>{t('user.table.status_types.banned')}</Tag>;
       default:
-        return (
-          <Label basic color='grey'>
-            {t('user.table.status_types.unknown')}
-          </Label>
-        );
+        return <Tag>{t('user.table.status_types.unknown')}</Tag>;
     }
   };
 
@@ -194,10 +185,6 @@ const UsersTable = () => {
     setSearching(false);
   };
 
-  const handleKeywordChange = async (e, { value }) => {
-    setSearchKeyword(value.trim());
-  };
-
   const sortUser = (key) => {
     if (users.length === 0) return;
     setLoading(true);
@@ -218,301 +205,231 @@ const UsersTable = () => {
     setLoading(false);
   };
 
-  const handleOrderByChange = (e, { value }) => {
+  const handleOrderByChange = (value) => {
     setOrderBy(value);
     setActivePage(1);
   };
 
-  return (
-    <>
-      <Form onSubmit={searchUsers}>
-        <Form.Input
-          icon='search'
-          fluid
-          iconPosition='left'
-          placeholder={t('user.search')}
-          value={searchKeyword}
-          loading={searching}
-          onChange={handleKeywordChange}
-        />
-      </Form>
+  const sortableTitle = (key, label) => (
+    <span style={{ cursor: 'pointer' }} onClick={() => sortUser(key)}>
+      {label}
+    </span>
+  );
 
-      <Table basic={'very'} compact size='small'>
-        <Table.Header>
-          <Table.Row>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('id');
-              }}
-            >
-              {t('user.table.id')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('username');
-              }}
-            >
-              {t('user.table.username')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('group');
-              }}
-            >
-              {t('user.table.group')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('quota');
-              }}
-            >
-              {t('user.table.quota')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('role');
-              }}
-            >
-              {t('user.table.role_text')}
-            </Table.HeaderCell>
-            <Table.HeaderCell
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                sortUser('status');
-              }}
-            >
-              {t('user.table.status_text')}
-            </Table.HeaderCell>
-            <Table.HeaderCell>{t('user.table.actions')}</Table.HeaderCell>
-          </Table.Row>
-        </Table.Header>
+  const pageUsers = users
+    .slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE)
+    .map((user, idx) => ({ ...user, __idx: idx }))
+    .filter((user) => !user.deleted);
 
-        <Table.Body>
-          {users
-            .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE
-            )
-            .map((user, idx) => {
-              if (user.deleted) return <></>;
-              return (
-                <Table.Row key={user.id}>
-                  <Table.Cell>{user.id}</Table.Cell>
-                  <Table.Cell>
-                    <Popup
-                      content={user.email ? user.email : '未绑定邮箱地址'}
-                      key={user.username}
-                      header={
-                        user.display_name ? user.display_name : user.username
-                      }
-                      trigger={<span>{renderText(user.username, 15)}</span>}
-                      hoverable
-                    />
-                  </Table.Cell>
-                  <Table.Cell>{renderGroup(user.group)}</Table.Cell>
-                  {/*<Table.Cell>*/}
-                  {/*  {user.email ? <Popup hoverable content={user.email} trigger={<span>{renderText(user.email, 24)}</span>} /> : '无'}*/}
-                  {/*</Table.Cell>*/}
-                  <Table.Cell>
-                    <Popup
-                      content={t('user.table.remaining_quota')}
-                      trigger={
-                        <Label basic>{renderQuota(user.quota, t)}</Label>
-                      }
-                    />
-                    <Popup
-                      content={t('user.table.used_quota')}
-                      trigger={
-                        <Label basic>{renderQuota(user.used_quota, t)}</Label>
-                      }
-                    />
-                    <Popup
-                      content={t('user.table.request_count')}
-                      trigger={
-                        <Label basic>{renderNumber(user.request_count)}</Label>
-                      }
-                    />
-                  </Table.Cell>
-                  <Table.Cell>{renderRole(user.role, t)}</Table.Cell>
-                  <Table.Cell>{renderStatus(user.status)}</Table.Cell>
-                  <Table.Cell>
-                    <div>
-                      <Button
-                        size={'tiny'}
-                        positive
-                        onClick={() => {
-                          manageUser(user.username, 'promote', idx);
-                        }}
-                        disabled={user.role === 100}
-                      >
-                        {t('user.buttons.promote')}
-                      </Button>
-                      <Button
-                        size={'tiny'}
-                        color={'yellow'}
-                        onClick={() => {
-                          manageUser(user.username, 'demote', idx);
-                        }}
-                        disabled={user.role === 100}
-                      >
-                        {t('user.buttons.demote')}
-                      </Button>
-                      <Popup
-                        trigger={
-                          <Button
-                            size='tiny'
-                            negative
-                            disabled={user.role === 100}
-                          >
-                            {t('user.buttons.delete')}
-                          </Button>
-                        }
-                        on='click'
-                        flowing
-                        hoverable
-                      >
-                        <Button
-                          negative
-                          size={'tiny'}
-                          onClick={() => {
-                            manageUser(user.username, 'delete', idx);
-                          }}
-                        >
-                          {t('user.buttons.delete_user')} {user.username}
-                        </Button>
-                      </Popup>
-                      <Button
-                        size={'tiny'}
-                        onClick={() => {
-                          manageUser(
-                            user.username,
-                            user.status === 1 ? 'disable' : 'enable',
-                            idx
-                          );
-                        }}
-                        disabled={user.role === 100}
-                      >
-                        {user.status === 1
-                          ? t('user.buttons.disable')
-                          : t('user.buttons.enable')}
-                      </Button>
-                      <Button
-                        size={'tiny'}
-                        as={Link}
-                        to={'/user/edit/' + user.id}
-                      >
-                        {t('user.buttons.edit')}
-                      </Button>
-                      <Button
-                        size={'tiny'}
-                        color={'green'}
-                        onClick={() => {
-                          setTopupUser(user);
-                          setTopupQuota(0);
-                          setTopupRemark('');
-                        }}
-                      >
-                        {t('user.buttons.topup')}
-                      </Button>
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              );
-            })}
-        </Table.Body>
-
-        <Modal
-          open={topupUser !== null}
-          onClose={() => setTopupUser(null)}
-          size='small'
+  const columns = [
+    {
+      title: sortableTitle('id', t('user.table.id')),
+      dataIndex: 'id',
+      width: 60,
+    },
+    {
+      title: sortableTitle('username', t('user.table.username')),
+      dataIndex: 'username',
+      render: (username, user) => (
+        <Tooltip
+          title={user.email ? user.email : '未绑定邮箱地址'}
         >
-          <Modal.Header>
-            {t('user.topup.title', { name: topupUser ? topupUser.username : '' })}
-          </Modal.Header>
-          <Modal.Content>
-            <Form>
-              <QuotaInput
-                label={t('user.topup.quota')}
-                name='quota'
-                quota={topupQuota}
-                onQuotaChange={(name, value) => setTopupQuota(value)}
-                placeholder={t('user.topup.quota_placeholder')}
-              />
-              <Form.Input
-                label={t('user.topup.remark')}
-                name='remark'
-                placeholder={t('user.topup.remark_placeholder')}
-                onChange={(e, { value }) => setTopupRemark(value)}
-                value={topupRemark}
-                autoComplete='new-password'
-              />
-            </Form>
-          </Modal.Content>
-          <Modal.Actions>
-            <Button onClick={() => setTopupUser(null)}>
-              {t('user.topup.cancel')}
+          <span>{renderText(username, 15)}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: sortableTitle('group', t('user.table.group')),
+      dataIndex: 'group',
+      render: (group) => renderGroup(group),
+    },
+    {
+      title: sortableTitle('quota', t('user.table.quota')),
+      dataIndex: 'quota',
+      render: (_, user) => (
+        <Space size={4} wrap>
+          <Tooltip title={t('user.table.remaining_quota')}>
+            <Tag>{renderQuota(user.quota, t)}</Tag>
+          </Tooltip>
+          <Tooltip title={t('user.table.used_quota')}>
+            <Tag>{renderQuota(user.used_quota, t)}</Tag>
+          </Tooltip>
+          <Tooltip title={t('user.table.request_count')}>
+            <Tag>{renderNumber(user.request_count)}</Tag>
+          </Tooltip>
+        </Space>
+      ),
+    },
+    {
+      title: sortableTitle('role', t('user.table.role_text')),
+      dataIndex: 'role',
+      render: (role) => renderRole(role, t),
+    },
+    {
+      title: sortableTitle('status', t('user.table.status_text')),
+      dataIndex: 'status',
+      render: (status) => renderStatus(status),
+    },
+    {
+      title: t('user.table.actions'),
+      key: 'actions',
+      render: (_, user) => {
+        const idx = user.__idx;
+        return (
+          <Space size={4} wrap>
+            <Button
+              size='small'
+              disabled={user.role === 100}
+              onClick={() => manageUser(user.username, 'promote', idx)}
+            >
+              {t('user.buttons.promote')}
             </Button>
             <Button
-              positive
-              loading={topupSubmitting}
-              onClick={() => void submitTopup()}
+              size='small'
+              disabled={user.role === 100}
+              onClick={() => manageUser(user.username, 'demote', idx)}
             >
-              {t('user.topup.confirm')}
+              {t('user.buttons.demote')}
             </Button>
-          </Modal.Actions>
-        </Modal>
-
-        <Table.Footer>
-          <Table.Row>
-            <Table.HeaderCell colSpan='7'>
-              <Button size='small' as={Link} to='/user/add' loading={loading}>
-                {t('user.buttons.add')}
+            <Popconfirm
+              title={`${t('user.buttons.delete_user')} ${user.username}`}
+              onConfirm={() => manageUser(user.username, 'delete', idx)}
+              disabled={user.role === 100}
+            >
+              <Button size='small' danger disabled={user.role === 100}>
+                {t('user.buttons.delete')}
               </Button>
-              <Dropdown
-                placeholder={t('user.table.sort_by')}
-                selection
-                options={[
-                  { key: '', text: t('user.table.sort.default'), value: '' },
-                  {
-                    key: 'quota',
-                    text: t('user.table.sort.by_quota'),
-                    value: 'quota',
-                  },
-                  {
-                    key: 'used_quota',
-                    text: t('user.table.sort.by_used_quota'),
-                    value: 'used_quota',
-                  },
-                  {
-                    key: 'request_count',
-                    text: t('user.table.sort.by_request_count'),
-                    value: 'request_count',
-                  },
-                ]}
-                value={orderBy}
-                onChange={handleOrderByChange}
-                style={{ marginLeft: '10px' }}
-              />
-              <Pagination
-                floated='right'
-                activePage={activePage}
-                onPageChange={onPaginationChange}
-                size='small'
-                siblingRange={1}
-                totalPages={
-                  Math.ceil(users.length / ITEMS_PER_PAGE) +
-                  (users.length % ITEMS_PER_PAGE === 0 ? 1 : 0)
-                }
-              />
-            </Table.HeaderCell>
-          </Table.Row>
-        </Table.Footer>
-      </Table>
+            </Popconfirm>
+            <Button
+              size='small'
+              disabled={user.role === 100}
+              onClick={() =>
+                manageUser(
+                  user.username,
+                  user.status === 1 ? 'disable' : 'enable',
+                  idx
+                )
+              }
+            >
+              {user.status === 1
+                ? t('user.buttons.disable')
+                : t('user.buttons.enable')}
+            </Button>
+            <Link to={'/user/edit/' + user.id}>
+              <Button size='small'>{t('user.buttons.edit')}</Button>
+            </Link>
+            <Button
+              size='small'
+              type='primary'
+              ghost
+              onClick={() => {
+                setTopupUser(user);
+                setTopupQuota(0);
+                setTopupRemark('');
+              }}
+            >
+              {t('user.buttons.topup')}
+            </Button>
+          </Space>
+        );
+      },
+    },
+  ];
+
+  return (
+    <>
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder={t('user.search')}
+        value={searchKeyword}
+        onChange={(e) => setSearchKeyword(e.target.value.trim())}
+        onPressEnter={searchUsers}
+        suffix={
+          <Button type='link' size='small' loading={searching} onClick={searchUsers}>
+            {t('user.search')}
+          </Button>
+        }
+        style={{ maxWidth: 360, marginBottom: 16 }}
+      />
+
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Link to='/user/add'>
+          <Button type='primary' loading={loading}>
+            {t('user.buttons.add')}
+          </Button>
+        </Link>
+        <Select
+          placeholder={t('user.table.sort_by')}
+          value={orderBy || undefined}
+          style={{ minWidth: 160 }}
+          allowClear
+          options={[
+            { label: t('user.table.sort.default'), value: '' },
+            { label: t('user.table.sort.by_quota'), value: 'quota' },
+            { label: t('user.table.sort.by_used_quota'), value: 'used_quota' },
+            {
+              label: t('user.table.sort.by_request_count'),
+              value: 'request_count',
+            },
+          ]}
+          onChange={handleOrderByChange}
+        />
+      </Space>
+
+      <Table
+        size='small'
+        columns={columns}
+        dataSource={pageUsers}
+        rowKey='id'
+        pagination={{
+          current: activePage,
+          pageSize: ITEMS_PER_PAGE,
+          total: users.length,
+          showSizeChanger: false,
+          onChange: onPaginationChange,
+        }}
+      />
+
+      <Modal
+        open={topupUser !== null}
+        onCancel={() => setTopupUser(null)}
+        title={t('user.topup.title', { name: topupUser ? topupUser.username : '' })}
+        footer={[
+          <Button key='cancel' onClick={() => setTopupUser(null)}>
+            {t('user.topup.cancel')}
+          </Button>,
+          <Button
+            key='submit'
+            type='primary'
+            loading={topupSubmitting}
+            onClick={() => void submitTopup()}
+          >
+            {t('user.topup.confirm')}
+          </Button>,
+        ]}
+      >
+        <Space direction='vertical' style={{ width: '100%' }} size={16}>
+          <QuotaInput
+            label={t('user.topup.quota')}
+            name='quota'
+            quota={topupQuota}
+            onQuotaChange={(name, value) => setTopupQuota(value)}
+            placeholder={t('user.topup.quota_placeholder')}
+          />
+          <div>
+            <Typography.Text type='secondary' style={{ display: 'block', marginBottom: 4 }}>
+              {t('user.topup.remark')}
+            </Typography.Text>
+            <Input
+              placeholder={t('user.topup.remark_placeholder')}
+              onChange={(e) => setTopupRemark(e.target.value)}
+              value={topupRemark}
+              autoComplete='new-password'
+            />
+          </div>
+        </Space>
+      </Modal>
     </>
   );
 };

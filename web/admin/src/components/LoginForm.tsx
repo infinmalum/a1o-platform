@@ -1,15 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
-import {
-  Button,
-  Divider,
-  Form,
-  Grid,
-  Header,
-  Image,
-  Message,
-  Segment,
-  Card,
-} from 'semantic-ui-react';
+import { Button, Card, Divider, Form, Input } from 'antd';
+import { GithubOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
@@ -19,15 +10,10 @@ import larkIcon from '../images/lark.svg';
 
 const LoginForm = () => {
   const { t } = useTranslation();
-  const [inputs, setInputs] = useState({
-    username: '',
-    password: '',
-  });
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [submitted, setSubmitted] = useState(false);
-  const { username, password } = inputs;
+  const [form] = Form.useForm();
+  const [searchParams] = useSearchParams();
   const [userState, userDispatch] = useContext(UserContext);
-  let navigate = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
   const [status, setStatus] = useState<import('../types/site').SiteStatus>({});
   const logo = getLogo();
@@ -62,191 +48,131 @@ const LoginForm = () => {
     }
   }, []);
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
-  }
-
-  async function handleSubmit(e) {
-    setSubmitted(true);
-    if (username && password) {
-      try {
-        const res = await API.post(`/api/user/login`, {
-          username,
-          password,
-        });
-        const { success, message, data } = res.data;
-        if (success) {
-          userDispatch({ type: 'login', payload: data });
-          localStorage.setItem('user', JSON.stringify(data));
-          redirectAfterLogin(landingPage());
-          showSuccess(t('messages.success.login'));
-        } else {
-          showError(message);
-        }
-      } catch (error) {
-        // interceptor toasts the error
+  async function handleSubmit(values) {
+    try {
+      const res = await API.post(`/api/user/login`, values);
+      const { success, message, data } = res.data;
+      if (success) {
+        userDispatch({ type: 'login', payload: data });
+        localStorage.setItem('user', JSON.stringify(data));
+        redirectAfterLogin(landingPage());
+        showSuccess(t('messages.success.login'));
+      } else {
+        showError(message);
       }
+    } catch (error) {
+      // interceptor toasts the error
     }
   }
 
   return (
-    <Grid textAlign='center' style={{ marginTop: '48px' }}>
-      <Grid.Column style={{ maxWidth: 450 }}>
-        <Card
-          fluid
-          className='chart-card'
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+      <Card
+        style={{
+          width: '100%',
+          maxWidth: 450,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+          borderRadius: 16,
+        }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <img
+            src={logo}
+            alt='logo'
+            style={{
+              width: 64,
+              height: 64,
+              objectFit: 'contain',
+              marginBottom: 10,
+            }}
+          />
+          <h2 style={{ margin: 0 }}>{t('auth.login.title')}</h2>
+        </div>
+        <Form form={form} size='large' onFinish={handleSubmit}>
+          <Form.Item name='username' rules={[{ required: true, message: t('auth.login.username') }]}>
+            <Input
+              prefix={<UserOutlined />}
+              placeholder={t('auth.login.username')}
+              autoComplete='username'
+            />
+          </Form.Item>
+          <Form.Item name='password' rules={[{ required: true, message: t('auth.login.password') }]}>
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder={t('auth.login.password')}
+              autoComplete='current-password'
+            />
+          </Form.Item>
+          <Form.Item>
+            <Button type='primary' htmlType='submit' size='large' block>
+              {t('auth.login.button')}
+            </Button>
+          </Form.Item>
+        </Form>
+
+        <Divider style={{ margin: '12px 0' }} />
+        <div
           style={{
-            boxShadow: '0 8px 24px rgba(33, 136, 208, 0.10)',
-            borderRadius: 16,
-            padding: '1em 0.5em',
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '0.9em',
+            color: '#666',
           }}
         >
-          <Card.Content>
-            <Card.Header>
-              <Header
-                as='h2'
-                textAlign='center'
-                style={{ marginBottom: '1.5em' }}
-              >
-                <Image
-                  src={logo}
-                  style={{
-                    width: '64px',
-                    height: '64px',
-                    objectFit: 'contain',
-                    margin: '0 auto 10px',
-                  }}
+          <div>
+            {t('auth.login.forgot_password')}
+            <Link to='/reset' style={{ marginLeft: 2 }}>
+              {t('auth.login.reset_password')}
+            </Link>
+          </div>
+          <div>
+            {t('auth.login.no_account')}
+            <Link to='/register' style={{ marginLeft: 2 }}>
+              {t('auth.login.register')}
+            </Link>
+          </div>
+        </div>
+
+        {(status.github_oauth || status.lark_client_id) && (
+          <>
+            <Divider plain style={{ color: '#666', fontSize: '0.9em' }}>
+              {t('auth.login.other_methods')}
+            </Divider>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '1em',
+                marginTop: '1em',
+              }}
+            >
+              {status.github_oauth && (
+                <Button
+                  shape='circle'
+                  icon={<GithubOutlined />}
+                  size='large'
+                  onClick={() => onGitHubOAuthClicked(status.github_client_id)}
                 />
-                <Header.Content>{t('auth.login.title')}</Header.Content>
-              </Header>
-            </Card.Header>
-            <Form size='large'>
-              <Form.Input
-                fluid
-                icon='user'
-                iconPosition='left'
-                placeholder={t('auth.login.username')}
-                name='username'
-                value={username}
-                onChange={handleChange}
-                style={{ marginBottom: '1em' }}
-              />
-              <Form.Input
-                fluid
-                icon='lock'
-                iconPosition='left'
-                placeholder={t('auth.login.password')}
-                name='password'
-                type='password'
-                value={password}
-                onChange={handleChange}
-                style={{ marginBottom: '1.5em' }}
-              />
-              <Button
-                fluid
-                size='large'
-                style={{
-                  background: '#2185d0',
-                  color: 'white',
-                  borderRadius: 8,
-                  marginBottom: '1.5em',
-                }}
-                onClick={handleSubmit}
-              >
-                {t('auth.login.button')}
-              </Button>
-            </Form>
-
-            <Divider />
-            <Message style={{ background: 'transparent', boxShadow: 'none' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: '0.9em',
-                  color: '#666',
-                }}
-              >
-                <div>
-                  {t('auth.login.forgot_password')}
-                  <Link
-                    to='/reset'
-                    style={{ color: '#2185d0', marginLeft: '2px' }}
-                  >
-                    {t('auth.login.reset_password')}
-                  </Link>
-                </div>
-                <div>
-                  {t('auth.login.no_account')}
-                  <Link
-                    to='/register'
-                    style={{ color: '#2185d0', marginLeft: '2px' }}
-                  >
-                    {t('auth.login.register')}
-                  </Link>
-                </div>
-              </div>
-            </Message>
-
-            {(status.github_oauth || status.lark_client_id) && (
-              <>
-                <Divider
-                  horizontal
-                  style={{ color: '#666', fontSize: '0.9em' }}
-                >
-                  {t('auth.login.other_methods')}
-                </Divider>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    gap: '1em',
-                    marginTop: '1em',
-                  }}
-                >
-                  {status.github_oauth && (
-                    <Button
-                      circular
-                      color='black'
-                      icon='github'
-                      onClick={() =>
-                        onGitHubOAuthClicked(status.github_client_id)
-                      }
+              )}
+              {status.lark_client_id && (
+                <Button
+                  shape='circle'
+                  size='large'
+                  onClick={() => onLarkOAuthClicked(status.lark_client_id)}
+                  icon={
+                    <img
+                      src={larkIcon}
+                      alt='lark'
+                      style={{ width: 18, height: 18 }}
                     />
-                  )}
-                  {status.lark_client_id && (
-                    <div
-                      style={{
-                        background: '#FFFFFF',
-                        border: '1px solid rgba(0,0,0,0.08)',
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10em',
-                        display: 'flex',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => onLarkOAuthClicked(status.lark_client_id)}
-                    >
-                      <Image
-                        src={larkIcon}
-                        avatar
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          cursor: 'pointer',
-                          margin: 'auto',
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </Card.Content>
-        </Card>
-      </Grid.Column>
-    </Grid>
+                  }
+                />
+              )}
+            </div>
+          </>
+        )}
+      </Card>
+    </div>
   );
 };
 

@@ -76,6 +76,12 @@ export function showError(error) {
   console.error(error);
   if (error.message) {
     if (error.name === 'AxiosError') {
+      if (!error.response) {
+        // Network-level failure (backend down, proxy refused): axios omits
+        // the response object entirely, so read it defensively.
+        toast.error('错误：无法连接服务器，请检查服务是否已启动', showErrorOptions);
+        return;
+      }
       switch (error.response.status) {
         case 401:
           // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);

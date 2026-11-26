@@ -25,7 +25,6 @@ import Log from './pages/Log';
 import LarkOAuth from './components/LarkOAuth';
 import Dashboard from './pages/Dashboard';
 
-const PrivacyReview = lazy(() => import('./pages/PrivacyReview'));
 const About = lazy(() => import('./pages/About'));
 
 function App() {
@@ -274,13 +273,6 @@ function App() {
             <About />
           </Suspense>
         }
-      />
-      <Route
-        path='/privacy-review'
-        element={<PrivateRoute>{isRoot()
-          ? <Suspense fallback={<Loading />}><PrivacyReview /></Suspense>
-          : <Navigate to='/' replace />}
-        </PrivateRoute>}
       />
       <Route
         path='/dashboard'

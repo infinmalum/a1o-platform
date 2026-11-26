@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Button,
-  Form,
-  Grid,
-  Header,
-  Image,
-  Message,
-  Card,
-  Divider,
-} from 'semantic-ui-react';
+import { Button, Card, Divider, Form, Input } from 'antd';
+import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
@@ -16,14 +8,7 @@ import Turnstile from 'react-turnstile';
 
 const RegisterForm = () => {
   const { t } = useTranslation();
-  const [inputs, setInputs] = useState({
-    username: '',
-    password: '',
-    password2: '',
-    email: '',
-    verification_code: '',
-  });
-  const { username, password, password2 } = inputs;
+  const [form] = Form.useForm();
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
@@ -66,55 +51,45 @@ const RegisterForm = () => {
     return () => clearInterval(countdownInterval);
   }, [disableButton, countdown]);
 
-  let navigate = useNavigate();
+  const navigate = useNavigate();
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
-  }
-
-  async function handleSubmit(e) {
-    if (password.length < 8) {
+  async function handleSubmit(values) {
+    if (values.password.length < 8) {
       showInfo(t('messages.error.password_length'));
       return;
     }
-    if (password !== password2) {
-      showInfo(t('messages.error.password_mismatch'));
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(t('messages.error.turnstile_wait'));
       return;
     }
-    if (username && password) {
-      if (turnstileEnabled && turnstileToken === '') {
-        showInfo(t('messages.error.turnstile_wait'));
-        return;
-      }
-      setLoading(true);
-      if (!affCode) {
-        affCode = localStorage.getItem('aff');
-      }
-      let res;
-      try {
-        res = await API.post(
-          `/api/user/register?turnstile=${turnstileToken}`,
-          { ...inputs, aff_code: affCode ?? '' }
-        );
-      } catch (error) {
-        // interceptor toasts the error
-        setLoading(false);
-        return;
-      }
-      const { success, message } = res.data;
-      if (success) {
-        navigate('/login');
-        showSuccess(t('messages.success.register'));
-      } else {
-        showError(message);
-      }
-      setLoading(false);
+    setLoading(true);
+    if (!affCode) {
+      affCode = localStorage.getItem('aff');
     }
+    let res;
+    try {
+      res = await API.post(
+        `/api/user/register?turnstile=${turnstileToken}`,
+        { ...values, aff_code: affCode ?? '' }
+      );
+    } catch (error) {
+      // interceptor toasts the error
+      setLoading(false);
+      return;
+    }
+    const { success, message } = res.data;
+    if (success) {
+      navigate('/login');
+      showSuccess(t('messages.success.register'));
+    } else {
+      showError(message);
+    }
+    setLoading(false);
   }
 
   const sendVerificationCode = async () => {
-    if (inputs.email === '') return;
+    const email = form.getFieldValue('email');
+    if (!email) return;
     if (turnstileEnabled && turnstileToken === '') {
       showInfo(t('messages.error.turnstile_wait'));
       return;
@@ -124,7 +99,7 @@ const RegisterForm = () => {
     let res;
     try {
       res = await API.get(
-        `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`
+        `/api/verification?email=${email}&turnstile=${turnstileToken}`
       );
     } catch (error) {
       // interceptor toasts the error
@@ -144,140 +119,113 @@ const RegisterForm = () => {
   };
 
   return (
-    <Grid textAlign='center' style={{ marginTop: '48px' }}>
-      <Grid.Column style={{ maxWidth: 450 }}>
-        <Card
-          fluid
-          className='chart-card'
-          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}
-        >
-          <Card.Content>
-            <Card.Header>
-              <Header
-                as='h2'
-                textAlign='center'
-                style={{ marginBottom: '1.5em' }}
-              >
-                <Image src={logo} style={{ marginBottom: '10px' }} />
-                <Header.Content>{t('auth.register.title')}</Header.Content>
-              </Header>
-            </Card.Header>
-            <Form size='large'>
-              <Form.Input
-                fluid
-                icon='user'
-                iconPosition='left'
-                placeholder={t('auth.register.username')}
-                onChange={handleChange}
-                name='username'
-                style={{ marginBottom: '1em' }}
-              />
-              <Form.Input
-                fluid
-                icon='lock'
-                iconPosition='left'
-                placeholder={t('auth.register.password')}
-                onChange={handleChange}
-                name='password'
-                type='password'
-                style={{ marginBottom: '1em' }}
-              />
-              <Form.Input
-                fluid
-                icon='lock'
-                iconPosition='left'
-                placeholder={t('auth.register.confirm_password')}
-                onChange={handleChange}
-                name='password2'
-                type='password'
-                style={{ marginBottom: '1em' }}
-              />
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+      <Card
+        style={{
+          width: '100%',
+          maxWidth: 450,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <img src={logo} alt='logo' style={{ marginBottom: 10 }} />
+          <h2 style={{ margin: 0 }}>{t('auth.register.title')}</h2>
+        </div>
+        <Form form={form} size='large' onFinish={handleSubmit}>
+          <Form.Item name='username' rules={[{ required: true, message: t('auth.register.username') }]}>
+            <Input prefix={<UserOutlined />} placeholder={t('auth.register.username')} />
+          </Form.Item>
+          <Form.Item
+            name='password'
+            rules={[
+              { required: true, message: t('auth.register.password') },
+              { min: 8, message: t('messages.error.password_length') },
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.register.password')} />
+          </Form.Item>
+          <Form.Item
+            name='password2'
+            dependencies={['password']}
+            rules={[
+              { required: true, message: t('auth.register.confirm_password') },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error(t('messages.error.password_mismatch')));
+                },
+              }),
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.register.confirm_password')} />
+          </Form.Item>
 
-              {showEmailVerification && (
-                <>
-                  <Form.Input
-                    fluid
-                    icon='mail'
-                    iconPosition='left'
-                    placeholder={t('auth.register.email')}
-                    onChange={handleChange}
-                    name='email'
-                    type='email'
-                    action={
-                      <Button onClick={sendVerificationCode} disabled={loading}>
-                        {disableButton
-                          ? t('auth.register.get_code_retry', { countdown })
-                          : t('auth.register.get_code')}
-                      </Button>
-                    }
-                    style={{ marginBottom: '1em' }}
-                  />
-                  <Form.Input
-                    fluid
-                    icon='lock'
-                    iconPosition='left'
-                    placeholder={t('auth.register.verification_code')}
-                    onChange={handleChange}
-                    name='verification_code'
-                    style={{ marginBottom: '1em' }}
-                  />
-                </>
-              )}
+          {showEmailVerification && (
+            <>
+              <Form.Item name='email' rules={[{ required: true, message: t('auth.register.email') }]}>
+                <Input
+                  prefix={<MailOutlined />}
+                  placeholder={t('auth.register.email')}
+                  type='email'
+                  addonAfter={
+                    <Button
+                      type='link'
+                      size='small'
+                      style={{ padding: 0 }}
+                      onClick={sendVerificationCode}
+                      disabled={loading}
+                    >
+                      {disableButton
+                        ? t('auth.register.get_code_retry', { countdown })
+                        : t('auth.register.get_code')}
+                    </Button>
+                  }
+                />
+              </Form.Item>
+              <Form.Item name='verification_code' rules={[{ required: true, message: t('auth.register.verification_code') }]}>
+                <Input
+                  prefix={<LockOutlined />}
+                  placeholder={t('auth.register.verification_code')}
+                />
+              </Form.Item>
+            </>
+          )}
 
-              {turnstileEnabled && (
-                <div
-                  style={{
-                    marginBottom: '1em',
-                    display: 'flex',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Turnstile
-                    sitekey={turnstileSiteKey}
-                    onVerify={(token) => {
-                      setTurnstileToken(token);
-                    }}
-                  />
-                </div>
-              )}
-
-              <Button
-                fluid
-                size='large'
-                onClick={handleSubmit}
-                style={{
-                  background: '#2F73FF', // 使用更现代的蓝色
-                  color: 'white',
-                  marginBottom: '1.5em',
+          {turnstileEnabled && (
+            <div
+              style={{
+                marginBottom: '1em',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <Turnstile
+                sitekey={turnstileSiteKey}
+                onVerify={(token) => {
+                  setTurnstileToken(token);
                 }}
-                loading={loading}
-              >
-                {t('auth.register.button')}
-              </Button>
-            </Form>
+              />
+            </div>
+          )}
 
-            <Divider />
-            <Message style={{ background: 'transparent', boxShadow: 'none' }}>
-              <div
-                style={{
-                  textAlign: 'center',
-                  fontSize: '0.9em',
-                  color: '#666',
-                }}
-              >
-                {t('auth.register.has_account')}
-                <Link
-                  to='/login'
-                  style={{ color: '#2185d0', marginLeft: '2px' }}
-                >
-                  {t('auth.register.login')}
-                </Link>
-              </div>
-            </Message>
-          </Card.Content>
-        </Card>
-      </Grid.Column>
-    </Grid>
+          <Form.Item>
+            <Button type='primary' size='large' block htmlType='submit' loading={loading}>
+              {t('auth.register.button')}
+            </Button>
+          </Form.Item>
+        </Form>
+
+        <Divider style={{ margin: '12px 0' }} />
+        <div style={{ textAlign: 'center', fontSize: '0.9em', color: '#666' }}>
+          {t('auth.register.has_account')}
+          <Link to='/login' style={{ marginLeft: 2 }}>
+            {t('auth.register.login')}
+          </Link>
+        </div>
+      </Card>
+    </div>
   );
 };
 

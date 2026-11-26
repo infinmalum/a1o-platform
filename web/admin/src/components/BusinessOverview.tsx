@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Card,
-  Divider,
-  Grid,
-  Header,
-  Label,
-  Statistic,
-  Table,
-} from 'semantic-ui-react';
+import { Card, Divider, Space, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 
 import { API, isAdmin } from '../helpers';
@@ -38,6 +30,9 @@ interface BusinessData {
   total_users: number;
   low_balance_threshold: number;
 }
+
+const statValueStyle = { fontSize: '1.6em', fontWeight: 600, lineHeight: 1.3 };
+const statLabelStyle = { color: '#999', fontSize: '0.85em' };
 
 // BusinessOverview is the administrator's first screen: what the deployment
 // charged, what users paid in, who used it, and which upstreams need attention.
@@ -76,133 +71,133 @@ const BusinessOverview = () => {
   const topModels = data.top_models || [];
 
   return (
-    <Card fluid className='chart-card' style={{ marginBottom: '1em' }}>
-      <Card.Content>
-        <Card.Header>
-          {t('business.title')}
-          {attention > 0 && (
-            <Label color='orange' style={{ marginLeft: '0.75em' }}>
-              {t('business.attention', { count: attention })}
-            </Label>
-          )}
-        </Card.Header>
-        <p style={{ color: '#999', fontSize: '0.85em', marginTop: '0.5em' }}>
-          {t('business.costNotice')}
-        </p>
+    <Card className='chart-card' style={{ marginBottom: '1em' }}>
+      <Typography.Title level={4}>
+        {t('business.title')}
+        {attention > 0 && (
+          <Tag color='orange' style={{ marginLeft: '0.75em', verticalAlign: 'middle' }}>
+            {t('business.attention', { count: attention })}
+          </Tag>
+        )}
+      </Typography.Title>
+      <Typography.Paragraph type='secondary' style={{ fontSize: '0.85em' }}>
+        {t('business.costNotice')}
+      </Typography.Paragraph>
 
-        <Statistic.Group widths='four' size='small' style={{ marginTop: '1em' }}>
-          <Statistic color='blue'>
-            <Statistic.Value>
-              {renderQuota(data.today.consumed_quota, t)}
-            </Statistic.Value>
-            <Statistic.Label>{t('business.todayConsumed')}</Statistic.Label>
-          </Statistic>
-          <Statistic color='green'>
-            <Statistic.Value>
-              {renderQuota(data.today.topup_quota, t)}
-            </Statistic.Value>
-            <Statistic.Label>{t('business.todayTopup')}</Statistic.Label>
-          </Statistic>
-          <Statistic>
-            <Statistic.Value>{data.today.requests}</Statistic.Value>
-            <Statistic.Label>{t('business.todayRequests')}</Statistic.Label>
-          </Statistic>
-          <Statistic>
-            <Statistic.Value>{data.today.active_users}</Statistic.Value>
-            <Statistic.Label>{t('business.todayActiveUsers')}</Statistic.Label>
-          </Statistic>
-        </Statistic.Group>
+      <Space size={48} wrap style={{ display: 'flex', marginTop: 8 }}>
+        <div>
+          <div style={{ ...statValueStyle, color: '#1677ff' }}>
+            {renderQuota(data.today.consumed_quota, t)}
+          </div>
+          <div style={statLabelStyle}>{t('business.todayConsumed')}</div>
+        </div>
+        <div>
+          <div style={{ ...statValueStyle, color: '#52c41a' }}>
+            {renderQuota(data.today.topup_quota, t)}
+          </div>
+          <div style={statLabelStyle}>{t('business.todayTopup')}</div>
+        </div>
+        <div>
+          <div style={statValueStyle}>{data.today.requests}</div>
+          <div style={statLabelStyle}>{t('business.todayRequests')}</div>
+        </div>
+        <div>
+          <div style={statValueStyle}>{data.today.active_users}</div>
+          <div style={statLabelStyle}>{t('business.todayActiveUsers')}</div>
+        </div>
+      </Space>
 
-        <Divider />
+      <Divider />
 
-        <Statistic.Group widths='four' size='mini'>
-          <Statistic>
-            <Statistic.Value>
-              {renderQuota(data.week.consumed_quota, t)}
-            </Statistic.Value>
-            <Statistic.Label>{t('business.weekConsumed')}</Statistic.Label>
-          </Statistic>
-          <Statistic>
-            <Statistic.Value>
-              {renderQuota(data.week.topup_quota, t)}
-            </Statistic.Value>
-            <Statistic.Label>{t('business.weekTopup')}</Statistic.Label>
-          </Statistic>
-          <Statistic>
-            <Statistic.Value>{data.week.requests}</Statistic.Value>
-            <Statistic.Label>{t('business.weekRequests')}</Statistic.Label>
-          </Statistic>
-          <Statistic>
-            <Statistic.Value>{data.total_users}</Statistic.Value>
-            <Statistic.Label>{t('business.totalUsers')}</Statistic.Label>
-          </Statistic>
-        </Statistic.Group>
+      <Space size={48} wrap style={{ display: 'flex' }}>
+        <div>
+          <div style={{ ...statValueStyle, fontSize: '1.3em' }}>
+            {renderQuota(data.week.consumed_quota, t)}
+          </div>
+          <div style={statLabelStyle}>{t('business.weekConsumed')}</div>
+        </div>
+        <div>
+          <div style={{ ...statValueStyle, fontSize: '1.3em' }}>
+            {renderQuota(data.week.topup_quota, t)}
+          </div>
+          <div style={statLabelStyle}>{t('business.weekTopup')}</div>
+        </div>
+        <div>
+          <div style={{ ...statValueStyle, fontSize: '1.3em' }}>
+            {data.week.requests}
+          </div>
+          <div style={statLabelStyle}>{t('business.weekRequests')}</div>
+        </div>
+        <div>
+          <div style={{ ...statValueStyle, fontSize: '1.3em' }}>
+            {data.total_users}
+          </div>
+          <div style={statLabelStyle}>{t('business.totalUsers')}</div>
+        </div>
+      </Space>
 
-        <Divider />
+      <Divider />
 
-        <Grid columns={2} stackable>
-          <Grid.Column>
-            <Header as='h4'>{t('business.upstream.title')}</Header>
-            <Label.Group>
-              <Label basic>
-                {t('business.upstream.total')}
-                <Label.Detail>{data.channels.total}</Label.Detail>
-              </Label>
-              <Label basic color='green'>
-                {t('business.upstream.enabled')}
-                <Label.Detail>{data.channels.enabled}</Label.Detail>
-              </Label>
-              <Label basic color='red'>
-                {t('business.upstream.autoDisabled')}
-                <Label.Detail>{data.channels.auto_disabled}</Label.Detail>
-              </Label>
-              <Label basic color='grey'>
-                {t('business.upstream.manuallyDisabled')}
-                <Label.Detail>{data.channels.manually_disabled}</Label.Detail>
-              </Label>
-              <Label basic color='orange'>
-                {t('business.upstream.lowBalance')}
-                <Label.Detail>{data.channels.low_balance}</Label.Detail>
-              </Label>
-              <Label basic>
-                {t('business.upstream.balanceUnknown')}
-                <Label.Detail>{data.channels.balance_unavailable}</Label.Detail>
-              </Label>
-            </Label.Group>
-            <p style={{ color: '#999', fontSize: '0.85em' }}>
-              {t('business.upstream.lowBalanceHint', {
-                threshold: data.low_balance_threshold,
-              })}
-            </p>
-            <Link to='/channel'>{t('business.upstream.manage')}</Link>
-          </Grid.Column>
-          <Grid.Column>
-            <Header as='h4'>{t('business.topModels')}</Header>
-            <Table compact basic='very'>
-              <Table.Body>
-                {data.top_models.map((model) => (
-                  <Table.Row key={model.model_name}>
-                    <Table.Cell>{model.model_name}</Table.Cell>
-                    <Table.Cell textAlign='right'>
-                      {renderQuota(model.quota, t)}
-                    </Table.Cell>
-                    <Table.Cell textAlign='right' style={{ color: '#999' }}>
-                      {model.requests}
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-                {data.top_models.length === 0 && (
-                  <Table.Row>
-                    <Table.Cell style={{ color: '#999' }}>
-                      {t('business.noUsageToday')}
-                    </Table.Cell>
-                  </Table.Row>
-                )}
-              </Table.Body>
-            </Table>
-          </Grid.Column>
-        </Grid>
-      </Card.Content>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
+        <div>
+          <Typography.Title level={5}>{t('business.upstream.title')}</Typography.Title>
+          <Space size={8} wrap style={{ marginBottom: 8 }}>
+            <Tag>
+              {t('business.upstream.total')} {data.channels.total}
+            </Tag>
+            <Tag color='green'>
+              {t('business.upstream.enabled')} {data.channels.enabled}
+            </Tag>
+            <Tag color='red'>
+              {t('business.upstream.autoDisabled')} {data.channels.auto_disabled}
+            </Tag>
+            <Tag>
+              {t('business.upstream.manuallyDisabled')} {data.channels.manually_disabled}
+            </Tag>
+            <Tag color='orange'>
+              {t('business.upstream.lowBalance')} {data.channels.low_balance}
+            </Tag>
+            <Tag>
+              {t('business.upstream.balanceUnknown')} {data.channels.balance_unavailable}
+            </Tag>
+          </Space>
+          <Typography.Paragraph type='secondary' style={{ fontSize: '0.85em' }}>
+            {t('business.upstream.lowBalanceHint', {
+              threshold: data.low_balance_threshold,
+            })}
+          </Typography.Paragraph>
+          <Link to='/channel'>{t('business.upstream.manage')}</Link>
+        </div>
+        <div>
+          <Typography.Title level={5}>{t('business.topModels')}</Typography.Title>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {topModels.map((model) => (
+                <tr key={model.model_name}>
+                  <td style={{ padding: '4px 0' }}>{model.model_name}</td>
+                  <td style={{ padding: '4px 0', textAlign: 'right' }}>
+                    {renderQuota(model.quota, t)}
+                  </td>
+                  <td
+                    style={{
+                      padding: '4px 0',
+                      textAlign: 'right',
+                      color: '#999',
+                    }}
+                  >
+                    {model.requests}
+                  </td>
+                </tr>
+              ))}
+              {topModels.length === 0 && (
+                <tr>
+                  <td style={{ color: '#999' }}>{t('business.noUsageToday')}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </Card>
   );
 };

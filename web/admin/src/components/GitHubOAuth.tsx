@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { Dimmer, Loader, Segment } from 'semantic-ui-react';
+import { Spin } from 'antd';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API, showError, showSuccess } from '../helpers';
 import { UserContext } from '../context/User';
@@ -47,11 +47,10 @@ const GitHubOAuth = () => {
   }, []);
 
   return (
-    <Segment style={{ minHeight: '300px' }}>
-      <Dimmer active inverted>
-        <Loader size='large'>{prompt}</Loader>
-      </Dimmer>
-    </Segment>
+    <div style={{ padding: '96px 0', textAlign: 'center' }}>
+      <Spin size='large' />
+      <div style={{ marginTop: 12 }}>{prompt}</div>
+    </div>
   );
 };
 

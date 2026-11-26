@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card } from 'semantic-ui-react';
+import { Card } from 'antd';
 import { API, showError } from '../../helpers';
 import { marked } from 'marked';
 
@@ -34,38 +34,25 @@ const About = () => {
   return (
     <>
       {aboutLoaded && about === '' ? (
-        <div className='dashboard-container'>
-          <Card fluid className='chart-card'>
-            <Card.Content>
-              <Card.Header className='header'>{t('about.title')}</Card.Header>
-              <p>{t('about.description')}</p>
-              {t('about.repository')}
-              <a href='https://github.com/infinmalum/a1o-platform'>
-                https://github.com/infinmalum/a1o-platform
-              </a>
-            </Card.Content>
-          </Card>
-        </div>
+        <Card title={t('about.title')}>
+          <p>{t('about.description')}</p>
+          {t('about.repository')}
+          <a href='https://github.com/infinmalum/a1o-platform'>
+            https://github.com/infinmalum/a1o-platform
+          </a>
+        </Card>
+      ) : about.startsWith('https://') ? (
+        <iframe
+          src={about}
+          style={{ width: '100%', height: '100vh', border: 'none' }}
+        />
       ) : (
-        <>
-          {about.startsWith('https://') ? (
-            <iframe
-              src={about}
-              style={{ width: '100%', height: '100vh', border: 'none' }}
-            />
-          ) : (
-            <div className='dashboard-container'>
-              <Card fluid className='chart-card'>
-                <Card.Content>
-                  <div
-                    style={{ fontSize: 'larger' }}
-                    dangerouslySetInnerHTML={{ __html: about }}
-                  ></div>
-                </Card.Content>
-              </Card>
-            </div>
-          )}
-        </>
+        <Card>
+          <div
+            style={{ fontSize: 'larger' }}
+            dangerouslySetInnerHTML={{ __html: about }}
+          ></div>
+        </Card>
       )}
     </>
   );

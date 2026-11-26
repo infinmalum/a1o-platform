@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Divider, Form, Grid, Header } from 'semantic-ui-react';
+import { Button, Checkbox, Divider, Input, Space, Typography } from 'antd';
 import PriceEditor from './PriceEditor';
 import QuotaInput from './QuotaInput';
 import {
@@ -10,6 +10,9 @@ import {
   timestamp2string,
   verifyJSON,
 } from '../helpers';
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const OperationSetting = () => {
   const { t } = useTranslation();
@@ -89,7 +92,7 @@ const OperationSetting = () => {
     setLoading(false);
   };
 
-  const handleInputChange = async (e, { name, value }) => {
+  const handleInputChange = async (name, value) => {
     if (name.endsWith('Enabled')) {
       await updateOption(name, value);
     } else {
@@ -191,266 +194,315 @@ const OperationSetting = () => {
   };
 
   return (
-    <Grid columns={1}>
-      <Grid.Column>
-        <Form loading={loading}>
-          <Header as='h3'>{t('setting.operation.quota.title')}</Header>
-          <Form.Group widths='equal'>
-            <QuotaInput
-              label={t('setting.operation.quota.new_user')}
-              name='QuotaForNewUser'
-              quota={Number(inputs.QuotaForNewUser) || 0}
-              onQuotaChange={handleQuotaOptionChange}
-              placeholder={t('setting.operation.quota.new_user_placeholder')}
+    <div style={{ maxWidth: 860 }}>
+      <Typography.Title level={5}>
+        {t('setting.operation.quota.title')}
+      </Typography.Title>
+      <Space size={24} wrap align='start' style={{ marginBottom: 16 }}>
+        <QuotaInput
+          label={t('setting.operation.quota.new_user')}
+          name='QuotaForNewUser'
+          quota={Number(inputs.QuotaForNewUser) || 0}
+          onQuotaChange={handleQuotaOptionChange}
+          placeholder={t('setting.operation.quota.new_user_placeholder')}
+        />
+        <QuotaInput
+          label={t('setting.operation.quota.pre_consume')}
+          name='PreConsumedQuota'
+          quota={Number(inputs.PreConsumedQuota) || 0}
+          onQuotaChange={handleQuotaOptionChange}
+          placeholder={t('setting.operation.quota.pre_consume_placeholder')}
+        />
+        <QuotaInput
+          label={t('setting.operation.quota.inviter_reward')}
+          name='QuotaForInviter'
+          quota={Number(inputs.QuotaForInviter) || 0}
+          onQuotaChange={handleQuotaOptionChange}
+          placeholder={t('setting.operation.quota.inviter_reward_placeholder')}
+        />
+        <QuotaInput
+          label={t('setting.operation.quota.invitee_reward')}
+          name='QuotaForInvitee'
+          quota={Number(inputs.QuotaForInvitee) || 0}
+          onQuotaChange={handleQuotaOptionChange}
+          placeholder={t('setting.operation.quota.invitee_reward_placeholder')}
+        />
+      </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Button
+          type='primary'
+          loading={loading}
+          onClick={() => submitConfig('quota').then()}
+        >
+          {t('setting.operation.quota.buttons.save')}
+        </Button>
+      </div>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.operation.ratio.title')}
+      </Typography.Title>
+      <PriceEditor
+        modelRatio={inputs.ModelRatio}
+        completionRatio={inputs.CompletionRatio}
+        groupRatio={inputs.GroupRatio}
+        onChange={(patch) => setInputs((current) => ({ ...current, ...patch }))}
+      />
+      <Checkbox
+        checked={advanced}
+        onChange={(e) => setAdvanced(e.target.checked)}
+        style={{ display: 'block', margin: '16px 0' }}
+      >
+        {t('setting.operation.ratio.advanced')}
+      </Checkbox>
+      {advanced && (
+        <>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              {t('setting.operation.ratio.model.title')}
+            </label>
+            <Input.TextArea
+              onChange={(e) => handleInputChange('ModelRatio', e.target.value)}
+              style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+              autoComplete='new-password'
+              value={inputs.ModelRatio}
+              placeholder={t('setting.operation.ratio.model.placeholder')}
+              rows={10}
             />
-            <QuotaInput
-              label={t('setting.operation.quota.pre_consume')}
-              name='PreConsumedQuota'
-              quota={Number(inputs.PreConsumedQuota) || 0}
-              onQuotaChange={handleQuotaOptionChange}
-              placeholder={t('setting.operation.quota.pre_consume_placeholder')}
+          </div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              {t('setting.operation.ratio.completion.title')}
+            </label>
+            <Input.TextArea
+              onChange={(e) =>
+                handleInputChange('CompletionRatio', e.target.value)
+              }
+              style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+              autoComplete='new-password'
+              value={inputs.CompletionRatio}
+              placeholder={t('setting.operation.ratio.completion.placeholder')}
+              rows={10}
             />
-            <QuotaInput
-              label={t('setting.operation.quota.inviter_reward')}
-              name='QuotaForInviter'
-              quota={Number(inputs.QuotaForInviter) || 0}
-              onQuotaChange={handleQuotaOptionChange}
-              placeholder={t(
-                'setting.operation.quota.inviter_reward_placeholder'
-              )}
+          </div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              {t('setting.operation.ratio.group.title')}
+            </label>
+            <Input.TextArea
+              onChange={(e) => handleInputChange('GroupRatio', e.target.value)}
+              style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+              autoComplete='new-password'
+              value={inputs.GroupRatio}
+              placeholder={t('setting.operation.ratio.group.placeholder')}
+              rows={10}
             />
-            <QuotaInput
-              label={t('setting.operation.quota.invitee_reward')}
-              name='QuotaForInvitee'
-              quota={Number(inputs.QuotaForInvitee) || 0}
-              onQuotaChange={handleQuotaOptionChange}
-              placeholder={t(
-                'setting.operation.quota.invitee_reward_placeholder'
-              )}
-            />
-          </Form.Group>
-          <Form.Button
-            onClick={() => {
-              submitConfig('quota').then();
-            }}
-          >
-            {t('setting.operation.quota.buttons.save')}
-          </Form.Button>
-          <Divider />
-          <Header as='h3'>{t('setting.operation.ratio.title')}</Header>
-          <PriceEditor
-            modelRatio={inputs.ModelRatio}
-            completionRatio={inputs.CompletionRatio}
-            groupRatio={inputs.GroupRatio}
-            onChange={(patch) =>
-              setInputs((current) => ({ ...current, ...patch }))
+          </div>
+        </>
+      )}
+      <div style={{ marginBottom: 24 }}>
+        <Button
+          type='primary'
+          loading={loading}
+          onClick={() => submitConfig('ratio').then()}
+        >
+          {t('setting.operation.ratio.buttons.save')}
+        </Button>
+      </div>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.operation.log.title')}
+      </Typography.Title>
+      <Checkbox
+        checked={inputs.LogConsumeEnabled === 'true'}
+        onChange={(e) => handleInputChange('LogConsumeEnabled', e.target.checked ? 'true' : 'false')}
+        style={{ display: 'block', marginBottom: 12 }}
+      >
+        {t('setting.operation.log.enable_consume')}
+      </Checkbox>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.operation.log.target_time')}</label>
+        <Input
+          value={historyTimestamp}
+          type='datetime-local'
+          style={{ maxWidth: 250 }}
+          onChange={(e) => setHistoryTimestamp(e.target.value)}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button
+          danger
+          loading={loading}
+          onClick={() => deleteHistoryLogs().then()}
+        >
+          {t('setting.operation.log.buttons.clean')}
+        </Button>
+      </div>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.operation.monitor.title')}
+      </Typography.Title>
+      <Space size={24} wrap align='start' style={{ marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.operation.monitor.max_response_time')}
+          </label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.ChannelDisableThreshold}
+            type='number'
+            min={0}
+            style={{ width: 200 }}
+            placeholder={t(
+              'setting.operation.monitor.max_response_time_placeholder'
+            )}
+            onChange={(e) =>
+              handleInputChange('ChannelDisableThreshold', e.target.value)
             }
           />
-          <Form.Checkbox
-            toggle
-            label={t('setting.operation.ratio.advanced')}
-            checked={advanced}
-            onChange={() => setAdvanced(!advanced)}
+        </div>
+        <QuotaInput
+          label={t('setting.operation.monitor.quota_reminder')}
+          name='QuotaRemindThreshold'
+          quota={Number(inputs.QuotaRemindThreshold) || 0}
+          onQuotaChange={handleQuotaOptionChange}
+          placeholder={t('setting.operation.monitor.quota_reminder_placeholder')}
+        />
+      </Space>
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 12 }}>
+        <Checkbox
+          checked={inputs.AutomaticDisableChannelEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'AutomaticDisableChannelEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.operation.monitor.auto_disable')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.AutomaticEnableChannelEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'AutomaticEnableChannelEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.operation.monitor.auto_enable')}
+        </Checkbox>
+      </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Button
+          type='primary'
+          loading={loading}
+          onClick={() => submitConfig('monitor').then()}
+        >
+          {t('setting.operation.monitor.buttons.save')}
+        </Button>
+      </div>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.operation.general.title')}
+      </Typography.Title>
+      <Space size={24} wrap align='start' style={{ marginBottom: 12 }}>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.operation.general.topup_link')}
+          </label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.TopUpLink}
+            placeholder={t('setting.operation.general.topup_link_placeholder')}
+            onChange={(e) => handleInputChange('TopUpLink', e.target.value)}
+            style={{ width: 280 }}
           />
-          {advanced && (
-            <>
-              <Form.Group widths='equal'>
-                <Form.TextArea
-                  label={t('setting.operation.ratio.model.title')}
-                  name='ModelRatio'
-                  onChange={handleInputChange}
-                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-                  autoComplete='new-password'
-                  value={inputs.ModelRatio}
-                  placeholder={t('setting.operation.ratio.model.placeholder')}
-                />
-              </Form.Group>
-              <Form.Group widths='equal'>
-                <Form.TextArea
-                  label={t('setting.operation.ratio.completion.title')}
-                  name='CompletionRatio'
-                  onChange={handleInputChange}
-                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-                  autoComplete='new-password'
-                  value={inputs.CompletionRatio}
-                  placeholder={t('setting.operation.ratio.completion.placeholder')}
-                />
-              </Form.Group>
-              <Form.Group widths='equal'>
-                <Form.TextArea
-                  label={t('setting.operation.ratio.group.title')}
-                  name='GroupRatio'
-                  onChange={handleInputChange}
-                  style={{ minHeight: 250, fontFamily: 'JetBrains Mono, Consolas' }}
-                  autoComplete='new-password'
-                  value={inputs.GroupRatio}
-                  placeholder={t('setting.operation.ratio.group.placeholder')}
-                />
-              </Form.Group>
-            </>
-          )}
-          <Form.Button
-            onClick={() => {
-              submitConfig('ratio').then();
-            }}
-          >
-            {t('setting.operation.ratio.buttons.save')}
-          </Form.Button>
-          <Divider />
-          <Header as='h3'>{t('setting.operation.log.title')}</Header>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.LogConsumeEnabled === 'true'}
-              label={t('setting.operation.log.enable_consume')}
-              name='LogConsumeEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Group widths={4}>
-            <Form.Input
-              label={t('setting.operation.log.target_time')}
-              value={historyTimestamp}
-              type='datetime-local'
-              name='history_timestamp'
-              onChange={(e, { name, value }) => {
-                setHistoryTimestamp(value);
-              }}
-            />
-          </Form.Group>
-          <Form.Button
-            onClick={() => {
-              deleteHistoryLogs().then();
-            }}
-          >
-            {t('setting.operation.log.buttons.clean')}
-          </Form.Button>
-
-          <Divider />
-          <Header as='h3'>{t('setting.operation.monitor.title')}</Header>
-          <Form.Group widths={3}>
-            <Form.Input
-              label={t('setting.operation.monitor.max_response_time')}
-              name='ChannelDisableThreshold'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.ChannelDisableThreshold}
-              type='number'
-              min='0'
-              placeholder={t(
-                'setting.operation.monitor.max_response_time_placeholder'
-              )}
-            />
-            <QuotaInput
-              label={t('setting.operation.monitor.quota_reminder')}
-              name='QuotaRemindThreshold'
-              quota={Number(inputs.QuotaRemindThreshold) || 0}
-              onQuotaChange={handleQuotaOptionChange}
-              placeholder={t(
-                'setting.operation.monitor.quota_reminder_placeholder'
-              )}
-            />
-          </Form.Group>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.AutomaticDisableChannelEnabled === 'true'}
-              label={t('setting.operation.monitor.auto_disable')}
-              name='AutomaticDisableChannelEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.AutomaticEnableChannelEnabled === 'true'}
-              label={t('setting.operation.monitor.auto_enable')}
-              name='AutomaticEnableChannelEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button
-            onClick={() => {
-              submitConfig('monitor').then();
-            }}
-          >
-            {t('setting.operation.monitor.buttons.save')}
-          </Form.Button>
-
-          <Divider />
-          <Header as='h3'>{t('setting.operation.general.title')}</Header>
-          <Form.Group widths={4}>
-            <Form.Input
-              label={t('setting.operation.general.topup_link')}
-              name='TopUpLink'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.TopUpLink}
-              type='link'
-              placeholder={t(
-                'setting.operation.general.topup_link_placeholder'
-              )}
-            />
-            <Form.Input
-              label={t('setting.operation.general.chat_link')}
-              name='ChatLink'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.ChatLink}
-              type='link'
-              placeholder={t('setting.operation.general.chat_link_placeholder')}
-            />
-            <Form.Input
-              label={t('setting.operation.general.quota_per_unit')}
-              name='QuotaPerUnit'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.QuotaPerUnit}
-              type='number'
-              step='0.01'
-              placeholder={t(
-                'setting.operation.general.quota_per_unit_placeholder'
-              )}
-            />
-            <Form.Input
-              label={t('setting.operation.general.retry_times')}
-              name='RetryTimes'
-              type={'number'}
-              step='1'
-              min='0'
-              onChange={handleInputChange}
-              autoComplete='new-password'
-              value={inputs.RetryTimes}
-              placeholder={t(
-                'setting.operation.general.retry_times_placeholder'
-              )}
-            />
-          </Form.Group>
-          <Form.Group inline>
-            <Form.Checkbox
-              checked={inputs.DisplayInCurrencyEnabled === 'true'}
-              label={t('setting.operation.general.display_in_currency')}
-              name='DisplayInCurrencyEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.DisplayTokenStatEnabled === 'true'}
-              label={t('setting.operation.general.display_token_stat')}
-              name='DisplayTokenStatEnabled'
-              onChange={handleInputChange}
-            />
-            <Form.Checkbox
-              checked={inputs.ApproximateTokenEnabled === 'true'}
-              label={t('setting.operation.general.approximate_token')}
-              name='ApproximateTokenEnabled'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button
-            onClick={() => {
-              submitConfig('general').then();
-            }}
-          >
-            {t('setting.operation.general.buttons.save')}
-          </Form.Button>
-        </Form>
-      </Grid.Column>
-    </Grid>
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.operation.general.chat_link')}
+          </label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.ChatLink}
+            placeholder={t('setting.operation.general.chat_link_placeholder')}
+            onChange={(e) => handleInputChange('ChatLink', e.target.value)}
+            style={{ width: 280 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.operation.general.quota_per_unit')}
+          </label>
+          <Input
+            autoComplete='new-password'
+            value={inputs.QuotaPerUnit}
+            type='number'
+            step='0.01'
+            placeholder={t('setting.operation.general.quota_per_unit_placeholder')}
+            onChange={(e) => handleInputChange('QuotaPerUnit', e.target.value)}
+            style={{ width: 160 }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>
+            {t('setting.operation.general.retry_times')}
+          </label>
+          <Input
+            type='number'
+            step='1'
+            min={0}
+            autoComplete='new-password'
+            value={inputs.RetryTimes}
+            placeholder={t('setting.operation.general.retry_times_placeholder')}
+            onChange={(e) => handleInputChange('RetryTimes', e.target.value)}
+            style={{ width: 120 }}
+          />
+        </div>
+      </Space>
+      <Space size={24} wrap style={{ display: 'flex', marginBottom: 12 }}>
+        <Checkbox
+          checked={inputs.DisplayInCurrencyEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'DisplayInCurrencyEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.operation.general.display_in_currency')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.DisplayTokenStatEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'DisplayTokenStatEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.operation.general.display_token_stat')}
+        </Checkbox>
+        <Checkbox
+          checked={inputs.ApproximateTokenEnabled === 'true'}
+          onChange={(e) =>
+            handleInputChange(
+              'ApproximateTokenEnabled',
+              e.target.checked ? 'true' : 'false'
+            )
+          }
+        >
+          {t('setting.operation.general.approximate_token')}
+        </Checkbox>
+      </Space>
+      <Button
+        type='primary'
+        loading={loading}
+        onClick={() => submitConfig('general').then()}
+      >
+        {t('setting.operation.general.buttons.save')}
+      </Button>
+    </div>
   );
 };
 

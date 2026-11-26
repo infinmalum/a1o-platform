@@ -1,14 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Divider,
-  Form,
-  Header,
-  Image,
-  Message,
-  Modal,
-} from 'semantic-ui-react';
+import { Alert, Button, Input, Modal, Space, Typography } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   API,
@@ -71,7 +63,7 @@ const PersonalSetting = () => {
     return () => clearInterval(countdownInterval); // Clean up on unmount
   }, [disableButton, countdown]);
 
-  const handleInputChange = (e, { name, value }) => {
+  const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
 
@@ -171,198 +163,167 @@ const PersonalSetting = () => {
   };
 
   return (
-    <div style={{ lineHeight: '40px' }}>
-      <Header as='h3'>{t('setting.personal.general.title')}</Header>
-      <Message>{t('setting.personal.general.system_token_notice')}</Message>
-      <Button as={Link} to={`/user/edit/`}>
-        {t('setting.personal.general.buttons.update_profile')}
-      </Button>
-      <Button onClick={generateAccessToken}>
-        {t('setting.personal.general.buttons.generate_token')}
-      </Button>
-      <Button onClick={getAffLink}>
-        {t('setting.personal.general.buttons.copy_invite')}
-      </Button>
-      <Button
-        onClick={() => {
-          setShowAccountDeleteModal(true);
-        }}
-      >
-        {t('setting.personal.general.buttons.delete_account')}
-      </Button>
-
+    <div>
+      <Typography.Title level={5}>
+        {t('setting.personal.general.title')}
+      </Typography.Title>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.personal.general.system_token_notice')}
+        style={{ marginBottom: 12 }}
+      />
+      <Space size={12} wrap style={{ marginBottom: 12 }}>
+        <Link to={`/user/edit/`}>
+          <Button>{t('setting.personal.general.buttons.update_profile')}</Button>
+        </Link>
+        <Button onClick={generateAccessToken}>
+          {t('setting.personal.general.buttons.generate_token')}
+        </Button>
+        <Button onClick={getAffLink}>
+          {t('setting.personal.general.buttons.copy_invite')}
+        </Button>
+        <Button
+          danger
+          onClick={() => {
+            setShowAccountDeleteModal(true);
+          }}
+        >
+          {t('setting.personal.general.buttons.delete_account')}
+        </Button>
+      </Space>
       {systemToken && (
-        <Form.Input
-          fluid
+        <Input
           readOnly
           value={systemToken}
           onClick={handleSystemTokenClick}
-          style={{ marginTop: '10px' }}
+          style={{ maxWidth: 560, marginBottom: 8 }}
         />
       )}
       {affLink && (
-        <Form.Input
-          fluid
+        <Input
           readOnly
           value={affLink}
           onClick={handleAffLinkClick}
-          style={{ marginTop: '10px' }}
+          style={{ maxWidth: 560 }}
         />
       )}
-      <Divider />
-      <Header as='h3'>{t('setting.personal.binding.title')}</Header>
-      {status.github_oauth && (
-        <Button onClick={() => onGitHubOAuthClicked(status.github_client_id)}>
-          {t('setting.personal.binding.buttons.bind_github')}
+      <Typography.Title level={5} style={{ marginTop: 24 }}>
+        {t('setting.personal.binding.title')}
+      </Typography.Title>
+      <Space size={12} wrap>
+        {status.github_oauth && (
+          <Button onClick={() => onGitHubOAuthClicked(status.github_client_id)}>
+            {t('setting.personal.binding.buttons.bind_github')}
+          </Button>
+        )}
+        {status.lark_client_id && (
+          <Button onClick={() => onLarkOAuthClicked(status.lark_client_id)}>
+            {t('setting.personal.binding.buttons.bind_lark')}
+          </Button>
+        )}
+        <Button onClick={() => setShowEmailBindModal(true)}>
+          {t('setting.personal.binding.buttons.bind_email')}
         </Button>
-      )}
-      {status.lark_client_id && (
-        <Button onClick={() => onLarkOAuthClicked(status.lark_client_id)}>
-          {t('setting.personal.binding.buttons.bind_lark')}
-        </Button>
-      )}
-      <Button onClick={() => setShowEmailBindModal(true)}>
-        {t('setting.personal.binding.buttons.bind_email')}
-      </Button>
+      </Space>
+
       <Modal
-        onClose={() => setShowEmailBindModal(false)}
-        onOpen={() => setShowEmailBindModal(true)}
         open={showEmailBindModal}
-        size={'tiny'}
-        style={{ maxWidth: '450px' }}
+        onCancel={() => setShowEmailBindModal(false)}
+        title={t('setting.personal.binding.email.title')}
+        footer={null}
       >
-        <Modal.Header>{t('setting.personal.binding.email.title')}</Modal.Header>
-        <Modal.Content>
-          <Modal.Description>
-            <Form size='large'>
-              <Form.Input
-                fluid
-                placeholder={t(
-                  'setting.personal.binding.email.email_placeholder'
-                )}
-                onChange={handleInputChange}
-                name='email'
-                type='email'
-                action={
-                  <Button
-                    onClick={sendVerificationCode}
-                    disabled={disableButton || loading}
-                  >
-                    {disableButton
-                      ? t('setting.personal.binding.email.get_code_retry', {
-                          countdown,
-                        })
-                      : t('setting.personal.binding.email.get_code')}
-                  </Button>
-                }
-              />
-              <Form.Input
-                fluid
-                placeholder={t(
-                  'setting.personal.binding.email.code_placeholder'
-                )}
-                name='email_verification_code'
-                value={inputs.email_verification_code}
-                onChange={handleInputChange}
-              />
-              {turnstileEnabled && (
-                <Turnstile
-                  sitekey={turnstileSiteKey}
-                  onVerify={(token) => {
-                    setTurnstileToken(token);
-                  }}
-                />
-              )}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginTop: '1rem',
-                }}
-              >
-                <Button
-                  fluid
-                  size='large'
-                  onClick={bindEmail}
-                  loading={loading}
-                >
-                  {t('setting.personal.binding.email.bind')}
-                </Button>
-                <div style={{ width: '1rem' }}></div>
-                <Button
-                  fluid
-                  size='large'
-                  onClick={() => setShowEmailBindModal(false)}
-                >
-                  {t('setting.personal.binding.email.cancel')}
-                </Button>
-              </div>
-            </Form>
-          </Modal.Description>
-        </Modal.Content>
+        <div style={{ marginBottom: 12 }}>
+          <Space.Compact style={{ width: '100%' }}>
+            <Input
+              placeholder={t('setting.personal.binding.email.email_placeholder')}
+              type='email'
+              value={inputs.email}
+              onChange={(e) => handleInputChange('email', e.target.value)}
+            />
+            <Button
+              onClick={sendVerificationCode}
+              disabled={disableButton || loading}
+            >
+              {disableButton
+                ? t('setting.personal.binding.email.get_code_retry', {
+                    countdown,
+                  })
+                : t('setting.personal.binding.email.get_code')}
+            </Button>
+          </Space.Compact>
+        </div>
+        <Input
+          placeholder={t('setting.personal.binding.email.code_placeholder')}
+          value={inputs.email_verification_code}
+          onChange={(e) =>
+            handleInputChange('email_verification_code', e.target.value)
+          }
+          style={{ marginBottom: 12 }}
+        />
+        {turnstileEnabled && (
+          <Turnstile
+            sitekey={turnstileSiteKey}
+            onVerify={(token) => {
+              setTurnstileToken(token);
+            }}
+          />
+        )}
+        <Space
+          style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}
+        >
+          <Button onClick={() => setShowEmailBindModal(false)}>
+            {t('setting.personal.binding.email.cancel')}
+          </Button>
+          <Button type='primary' onClick={bindEmail} loading={loading}>
+            {t('setting.personal.binding.email.bind')}
+          </Button>
+        </Space>
       </Modal>
+
       <Modal
-        onClose={() => setShowAccountDeleteModal(false)}
-        onOpen={() => setShowAccountDeleteModal(true)}
         open={showAccountDeleteModal}
-        size={'tiny'}
-        style={{ maxWidth: '450px' }}
+        onCancel={() => setShowAccountDeleteModal(false)}
+        title={t('setting.personal.delete_account.title')}
+        footer={null}
       >
-        <Modal.Header>
-          {t('setting.personal.delete_account.title')}
-        </Modal.Header>
-        <Modal.Content>
-          <Message>{t('setting.personal.delete_account.warning')}</Message>
-          <Modal.Description>
-            <Form size='large'>
-              <Form.Input
-                fluid
-                placeholder={t(
-                  'setting.personal.delete_account.confirm_placeholder',
-                  {
-                    username: userState?.user?.username,
-                  }
-                )}
-                name='self_account_deletion_confirmation'
-                value={inputs.self_account_deletion_confirmation}
-                onChange={handleInputChange}
-              />
-              {turnstileEnabled && (
-                <Turnstile
-                  sitekey={turnstileSiteKey}
-                  onVerify={(token) => {
-                    setTurnstileToken(token);
-                  }}
-                />
-              )}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginTop: '1rem',
-                }}
-              >
-                <Button
-                  color='red'
-                  fluid
-                  size='large'
-                  onClick={deleteAccount}
-                  loading={loading}
-                >
-                  {t('setting.personal.delete_account.buttons.confirm')}
-                </Button>
-                <div style={{ width: '1rem' }}></div>
-                <Button
-                  fluid
-                  size='large'
-                  onClick={() => setShowAccountDeleteModal(false)}
-                >
-                  {t('setting.personal.delete_account.buttons.cancel')}
-                </Button>
-              </div>
-            </Form>
-          </Modal.Description>
-        </Modal.Content>
+        <Alert
+          type='warning'
+          showIcon
+          message={t('setting.personal.delete_account.warning')}
+          style={{ marginBottom: 12 }}
+        />
+        <Input
+          placeholder={t('setting.personal.delete_account.confirm_placeholder', {
+            username: userState?.user?.username,
+          })}
+          value={inputs.self_account_deletion_confirmation}
+          onChange={(e) =>
+            handleInputChange(
+              'self_account_deletion_confirmation',
+              e.target.value
+            )
+          }
+          style={{ marginBottom: 12 }}
+        />
+        {turnstileEnabled && (
+          <Turnstile
+            sitekey={turnstileSiteKey}
+            onVerify={(token) => {
+              setTurnstileToken(token);
+            }}
+          />
+        )}
+        <Space
+          style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}
+        >
+          <Button onClick={() => setShowAccountDeleteModal(false)}>
+            {t('setting.personal.delete_account.buttons.cancel')}
+          </Button>
+          <Button danger type='primary' onClick={deleteAccount} loading={loading}>
+            {t('setting.personal.delete_account.buttons.confirm')}
+          </Button>
+        </Space>
       </Modal>
     </div>
   );

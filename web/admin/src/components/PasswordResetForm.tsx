@@ -1,23 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Button,
-  Form,
-  Grid,
-  Header,
-  Image,
-  Card,
-  Message,
-} from 'semantic-ui-react';
+import { Button, Card, Form, Input } from 'antd';
+import { MailOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
 import Turnstile from 'react-turnstile';
 
 const PasswordResetForm = () => {
   const { t } = useTranslation();
-  const [inputs, setInputs] = useState({
-    email: '',
-  });
-  const { email } = inputs;
+  const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
@@ -53,26 +43,20 @@ const PasswordResetForm = () => {
     return () => clearInterval(countdownInterval);
   }, [disableButton, countdown]);
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
-  }
-
-  async function handleSubmit(e) {
+  async function handleSubmit(values) {
     setDisableButton(true);
-    if (!email) return;
     if (turnstileEnabled && turnstileToken === '') {
       showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
       return;
     }
     setLoading(true);
     const res = await API.get(
-      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`
+      `/api/reset_password?email=${values.email}&turnstile=${turnstileToken}`
     );
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('auth.reset.notice'));
-      setInputs({ ...inputs, email: '' });
+      form.resetFields();
     } else {
       showError(message);
       setDisableButton(false);
@@ -82,78 +66,58 @@ const PasswordResetForm = () => {
   }
 
   return (
-    <Grid textAlign='center' style={{ marginTop: '48px' }}>
-      <Grid.Column style={{ maxWidth: 450 }}>
-        <Card
-          fluid
-          className='chart-card'
-          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}
-        >
-          <Card.Content>
-            <Card.Header>
-              <Header
-                as='h2'
-                textAlign='center'
-                style={{ marginBottom: '1.5em' }}
-              >
-                <Image src={logo} style={{ marginBottom: '10px' }} />
-                <Header.Content>{t('auth.reset.title')}</Header.Content>
-              </Header>
-            </Card.Header>
-            <Form size='large'>
-              <Form.Input
-                fluid
-                icon='mail'
-                iconPosition='left'
-                placeholder={t('auth.reset.email')}
-                name='email'
-                value={email}
-                onChange={handleChange}
-                style={{ marginBottom: '1em' }}
-              />
-              {turnstileEnabled && (
-                <div
-                  style={{
-                    marginBottom: '1em',
-                    display: 'flex',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Turnstile
-                    sitekey={turnstileSiteKey}
-                    onVerify={(token) => {
-                      setTurnstileToken(token);
-                    }}
-                  />
-                </div>
-              )}
-              <Button
-                color='blue'
-                fluid
-                size='large'
-                onClick={handleSubmit}
-                loading={loading}
-                disabled={disableButton}
-                style={{
-                  background: '#2F73FF', // 使用更现代的蓝色
-                  color: 'white',
-                  marginBottom: '1.5em',
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+      <Card
+        style={{
+          width: '100%',
+          maxWidth: 450,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <img src={logo} alt='logo' style={{ marginBottom: 10 }} />
+          <h2 style={{ margin: 0 }}>{t('auth.reset.title')}</h2>
+        </div>
+        <Form form={form} size='large' onFinish={handleSubmit}>
+          <Form.Item name='email' rules={[{ required: true, message: t('auth.reset.email') }]}>
+            <Input prefix={<MailOutlined />} placeholder={t('auth.reset.email')} type='email' />
+          </Form.Item>
+          {turnstileEnabled && (
+            <div
+              style={{
+                marginBottom: '1em',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <Turnstile
+                sitekey={turnstileSiteKey}
+                onVerify={(token) => {
+                  setTurnstileToken(token);
                 }}
-              >
-                {disableButton
-                  ? t('auth.register.get_code_retry', { countdown })
-                  : t('auth.reset.button')}
-              </Button>
-            </Form>
-            <Message style={{ background: 'transparent', boxShadow: 'none' }}>
-              <p style={{ fontSize: '0.9em', color: '#666' }}>
-                {t('auth.reset.notice')}
-              </p>
-            </Message>
-          </Card.Content>
-        </Card>
-      </Grid.Column>
-    </Grid>
+              />
+            </div>
+          )}
+          <Form.Item>
+            <Button
+              type='primary'
+              size='large'
+              htmlType='submit'
+              loading={loading}
+              disabled={disableButton}
+              block
+            >
+              {disableButton
+                ? t('auth.register.get_code_retry', { countdown })
+                : t('auth.reset.button')}
+            </Button>
+          </Form.Item>
+        </Form>
+        <p style={{ fontSize: '0.9em', color: '#666', textAlign: 'center' }}>
+          {t('auth.reset.notice')}
+        </p>
+      </Card>
+    </div>
   );
 };
 

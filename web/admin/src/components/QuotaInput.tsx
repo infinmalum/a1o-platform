@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Form } from 'semantic-ui-react';
+import { Button, Input, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
   amountToQuota,
@@ -55,42 +55,41 @@ const QuotaInput = ({
   };
 
   return (
-    <Form.Field>
-      <Form.Input
-        label={
-          usdMode
-            ? t('common.quotaInput.usd_hint', {
-                label,
-                quota: rawQuota.toLocaleString(),
-              })
-            : t('common.quotaInput.quota_hint', {
-                label,
-                amount: quotaToAmount(rawQuota).toFixed(2),
-              })
-        }
-        name={name}
-        placeholder={placeholder}
-        onChange={(e, { value }) => setText(value)}
-        onBlur={commit}
-        value={text}
-        type='number'
-        step={usdMode ? '0.01' : '1'}
-        min='0'
-        disabled={disabled}
-        autoComplete='new-password'
-        action={
-          <Button
-            type='button'
-            tabIndex={-1}
-            onClick={() => setUsdMode((mode) => !mode)}
-          >
-            {usdMode
-              ? t('common.quotaInput.switch_quota')
-              : t('common.quotaInput.switch_usd')}
-          </Button>
-        }
-      />
-    </Form.Field>
+    <div>
+      <Typography.Text type='secondary' style={{ display: 'block', marginBottom: 4 }}>
+        {usdMode
+          ? t('common.quotaInput.usd_hint', {
+              label,
+              quota: rawQuota.toLocaleString(),
+            })
+          : t('common.quotaInput.quota_hint', {
+              label,
+              amount: quotaToAmount(rawQuota).toFixed(2),
+            })}
+      </Typography.Text>
+      <Space.Compact style={{ width: '100%' }}>
+        <Input
+          placeholder={placeholder}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onPressEnter={commit}
+          value={text}
+          type='number'
+          step={usdMode ? '0.01' : '1'}
+          min={0}
+          disabled={disabled}
+          autoComplete='new-password'
+        />
+        <Button
+          tabIndex={-1}
+          onClick={() => setUsdMode((mode) => !mode)}
+        >
+          {usdMode
+            ? t('common.quotaInput.switch_quota')
+            : t('common.quotaInput.switch_usd')}
+        </Button>
+      </Space.Compact>
+    </div>
   );
 };
 

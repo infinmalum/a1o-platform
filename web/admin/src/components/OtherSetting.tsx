@@ -1,16 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Divider,
-  Form,
-  Grid,
-  Header,
-  Message,
-  Modal,
-} from 'semantic-ui-react';
+import { Alert, Button, Divider, Input, Modal, Typography } from 'antd';
 import { API, showError, showSuccess, verifyJSON } from '../helpers';
 import { marked } from 'marked';
+
+const fieldStyle = { marginBottom: 16 };
+const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -64,7 +59,7 @@ const OtherSetting = () => {
     setLoading(false);
   };
 
-  const handleInputChange = async (e, { name, value }) => {
+  const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
 
@@ -109,118 +104,136 @@ const OtherSetting = () => {
   };
 
   return (
-    <Grid columns={1}>
-      <Grid.Column>
-        <Form loading={loading}>
-          <Header as='h3'>{t('setting.other.notice.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.other.notice.content')}
-              placeholder={t('setting.other.notice.content_placeholder')}
-              value={inputs.Notice}
-              name='Notice'
-              onChange={handleInputChange}
-              style={{ minHeight: 100, fontFamily: 'JetBrains Mono, Consolas' }}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitNotice}>
-            {t('setting.other.notice.buttons.save')}
-          </Form.Button>
+    <div style={{ maxWidth: 860 }}>
+      <Typography.Title level={5}>
+        {t('setting.other.notice.title')}
+      </Typography.Title>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.other.notice.content')}</label>
+        <Input.TextArea
+          placeholder={t('setting.other.notice.content_placeholder')}
+          value={inputs.Notice}
+          onChange={(e) => handleInputChange('Notice', e.target.value)}
+          style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+          rows={5}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitNotice}>
+          {t('setting.other.notice.buttons.save')}
+        </Button>
+      </div>
 
-          <Divider />
-          <Header as='h3'>{t('setting.other.system.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.Input
-              label={t('setting.other.system.name')}
-              placeholder={t('setting.other.system.name_placeholder')}
-              value={inputs.SystemName}
-              name='SystemName'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitSystemName}>
-            {t('setting.other.system.buttons.save_name')}
-          </Form.Button>
-          <Form.Group widths='equal'>
-            <Form.Input
-              label={t('setting.other.system.logo')}
-              placeholder={t('setting.other.system.logo_placeholder')}
-              value={inputs.Logo}
-              name='Logo'
-              type='url'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitLogo}>
-            {t('setting.other.system.buttons.save_logo')}
-          </Form.Button>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.other.system.title')}
+      </Typography.Title>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.other.system.name')}</label>
+        <Input
+          placeholder={t('setting.other.system.name_placeholder')}
+          value={inputs.SystemName}
+          onChange={(e) => handleInputChange('SystemName', e.target.value)}
+          style={{ maxWidth: 420 }}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitSystemName}>
+          {t('setting.other.system.buttons.save_name')}
+        </Button>
+      </div>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.other.system.logo')}</label>
+        <Input
+          placeholder={t('setting.other.system.logo_placeholder')}
+          value={inputs.Logo}
+          type='url'
+          onChange={(e) => handleInputChange('Logo', e.target.value)}
+          style={{ maxWidth: 420 }}
+        />
+      </div>
+      <Button loading={loading} onClick={submitLogo}>
+        {t('setting.other.system.buttons.save_logo')}
+      </Button>
 
-          <Divider />
-          <Header as='h3'>{t('setting.other.content.title')}</Header>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.other.content.homepage.title')}
-              placeholder={t('setting.other.content.homepage.placeholder')}
-              value={inputs.HomePageContent}
-              name='HomePageContent'
-              onChange={handleInputChange}
-              style={{ minHeight: 150, fontFamily: 'JetBrains Mono, Consolas' }}
-            />
-          </Form.Group>
-          <Form.Button onClick={() => submitOption('HomePageContent')}>
-            {t('setting.other.content.buttons.save_homepage')}
-          </Form.Button>
-          <Form.Group widths='equal'>
-            <Form.TextArea
-              label={t('setting.other.content.about.title')}
-              placeholder={t('setting.other.content.about.placeholder')}
-              value={inputs.About}
-              name='About'
-              onChange={handleInputChange}
-              style={{ minHeight: 150, fontFamily: 'JetBrains Mono, Consolas' }}
-            />
-          </Form.Group>
-          <Form.Button onClick={submitAbout}>
-            {t('setting.other.content.buttons.save_about')}
-          </Form.Button>
-          <Message>{t('setting.other.copyright.notice')}</Message>
-          <Form.Group widths='equal'>
-            <Form.Input
-              label={t('setting.other.content.footer.title')}
-              placeholder={t('setting.other.content.footer.placeholder')}
-              value={inputs.Footer}
-              name='Footer'
-              onChange={handleInputChange}
-            />
-          </Form.Group>
-          <Form.Button onClick={() => submitOption('Footer')}>
-            {t('setting.other.content.buttons.save_footer')}
-          </Form.Button>
-        </Form>
-      </Grid.Column>
+      <Divider />
+      <Typography.Title level={5}>
+        {t('setting.other.content.title')}
+      </Typography.Title>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>
+          {t('setting.other.content.homepage.title')}
+        </label>
+        <Input.TextArea
+          placeholder={t('setting.other.content.homepage.placeholder')}
+          value={inputs.HomePageContent}
+          onChange={(e) => handleInputChange('HomePageContent', e.target.value)}
+          style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+          rows={8}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={() => submitOption('HomePageContent')}>
+          {t('setting.other.content.buttons.save_homepage')}
+        </Button>
+      </div>
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.other.content.about.title')}</label>
+        <Input.TextArea
+          placeholder={t('setting.other.content.about.placeholder')}
+          value={inputs.About}
+          onChange={(e) => handleInputChange('About', e.target.value)}
+          style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+          rows={8}
+        />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <Button loading={loading} onClick={submitAbout}>
+          {t('setting.other.content.buttons.save_about')}
+        </Button>
+      </div>
+      <Alert
+        type='info'
+        showIcon
+        message={t('setting.other.copyright.notice')}
+        style={{ marginBottom: 12 }}
+      />
+      <div style={fieldStyle}>
+        <label style={labelStyle}>{t('setting.other.content.footer.title')}</label>
+        <Input
+          placeholder={t('setting.other.content.footer.placeholder')}
+          value={inputs.Footer}
+          onChange={(e) => handleInputChange('Footer', e.target.value)}
+          style={{ maxWidth: 420 }}
+        />
+      </div>
+      <Button loading={loading} onClick={() => submitOption('Footer')}>
+        {t('setting.other.content.buttons.save_footer')}
+      </Button>
+
       <Modal
-        onClose={() => setShowUpdateModal(false)}
-        onOpen={() => setShowUpdateModal(true)}
         open={showUpdateModal}
-      >
-        <Modal.Header>新版本：{updateData.tag_name}</Modal.Header>
-        <Modal.Content>
-          <Modal.Description>
-            <div dangerouslySetInnerHTML={{ __html: updateData.content }}></div>
-          </Modal.Description>
-        </Modal.Content>
-        <Modal.Actions>
-          <Button onClick={() => setShowUpdateModal(false)}>关闭</Button>
+        onCancel={() => setShowUpdateModal(false)}
+        title={`新版本：${updateData.tag_name}`}
+        footer={[
+          <Button key='close' onClick={() => setShowUpdateModal(false)}>
+            关闭
+          </Button>,
           <Button
-            content='详情'
+            key='detail'
+            type='primary'
             onClick={() => {
               setShowUpdateModal(false);
               openGitHubRelease();
             }}
-          />
-        </Modal.Actions>
+          >
+            详情
+          </Button>,
+        ]}
+      >
+        <div dangerouslySetInnerHTML={{ __html: updateData.content }}></div>
       </Modal>
-    </Grid>
+    </div>
   );
 };
 

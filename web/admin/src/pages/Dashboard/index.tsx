@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Card, Grid} from 'semantic-ui-react';
+import {Card} from 'antd';
 import {
   Bar,
   BarChart,
@@ -234,223 +234,172 @@ const Dashboard = () => {
     padding: { left: 30, right: 30 }, // 增加两侧的内边距，确保首尾标签完整显示
   };
 
+  const chartTooltipStyle = {
+    background: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+  };
+
   return (
     <div className='dashboard-container'>
       <BusinessOverview />
       {/* 三个并排的折线图 */}
-      <Grid columns={3} stackable className='charts-grid'>
-        <Grid.Column>
-          <Card fluid className='chart-card'>
-            <Card.Content>
-              <Card.Header>
-                {t('dashboard.charts.requests.title')}
-                {/* <span className='stat-value'>{summaryData.todayRequests}</span> */}
-              </Card.Header>
-              <div className='chart-container'>
-                <ResponsiveContainer
-                  width='100%'
-                  height={120}
-                >
-                  <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid
-                      strokeDasharray='3 3'
-                      vertical={chartConfig.lineChart.grid.vertical}
-                      horizontal={chartConfig.lineChart.grid.horizontal}
-                      opacity={chartConfig.lineChart.grid.opacity}
-                    />
-                    <XAxis {...xAxisConfig} />
-                    <YAxis hide={true} />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#fff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                      }}
-                      formatter={(value) => [
-                        value,
-                        t('dashboard.charts.requests.tooltip'),
-                      ]}
-                      labelFormatter={(label) =>
-                        `${t(
-                          'dashboard.statistics.tooltip.date'
-                        )}: ${formatDate(label)}`
-                      }
-                    />
-                    <Line
-                      type='monotone'
-                      dataKey='requests'
-                      stroke={chartConfig.colors.requests}
-                      strokeWidth={chartConfig.lineChart.line.strokeWidth}
-                      dot={chartConfig.lineChart.line.dot}
-                      activeDot={chartConfig.lineChart.line.activeDot}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card.Content>
-          </Card>
-        </Grid.Column>
-
-        <Grid.Column>
-          <Card fluid className='chart-card'>
-            <Card.Content>
-              <Card.Header>
-                {t('dashboard.charts.quota.title')}
-                {/* <span className='stat-value'>
-                  ${summaryData.todayQuota.toFixed(3)}
-                </span> */}
-              </Card.Header>
-              <div className='chart-container'>
-                <ResponsiveContainer
-                  width='100%'
-                  height={120}
-                >
-                  <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid
-                      strokeDasharray='3 3'
-                      vertical={chartConfig.lineChart.grid.vertical}
-                      horizontal={chartConfig.lineChart.grid.horizontal}
-                      opacity={chartConfig.lineChart.grid.opacity}
-                    />
-                    <XAxis {...xAxisConfig} />
-                    <YAxis hide={true} />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#fff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                      }}
-                      formatter={(value) => [
-                        value.toFixed(6),
-                        t('dashboard.charts.quota.tooltip'),
-                      ]}
-                      labelFormatter={(label) =>
-                        `${t(
-                          'dashboard.statistics.tooltip.date'
-                        )}: ${formatDate(label)}`
-                      }
-                    />
-                    <Line
-                      type='monotone'
-                      dataKey='quota'
-                      stroke={chartConfig.colors.quota}
-                      strokeWidth={chartConfig.lineChart.line.strokeWidth}
-                      dot={chartConfig.lineChart.line.dot}
-                      activeDot={chartConfig.lineChart.line.activeDot}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card.Content>
-          </Card>
-        </Grid.Column>
-
-        <Grid.Column>
-          <Card fluid className='chart-card'>
-            <Card.Content>
-              <Card.Header>
-                {t('dashboard.charts.tokens.title')}
-                {/* <span className='stat-value'>{summaryData.todayTokens}</span> */}
-              </Card.Header>
-              <div className='chart-container'>
-                <ResponsiveContainer
-                  width='100%'
-                  height={120}
-                >
-                  <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid
-                      strokeDasharray='3 3'
-                      vertical={chartConfig.lineChart.grid.vertical}
-                      horizontal={chartConfig.lineChart.grid.horizontal}
-                      opacity={chartConfig.lineChart.grid.opacity}
-                    />
-                    <XAxis {...xAxisConfig} />
-                    <YAxis hide={true} />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#fff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                      }}
-                      formatter={(value) => [
-                        value,
-                        t('dashboard.charts.tokens.tooltip'),
-                      ]}
-                      labelFormatter={(label) =>
-                        `${t(
-                          'dashboard.statistics.tooltip.date'
-                        )}: ${formatDate(label)}`
-                      }
-                    />
-                    <Line
-                      type='monotone'
-                      dataKey='tokens'
-                      stroke={chartConfig.colors.tokens}
-                      strokeWidth={chartConfig.lineChart.line.strokeWidth}
-                      dot={chartConfig.lineChart.line.dot}
-                      activeDot={chartConfig.lineChart.line.activeDot}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card.Content>
-          </Card>
-        </Grid.Column>
-      </Grid>
-
-      {/* 模型使用统计 */}
-      <Card fluid className='chart-card'>
-        <Card.Content>
-          <Card.Header>{t('dashboard.statistics.title')}</Card.Header>
+      <div className='charts-grid'>
+        <Card className='chart-card' title={t('dashboard.charts.requests.title')}>
           <div className='chart-container'>
-            <ResponsiveContainer width='100%' height={300}>
-              <BarChart data={modelData}>
+            <ResponsiveContainer width='100%' height={120}>
+              <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
                 <CartesianGrid
                   strokeDasharray='3 3'
-                  vertical={false}
-                  opacity={0.1}
+                  vertical={chartConfig.lineChart.grid.vertical}
+                  horizontal={chartConfig.lineChart.grid.horizontal}
+                  opacity={chartConfig.lineChart.grid.opacity}
                 />
                 <XAxis {...xAxisConfig} />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 12, fill: '#A3AED0' }}
-                />
+                <YAxis hide={true} />
                 <Tooltip
-                  contentStyle={{
-                    background: '#fff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  }}
+                  contentStyle={chartTooltipStyle}
+                  formatter={(value) => [
+                    value,
+                    t('dashboard.charts.requests.tooltip'),
+                  ]}
                   labelFormatter={(label) =>
-                    `${t('dashboard.statistics.tooltip.date')}: ${formatDate(
-                      label
-                    )}`
+                    `${t(
+                      'dashboard.statistics.tooltip.date'
+                    )}: ${formatDate(label)}`
                   }
                 />
-                <Legend
-                  wrapperStyle={{
-                    paddingTop: '20px',
-                  }}
+                <Line
+                  type='monotone'
+                  dataKey='requests'
+                  stroke={chartConfig.colors.requests}
+                  strokeWidth={chartConfig.lineChart.line.strokeWidth}
+                  dot={chartConfig.lineChart.line.dot}
+                  activeDot={chartConfig.lineChart.line.activeDot}
                 />
-                {models.map((model, index) => (
-                  <Bar
-                    key={model}
-                    dataKey={model}
-                    stackId='a'
-                    fill={getRandomColor(index)}
-                    name={model}
-                    radius={[4, 4, 0, 0]}
-                  />
-                ))}
-              </BarChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
-        </Card.Content>
+        </Card>
+
+        <Card className='chart-card' title={t('dashboard.charts.quota.title')}>
+          <div className='chart-container'>
+            <ResponsiveContainer width='100%' height={120}>
+              <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
+                <CartesianGrid
+                  strokeDasharray='3 3'
+                  vertical={chartConfig.lineChart.grid.vertical}
+                  horizontal={chartConfig.lineChart.grid.horizontal}
+                  opacity={chartConfig.lineChart.grid.opacity}
+                />
+                <XAxis {...xAxisConfig} />
+                <YAxis hide={true} />
+                <Tooltip
+                  contentStyle={chartTooltipStyle}
+                  formatter={(value) => [
+                    value.toFixed(6),
+                    t('dashboard.charts.quota.tooltip'),
+                  ]}
+                  labelFormatter={(label) =>
+                    `${t(
+                      'dashboard.statistics.tooltip.date'
+                    )}: ${formatDate(label)}`
+                  }
+                />
+                <Line
+                  type='monotone'
+                  dataKey='quota'
+                  stroke={chartConfig.colors.quota}
+                  strokeWidth={chartConfig.lineChart.line.strokeWidth}
+                  dot={chartConfig.lineChart.line.dot}
+                  activeDot={chartConfig.lineChart.line.activeDot}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className='chart-card' title={t('dashboard.charts.tokens.title')}>
+          <div className='chart-container'>
+            <ResponsiveContainer width='100%' height={120}>
+              <LineChart data={timeSeriesData} margin={{ left: 10, right: 10 }}>
+                <CartesianGrid
+                  strokeDasharray='3 3'
+                  vertical={chartConfig.lineChart.grid.vertical}
+                  horizontal={chartConfig.lineChart.grid.horizontal}
+                  opacity={chartConfig.lineChart.grid.opacity}
+                />
+                <XAxis {...xAxisConfig} />
+                <YAxis hide={true} />
+                <Tooltip
+                  contentStyle={chartTooltipStyle}
+                  formatter={(value) => [
+                    value,
+                    t('dashboard.charts.tokens.tooltip'),
+                  ]}
+                  labelFormatter={(label) =>
+                    `${t(
+                      'dashboard.statistics.tooltip.date'
+                    )}: ${formatDate(label)}`
+                  }
+                />
+                <Line
+                  type='monotone'
+                  dataKey='tokens'
+                  stroke={chartConfig.colors.tokens}
+                  strokeWidth={chartConfig.lineChart.line.strokeWidth}
+                  dot={chartConfig.lineChart.line.dot}
+                  activeDot={chartConfig.lineChart.line.activeDot}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* 模型使用统计 */}
+      <Card className='chart-card' title={t('dashboard.statistics.title')}>
+        <div className='chart-container'>
+          <ResponsiveContainer width='100%' height={300}>
+            <BarChart data={modelData}>
+              <CartesianGrid
+                strokeDasharray='3 3'
+                vertical={false}
+                opacity={0.1}
+              />
+              <XAxis {...xAxisConfig} />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: '#A3AED0' }}
+              />
+              <Tooltip
+                contentStyle={chartTooltipStyle}
+                labelFormatter={(label) =>
+                  `${t('dashboard.statistics.tooltip.date')}: ${formatDate(
+                    label
+                  )}`
+                }
+              />
+              <Legend
+                wrapperStyle={{
+                  paddingTop: '20px',
+                }}
+              />
+              {models.map((model, index) => (
+                <Bar
+                  key={model}
+                  dataKey={model}
+                  stackId='a'
+                  fill={getRandomColor(index)}
+                  name={model}
+                  radius={[4, 4, 0, 0]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
     </div>
   );

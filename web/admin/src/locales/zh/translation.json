@@ -1,26 +1,4 @@
 {
-  "privacyReview": {
-    "title": "聊天滥用审查",
-    "description": "可在 15 天留存期内审查已删除的聊天正文。每次打开一页正文都需要填写理由，并记入审查日志。",
-    "queue": "留存会话",
-    "audit": "审查日志",
-    "failed": "审查请求失败。",
-    "retry": "重试",
-    "loading": "加载中…",
-    "session": "会话 ID",
-    "user": "用户",
-    "reviewer": "审查员 ID",
-    "until": "可审查至",
-    "viewed": "查看时间",
-    "action": "审查",
-    "reason": "审查理由",
-    "open": "查看正文",
-    "close": "关闭",
-    "empty": "暂无记录。",
-    "next": "下一页",
-    "first": "首页",
-    "assistant": "助手"
-  },
   "header": {
     "channel": "渠道",
     "upstreamAccount": "订阅账号",
@@ -337,7 +315,7 @@
       "unknown": "未知状态"
     },
     "buttons": {
-      "connect": "连接 ChatGPT 账号",
+      "connect": "连接订阅账号",
       "reconnect": "重新连接",
       "enable": "启用",
       "disable": "禁用",
@@ -356,7 +334,7 @@
       "cancel": "取消"
     },
     "wizard": {
-      "titleConnect": "连接 ChatGPT 订阅账号",
+      "titleConnect": "连接订阅账号",
       "titleReconnect": "重新连接账号",
       "name": "账号名称",
       "namePlaceholder": "可选，默认使用账号邮箱",
@@ -375,13 +353,35 @@
       "complete": "完成连接",
       "cancel": "取消",
       "success": "账号连接成功",
-      "reconnectSuccess": "账号重新连接成功"
+      "reconnectSuccess": "账号重新连接成功",
+      "profileLabel": "选择订阅类型",
+      "disclaimerAgree": "我已阅读并理解上述免责声明，确认仅用于个人自用",
+      "steps": {
+        "chatgpt1": "点击下方按钮打开授权页面，并在浏览器中完成 ChatGPT 登录与授权",
+        "chatgpt2": "登录后浏览器会跳转到本机回调地址（页面可能显示无法访问，属正常现象）",
+        "chatgpt3": "复制浏览器地址栏中的完整 URL，粘贴到下方完成连接",
+        "claude1": "点击下方按钮打开授权页面，并在浏览器中完成 Claude 登录与授权",
+        "claude2": "授权后页面会显示一段 code#state 文本（或跳转到 console 回调地址）",
+        "claude3": "复制该文本或完整 URL，粘贴到下方完成连接",
+        "gemini1": "点击下方按钮打开授权页面，并在浏览器中完成 Google 登录与授权",
+        "gemini2": "授权后浏览器会跳转到 http://localhost:8085/oauth2callback（页面可能显示无法访问，属正常现象）",
+        "gemini3": "复制浏览器地址栏中的完整 URL，粘贴到下方完成连接"
+      },
+      "callbackPlaceholderClaude": "粘贴页面显示的 code#state 文本，或 https://console.anthropic.com/oauth/code/callback?... 完整地址",
+      "callbackPlaceholderGemini": "把浏览器跳转到的 http://localhost:8085/oauth2callback?... 完整地址粘贴到这里"
     },
     "messages": {
       "updateSuccess": "订阅账号更新成功！",
       "deleteSuccess": "订阅账号删除成功！",
       "invalidConcurrency": "并发上限必须是不小于 0 的整数"
-    }
+    },
+    "profiles": {
+      "chatgpt": "ChatGPT 订阅（Sign in with ChatGPT）",
+      "claude": "Claude 订阅（Claude Code）",
+      "gemini": "Google 订阅（Gemini CLI）"
+    },
+    "disclaimer": "免责声明：账号池 / 反代功能仅限个人自用。订阅额度来自你自己的付费账号，仅供本平台个人使用；多账号共享、对外提供或转售均违反上游（OpenAI / Anthropic / Google）服务条款，可能导致账号被限制或封禁。请自行评估并承担使用风险。",
+    "disclaimerBanner": "注意：订阅账号池仅供个人自用。共享、对外提供或转售订阅额度违反上游服务条款，可能导致账号被封禁，风险自担。"
   },
   "log": {
     "title": "操作日志",
@@ -818,7 +818,7 @@
         }
       },
       "copyright": {
-        "notice": "页脚中上游 One API（JustSong，MIT 许可）的版权标识需要保留；本项目原创修改采用 Apache 2.0，归属与适用范围见仓库的 NOTICE 与 LICENSE.upstream。"
+        "notice": "页脚中上游 One API（JustSong，MIT 许可）的版权标识需要保留；本项目原创修改采用 AGPL v3.0，归属与适用范围见仓库的 NOTICE 与 LICENSE.upstream。"
       }
     }
   },
@@ -832,7 +832,7 @@
     "built_by": "基于",
     "built_by_name": "One API",
     "license": "（JustSong）；原项目采用 MIT，A1O Platform 修改采用",
-    "apache": "Apache 2.0"
+    "licenseName": "AGPL v3.0"
   },
   "home": {
     "welcome": {
