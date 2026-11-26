@@ -48,6 +48,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
+          flavor: latest=${{ contains(github.ref_name, '-beta') && 'false' || 'auto' }}
           images: |
             ${{ contains(github.ref, 'alpha') && format('ghcr.io/{0}-alpha', github.repository) || format('ghcr.io/{0}', github.repository) }}
 
