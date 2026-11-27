@@ -54,11 +54,7 @@ func (s *geminiToResponsesStream) event(data []byte) error {
 	if s.emitter.responseID == "" && parsed.responseID != "" {
 		s.emitter.responseID = parsed.responseID
 	}
-	if parsed.hasUsage {
-		s.emitter.usage.Input = max(s.emitter.usage.Input, parsed.prompt)
-		s.emitter.usage.Output = max(s.emitter.usage.Output, parsed.output)
-		s.emitter.usage.Seen = true
-	}
+	parsed.observeUsage(&s.emitter.usage, s.finishReason != "" || parsed.finishReason != "")
 	if parsed.finishReason != "" {
 		s.finishReason = parsed.finishReason
 	}

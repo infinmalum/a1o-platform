@@ -21,6 +21,7 @@ import (
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	relaycontroller "github.com/infinmalum/a1o-platform/relay/controller"
@@ -749,7 +750,7 @@ func runImageUpstream(ctx context.Context, gen *model.ImageGeneration) (string, 
 	}
 
 	var consumeLogId int
-	onSettlement := func(logID int, _ native.Usage) { consumeLogId = logID }
+	onSettlement := func(settlement billing.Settlement) { consumeLogId = settlement.ConsumeLogID }
 
 	nativeChannel, herr := lifecycle.SelectForRequest(lifecycle.Request{
 		Model: gen.Model, Principal: principal,

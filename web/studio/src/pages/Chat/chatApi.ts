@@ -179,6 +179,7 @@ export async function runTurn(
   onEvent: (event: ChatEvent) => void,
   signal: AbortSignal,
   retryMessageId?: number,
+  onRun?: (runId: number) => void,
 ): Promise<void> {
   const response = await studioFetch(`/api/chat/sessions/${sessionId}/run`, {
     method: 'POST',
@@ -194,6 +195,8 @@ export async function runTurn(
     console.error('Chat turn rejected', response.status, payload?.code);
     throw requestError(response.status, payload?.code);
   }
+  const runId = Number(response.headers.get('X-A1O-Run-Id'));
+  if (runId > 0) onRun?.(runId);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

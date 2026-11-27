@@ -2,12 +2,90 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 )
+
+func TestChatStreamDropUsesGatewaySettlement(t *testing.T) {
+	for _, tc := range []struct {
+		name, frames, usageState  string
+		channelType               int
+		inputTokens, outputTokens int64
+	}{
+		{
+			name:        "Anthropic drops after input usage",
+			channelType: channeltype.Anthropic,
+			frames:      "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg\",\"usage\":{\"input_tokens\":100,\"output_tokens\":1}}}\n\n",
+			usageState:  "partial", inputTokens: 100, outputTokens: 1,
+		},
+		{
+			name:        "Responses drops before terminal usage",
+			channelType: channeltype.OpenAIResponses,
+			frames:      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"msg\"}}\n\n",
+			usageState:  "missing",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, tc.frames)
+			}))
+			defer upstream.Close()
+			executor, run := newExecutorFixture(t, tc.channelType, upstream)
+			db := model.DB
+			session := &model.ChatSession{UserId: run.UserId, Model: run.Model, MaxTokens: 128}
+			insertChatFixture(t, session, userMessageAsHistory(&model.ChatMessage{Role: model.ChatRoleUser, Content: "hello"})...)
+			require.NoError(t, db.Model(run).Update("session_id", session.Id).Error)
+			run.SessionId = session.Id
+			history, err := model.GetSessionMessages(session.Id)
+			require.NoError(t, err)
+			before, err := model.GetUserQuota(run.UserId)
+			require.NoError(t, err)
+
+			var events []EventEnvelope
+			err = (&Engine{}).RunChat(context.Background(), collectEvents(&events), ChatTurnRequest{
+				Run: run, Session: session, History: history, Executor: executor, ContextBudget: 1000000,
+			})
+			require.Error(t, err)
+			invocations, err := model.GetRunInvocations(run.Id)
+			require.NoError(t, err)
+			require.Len(t, invocations, 1)
+			invocation := invocations[0]
+			require.NotNil(t, invocation.Usage)
+			var settled billing.Settlement
+			require.NoError(t, json.Unmarshal([]byte(*invocation.Usage), &settled))
+			require.Equal(t, tc.inputTokens, settled.Input)
+			require.Equal(t, tc.outputTokens, settled.Output)
+			require.Equal(t, tc.usageState, settled.UsageState)
+			require.True(t, settled.Interrupted)
+			require.Equal(t, "reservation", settled.ChargeBasis)
+			var log model.Log
+			require.Positive(t, invocation.ConsumeLogId)
+			require.NoError(t, db.First(&log, invocation.ConsumeLogId).Error)
+			require.Equal(t, invocation.Id, log.ModelInvocationId)
+			require.Equal(t, int(settled.Input), log.PromptTokens)
+			require.Equal(t, int(settled.Output), log.CompletionTokens)
+			require.Equal(t, settled.UsageState, log.UsageState)
+			require.Equal(t, settled.ChargeBasis, log.ChargeBasis)
+			require.True(t, log.Interrupted)
+			after, err := model.GetUserQuota(run.UserId)
+			require.NoError(t, err)
+			require.Positive(t, settled.Quota)
+			require.Equal(t, settled.Quota, int64(log.Quota))
+			require.Equal(t, settled.Quota, before-after)
+		})
+	}
+}
 
 // TestIntegrationToolLoopBillsThroughLifecycle drives the engine with the
 // real ModelExecutor against a scripted Responses upstream: leg one requests

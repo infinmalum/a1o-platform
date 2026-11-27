@@ -11,6 +11,7 @@ import (
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
@@ -161,7 +162,7 @@ func (e *ModelExecutor) forward(ctx context.Context, req InvokeRequest, invocati
 	channel lifecycle.Channel, upstream native.Protocol, body []byte,
 ) (InvokeResult, error) {
 	collector := newStreamCollector(req.OnTextDelta, req.OnReasoningDelta)
-	var consumeLogID int
+	var settlement *billing.Settlement
 	input := lifecycle.Request{
 		Protocol:         native.OpenAIResponses,
 		UpstreamProtocol: upstream,
@@ -177,8 +178,8 @@ func (e *ModelExecutor) forward(ctx context.Context, req InvokeRequest, invocati
 		},
 		RetryLimit: config.RetryTimes,
 		HTTPClient: e.HTTPClient,
-		OnSettlement: func(logID int, usage native.Usage) {
-			consumeLogID = logID
+		OnSettlement: func(result billing.Settlement) {
+			settlement = &result
 		},
 	}
 	herr := lifecycle.Forward(ctx, collector, input)
@@ -188,11 +189,11 @@ func (e *ModelExecutor) forward(ctx context.Context, req InvokeRequest, invocati
 		ResponseID:   outcome.ResponseID,
 		Status:       outcome.Status,
 		Items:        outcome.Items,
-		Usage:        outcome.Usage,
 	}
-	invocation.ConsumeLogId = consumeLogID
-	if outcome.Usage.Seen {
-		usage, err := json.Marshal(outcome.Usage)
+	if settlement != nil {
+		result.Usage = settlement.Usage
+		invocation.ConsumeLogId = settlement.ConsumeLogID
+		usage, err := json.Marshal(settlement)
 		if err == nil {
 			invocation.Usage = ptr(string(usage))
 		}

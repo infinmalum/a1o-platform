@@ -31,7 +31,17 @@ type NativeReservation struct {
 	quota             *Reservation
 	mu                sync.Mutex
 	finished          bool
-	consumeLogID      int
+	settlement        *Settlement
+}
+
+// Settlement carries the observed provider counters and the actual charge.
+type Settlement struct {
+	native.Usage
+	ConsumeLogID int    `json:"-"`
+	Quota        int64  `json:"quota"`
+	UsageState   string `json:"usage_state"`
+	ChargeBasis  string `json:"charge_basis"`
+	Interrupted  bool   `json:"interrupted"`
 }
 
 // ReserveNativeQuota uses the provider's output limit plus the configured
@@ -121,18 +131,30 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 	if r.finished {
 		return
 	}
+	settlement := &Settlement{Usage: usage, UsageState: "missing", ChargeBasis: "reservation", Interrupted: interrupted}
 	quota := r.Reserved
 	if usage.Seen {
+		settlement.UsageState = "reported"
+		if streamed && (!usage.Complete || usage.Partial) {
+			settlement.UsageState = "partial"
+		}
+		settlement.ChargeBasis = "usage"
 		quota = int64(math.Ceil((float64(usage.Input) + float64(usage.Output)*r.CompletionRatio) * r.ModelRatio * r.GroupRatio))
 		if quota == 0 && r.ModelRatio*r.GroupRatio > 0 && usage.Input+usage.Output > 0 {
 			quota = 1
 		}
 	}
-	if interrupted {
-		quota = max(quota, r.Reserved)
+	if (interrupted || settlement.UsageState == "partial") && quota < r.Reserved {
+		quota = r.Reserved
+		settlement.ChargeBasis = "reservation"
 	}
-	quota = r.quota.Settle(ctx, quota)
+	settlement.Quota = r.quota.Settle(ctx, quota)
+	if settlement.Quota != quota {
+		settlement.ChargeBasis = "reservation"
+	}
+	r.settlement = settlement
 	r.finished = true
+	quota = settlement.Quota
 	if quota == 0 {
 		return
 	}
@@ -151,6 +173,9 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 		ModelName:         r.ModelName,
 		TokenName:         r.TokenName,
 		Quota:             int(quota),
+		UsageState:        settlement.UsageState,
+		ChargeBasis:       settlement.ChargeBasis,
+		Interrupted:       interrupted,
 		Content:           content,
 		IsStream:          streamed,
 		ElapsedTime:       time.Since(r.StartedAt).Milliseconds(),
@@ -159,18 +184,21 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 	model.RecordConsumeLog(ctx, log)
 	// RecordConsumeLog may be disabled or fail; a zero id means the
 	// invocation association is unavailable, not that billing was skipped.
-	r.consumeLogID = log.Id
+	settlement.ConsumeLogID = log.Id
 	model.UpdateUserUsedQuotaAndRequestCount(r.UserID, quota)
 	model.UpdateChannelUsedQuota(r.ChannelID, quota)
 }
 
-// ConsumeLogID reports the consume log written by settlement, or 0 when
-// consume logging is disabled or failed.
-func (r *NativeReservation) ConsumeLogID() int {
+func (r *NativeReservation) Settlement() (Settlement, bool) {
 	if r == nil {
-		return 0
+		return Settlement{}, false
 	}
-	return r.consumeLogID
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.settlement == nil {
+		return Settlement{}, false
+	}
+	return *r.settlement, true
 }
 
 // SettleDirect charges an operation-specific amount without token ratio math,
@@ -186,6 +214,8 @@ func (r *NativeReservation) SettleDirect(ctx context.Context, amount, promptToke
 		return
 	}
 	quota := r.quota.Settle(ctx, amount)
+	settlement := &Settlement{Quota: quota, ChargeBasis: "fixed", Interrupted: interrupted}
+	r.settlement = settlement
 	r.finished = true
 	if quota == 0 {
 		return
@@ -201,11 +231,13 @@ func (r *NativeReservation) SettleDirect(ctx context.Context, amount, promptToke
 		ModelName:    r.ModelName,
 		TokenName:    r.TokenName,
 		Quota:        int(quota),
+		ChargeBasis:  settlement.ChargeBasis,
+		Interrupted:  interrupted,
 		Content:      content,
 		ElapsedTime:  time.Since(r.StartedAt).Milliseconds(),
 	}
 	model.RecordConsumeLog(ctx, log)
-	r.consumeLogID = log.Id
+	settlement.ConsumeLogID = log.Id
 	model.UpdateUserUsedQuotaAndRequestCount(r.UserID, quota)
 	model.UpdateChannelUsedQuota(r.ChannelID, quota)
 }

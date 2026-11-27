@@ -10,6 +10,7 @@ import (
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
@@ -97,10 +98,10 @@ func callLLMOnce(ctx context.Context, userId int, modelName, system, user string
 		Channel:    channel,
 		Principal:  lifecycle.Principal{UserID: userId, TokenID: token.Id, TokenName: token.Name, SpecificChannel: true, SpecificChannelID: channel.ID},
 		RetryLimit: config.RetryTimes,
-		OnSettlement: func(logID int, usage native.Usage) {
-			result.ConsumeLogId = logID
-			result.InputTokens = usage.Input
-			result.OutputTokens = usage.Output
+		OnSettlement: func(settlement billing.Settlement) {
+			result.ConsumeLogId = settlement.ConsumeLogID
+			result.InputTokens = settlement.Input
+			result.OutputTokens = settlement.Output
 		},
 	})
 	if herr != nil {

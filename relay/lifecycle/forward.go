@@ -70,11 +70,8 @@ type Request struct {
 	ResponseCharge    func(header http.Header, body []byte) (charge int64, promptTokens int64, err error)
 	MaxResponseBytes  int64 // Optional limit when ResponseCharge buffers the response.
 	// OnSettlement, when set, is invoked once after the winning attempt's
-	// reservation settles, carrying the consume log id (0 when consume
-	// logging is disabled) and the usage that drove the charge. It lets a
-	// caller associate its own records with the settlement without touching
-	// billing internals.
-	OnSettlement func(consumeLogID int, usage native.Usage)
+	// reservation settles, including when consume logging is disabled.
+	OnSettlement func(billing.Settlement)
 	Body         []byte
 	Headers      http.Header
 	Query        url.Values
@@ -383,7 +380,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			}
 			if input.FixedQuota > 0 {
 				httpErr := settleFixedQuota(ctx, settlementContext, dst, response, input, reservation, attempt)
-				notifySettlement(input, reservation, native.Usage{})
+				notifySettlement(input, reservation)
 				return attemptOutcome{err: httpErr}
 			}
 			if streamConverter != nil {
@@ -395,7 +392,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				_ = response.Body.Close()
 				interrupted := streamErr != nil || ctx.Err() != nil || !usage.Complete
 				reservation.Settle(settlementContext, usage, true, interrupted)
-				notifySettlement(input, reservation, usage)
+				notifySettlement(input, reservation)
 				if streamErr != nil {
 					logger.Errorf(settlementContext, "converted stream interrupted on channel %d: %v", attempt.ID, streamErr)
 				}
@@ -407,11 +404,13 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				_ = response.Body.Close()
 				if readErr != nil || len(body) > maxConvertedResponse {
 					reservation.Settle(settlementContext, native.Usage{}, false, true)
+					notifySettlement(input, reservation)
 					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: "upstream response could not be read"}}
 				}
 				converted, usage, convertErr := converter.Response(body, input.Model)
 				if convertErr != nil {
 					reservation.Settle(settlementContext, native.Usage{}, false, true)
+					notifySettlement(input, reservation)
 					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: convertErr.Error()}}
 				}
 				copyHeaders(dst.Header(), response.Header)
@@ -420,7 +419,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				dst.WriteHeader(http.StatusOK)
 				_, writeErr := dst.Write(converted)
 				reservation.Settle(settlementContext, usage, false, writeErr != nil || ctx.Err() != nil)
-				notifySettlement(input, reservation, usage)
+				notifySettlement(input, reservation)
 				if writeErr != nil {
 					logger.Errorf(settlementContext, "converted response interrupted on channel %d: %v", attempt.ID, writeErr)
 				}
@@ -436,7 +435,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 			}
 			interrupted := copyErr != nil || ctx.Err() != nil || (input.Stream && !usage.Complete)
 			reservation.Settle(settlementContext, usage, input.Stream, interrupted)
-			notifySettlement(input, reservation, usage)
+			notifySettlement(input, reservation)
 			if copyErr != nil {
 				logger.Errorf(settlementContext, "upstream response interrupted on channel %d: %v", attempt.ID, copyErr)
 			}
@@ -479,14 +478,12 @@ func reserveAttempt(ctx context.Context, input Request, channel Channel, mappedM
 	return reservation, nil
 }
 
-// notifySettlement hands the settled consume log id to the caller's hook.
-// It fires only on settled attempts: a refunded attempt leaves no consume
-// log, and the reservation reports id 0 then anyway.
-func notifySettlement(input Request, reservation *billing.NativeReservation, usage native.Usage) {
-	if input.OnSettlement == nil {
-		return
+func notifySettlement(input Request, reservation *billing.NativeReservation) {
+	if input.OnSettlement != nil {
+		if settlement, ok := reservation.Settlement(); ok {
+			input.OnSettlement(settlement)
+		}
 	}
-	input.OnSettlement(reservation.ConsumeLogID(), usage)
 }
 
 // vertexFamilyProtocol aligns the negotiated protocol with the VertexAI model

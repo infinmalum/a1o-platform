@@ -10,6 +10,7 @@ import (
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
@@ -126,7 +127,7 @@ func runGeminiImage(ctx context.Context, gen *model.ImageGeneration, principal l
 	herr := lifecycle.Forward(ctx, recorder, lifecycle.Request{
 		Protocol: native.Gemini, Version: "v1beta", Action: "generateContent",
 		Model: gen.Model, Body: body, Principal: principal, MaxOutputTokens: 4096, RetryLimit: config.RetryTimes,
-		OnSettlement: func(logID int, _ native.Usage) { consumeLogID = logID },
+		OnSettlement: func(settlement billing.Settlement) { consumeLogID = settlement.ConsumeLogID },
 	})
 	if herr != nil {
 		return "", consumeLogID, herr

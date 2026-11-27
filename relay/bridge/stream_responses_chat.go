@@ -19,6 +19,7 @@ import (
 func (responsesChat) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
 	state := &chatToResponsesStream{emitter: *newResponsesStreamEmitter(dst, requestedModel)}
 	reader := newSSEReader(src)
+	done := false
 	fail := func(err error) (native.Usage, error) {
 		_ = state.emitter.fail(err.Error())
 		return state.emitter.usage, err
@@ -32,6 +33,7 @@ func (responsesChat) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 			return fail(err)
 		}
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+			done = true
 			break
 		}
 		if err := state.chunk(data); err != nil {
@@ -48,6 +50,10 @@ func (responsesChat) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 	if err := state.finish(status, reason); err != nil {
 		return fail(err)
 	}
+	// A finish reason ends model generation. If EOF arrived before both the
+	// usage report and [DONE], the upstream stream itself is still incomplete.
+	state.emitter.usage.Complete = done || state.finalUsage
+	state.emitter.usage.Partial = state.emitter.usage.Seen && !state.finalUsage
 	return state.emitter.usage, nil
 }
 
@@ -57,6 +63,7 @@ func (responsesChat) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 type chatToResponsesStream struct {
 	emitter        responsesStreamEmitter
 	finishSeen     bool
+	finalUsage     bool
 	terminalReason string
 }
 
@@ -91,6 +98,7 @@ func (s *chatToResponsesStream) chunk(data []byte) error {
 		return errors.New("Chat chunks must carry one choice")
 	}
 	if len(choices) == 0 {
+		s.finalUsage = s.finalUsage || nonNull(fields["usage"])
 		return nil
 	}
 	choice, choiceExtras, err := rawObject(choices[0], "index", "delta", "finish_reason")
@@ -105,6 +113,9 @@ func (s *chatToResponsesStream) chunk(data []byte) error {
 		default:
 			return fmt.Errorf("Chat finish_reason %q cannot be converted", finish)
 		}
+	}
+	if s.finishSeen && nonNull(fields["usage"]) {
+		s.finalUsage = true
 	}
 	deltaFields, deltaExtras, err := rawObject(choice["delta"], "role", "content", "refusal", "tool_calls", "reasoning_content")
 	if err != nil {

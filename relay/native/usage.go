@@ -20,6 +20,7 @@ type Usage struct {
 	CacheCreation int64
 	Reasoning     int64
 	Seen          bool
+	Partial       bool `json:",omitempty"`
 	// Complete marks a protocol-level end event where one exists.
 	Complete bool
 }
@@ -51,7 +52,7 @@ type openAIUsageDetail struct {
 	ReasoningTokens int64 `json:"reasoning_tokens"`
 }
 
-func (u *Usage) observe(protocol Protocol, data []byte) {
+func (u *Usage) observe(protocol Protocol, data []byte, gemini *geminiStreamProgress) {
 	switch protocol {
 	case Anthropic:
 		var result struct {
@@ -80,9 +81,39 @@ func (u *Usage) observe(protocol Protocol, data []byte) {
 		u.Seen = true
 	case Gemini:
 		var result struct {
-			Usage *geminiUsage `json:"usageMetadata"`
+			Usage      *geminiUsage `json:"usageMetadata"`
+			Candidates []struct {
+				Index        int    `json:"index"`
+				FinishReason string `json:"finishReason"`
+			} `json:"candidates"`
+			PromptFeedback *struct {
+				BlockReason string `json:"blockReason"`
+			} `json:"promptFeedback"`
 		}
-		if json.Unmarshal(data, &result) != nil || result.Usage == nil {
+		if json.Unmarshal(data, &result) != nil {
+			return
+		}
+		if gemini != nil {
+			if result.PromptFeedback != nil && result.PromptFeedback.BlockReason != "" &&
+				result.PromptFeedback.BlockReason != "BLOCK_REASON_UNSPECIFIED" {
+				gemini.blocked = true
+			}
+			for _, candidate := range result.Candidates {
+				finished := candidate.FinishReason != "" && candidate.FinishReason != "FINISH_REASON_UNSPECIFIED"
+				gemini.finished[candidate.Index] = gemini.finished[candidate.Index] || finished
+			}
+			u.Complete = gemini.blocked || len(gemini.finished) > 0
+			for _, finished := range gemini.finished {
+				u.Complete = u.Complete && finished
+			}
+			if len(result.Candidates) > 0 && !u.Complete {
+				gemini.finalUsage = false
+			}
+			if result.Usage != nil && u.Complete {
+				gemini.finalUsage = true
+			}
+		}
+		if result.Usage == nil {
 			return
 		}
 		u.Input = max(u.Input, result.Usage.PromptTokenCount)
@@ -191,9 +222,12 @@ func CopyResponse(dst http.ResponseWriter, src io.Reader, protocol Protocol, str
 		return copyJSONResponse(dst, src, protocol)
 	}
 	observer := &sseObserver{protocol: protocol, usage: &usage}
+	if protocol == Gemini {
+		observer.gemini = &geminiStreamProgress{finished: make(map[int]bool)}
+	}
 	_, err := io.Copy(&observingWriter{dst: dst, observer: observer}, src)
-	if protocol == Gemini && err == nil {
-		usage.Complete = true
+	if observer.gemini != nil {
+		usage.Partial = usage.Seen && !observer.gemini.finalUsage
 	}
 	return usage, err
 }
@@ -252,7 +286,7 @@ func copyJSONResponse(dst http.ResponseWriter, src io.Reader, protocol Protocol)
 					break
 				}
 				wrapped := append(append([]byte(`{"`+name+`":`), raw...), '}')
-				usage.observe(protocol, wrapped)
+				usage.observe(protocol, wrapped, nil)
 			} else if skipJSONValue(decoder) != nil {
 				break
 			}
@@ -301,8 +335,8 @@ type observingWriter struct {
 }
 
 func (w *observingWriter) Write(p []byte) (int, error) {
+	w.observer.write(p)
 	n, err := w.dst.Write(p)
-	w.observer.write(p[:n])
 	if flusher, ok := w.dst.(http.Flusher); ok {
 		flusher.Flush()
 	}
@@ -312,9 +346,16 @@ func (w *observingWriter) Write(p []byte) (int, error) {
 type sseObserver struct {
 	protocol   Protocol
 	usage      *Usage
+	gemini     *geminiStreamProgress
 	line       []byte
 	data       []byte
 	discarding bool
+}
+
+type geminiStreamProgress struct {
+	finished   map[int]bool
+	blocked    bool
+	finalUsage bool
 }
 
 const maxObservedEvent = 2 << 20
@@ -355,7 +396,7 @@ func (o *sseObserver) completeLine() {
 	line := bytes.TrimSuffix(o.line, []byte{'\r'})
 	if len(line) == 0 {
 		if len(o.data) > 0 {
-			o.usage.observe(o.protocol, o.data)
+			o.usage.observe(o.protocol, o.data, o.gemini)
 		}
 		o.data = nil
 	} else if bytes.HasPrefix(line, []byte("data:")) {

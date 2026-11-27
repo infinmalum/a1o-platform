@@ -59,7 +59,7 @@ func ForwardAdapter(ctx context.Context, input Request, attempt AdapterAttempt) 
 				} else {
 					reservation.Settle(settlementContext, result.Usage, input.Stream, true)
 				}
-				notifySettlement(input, reservation, result.Usage)
+				notifySettlement(input, reservation)
 				logger.Errorf(settlementContext, "provider response interrupted on channel %d: %s", channel.ID, result.Err.Message)
 				return nil
 			}
@@ -78,7 +78,7 @@ func ForwardAdapter(ctx context.Context, input Request, attempt AdapterAttempt) 
 			reservation.Settle(settlementContext, result.Usage, input.Stream,
 				ctx.Err() != nil || (input.Stream && !result.Usage.Complete))
 		}
-		notifySettlement(input, reservation, result.Usage)
+		notifySettlement(input, reservation)
 		return nil
 	}
 }

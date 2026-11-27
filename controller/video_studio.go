@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/lifecycle"
 	"github.com/infinmalum/a1o-platform/relay/native"
@@ -131,7 +132,7 @@ func runStudioVideo(ctx context.Context, gen *model.ImageGeneration, principal l
 			}
 			return quota, 0, nil
 		},
-		OnSettlement: func(logID int, _ native.Usage) { consumeLogID = logID },
+		OnSettlement: func(settlement billing.Settlement) { consumeLogID = settlement.ConsumeLogID },
 	})
 	if herr != nil {
 		return "", consumeLogID, herr

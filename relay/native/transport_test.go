@@ -211,8 +211,33 @@ func TestCopyGeminiStreamPreservesUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Body.String() != events || usage.Input != 3 || usage.Output != 7 {
+	if w.Body.String() != events || usage.Input != 3 || usage.Output != 7 || usage.Complete || !usage.Partial {
 		t.Fatalf("stream or usage changed: %+v %q", usage, w.Body.String())
+	}
+}
+
+func TestCopyGeminiStreamTracksFinishAndFinalUsageSeparately(t *testing.T) {
+	partial := "data: {\"candidates\":[{\"index\":0},{\"index\":1}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\n\n"
+	firstFinish := "data: {\"candidates\":[{\"index\":0,\"finishReason\":\"STOP\"}]}\n\n"
+	lastFinish := "data: {\"candidates\":[{\"index\":1,\"finishReason\":\"STOP\"}]}\n\n"
+	finalUsage := "data: {\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":4}}\n\n"
+	for _, tc := range []struct {
+		name, events      string
+		complete, partial bool
+		output            int64
+	}{
+		{"missing candidate finish", partial + firstFinish, false, true, 1},
+		{"finished generation with partial usage", partial + firstFinish + lastFinish, true, true, 1},
+		{"finished generation with final usage", partial + firstFinish + lastFinish + finalUsage, true, false, 4},
+		{"prompt blocked without candidates", "data: {\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}\n\n", true, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			usage, err := CopyResponse(w, strings.NewReader(tc.events), Gemini, true)
+			if err != nil || w.Body.String() != tc.events || usage.Complete != tc.complete || usage.Partial != tc.partial || usage.Output != tc.output {
+				t.Fatalf("usage=%+v body=%q err=%v", usage, w.Body.String(), err)
+			}
+		})
 	}
 }
 

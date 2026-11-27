@@ -159,6 +159,7 @@ func (s *anthropicToResponsesStream) messageStart(data []byte) error {
 		s.inputTokens = details.Input - details.CacheCreation - details.CacheRead
 		s.cacheCreation = details.CacheCreation
 		s.cacheRead = details.CacheRead
+		s.emitter.usage.Output = max(s.emitter.usage.Output, details.Output)
 		s.foldUsage()
 		s.emitter.usage.Seen = true
 	}

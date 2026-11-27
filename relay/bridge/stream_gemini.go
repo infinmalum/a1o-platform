@@ -25,6 +25,18 @@ type geminiStreamEvent struct {
 	hasUsage     bool
 }
 
+func (event *geminiStreamEvent) observeUsage(usage *native.Usage, generationFinished bool) {
+	if !event.hasUsage {
+		return
+	}
+	usage.Input = max(usage.Input, event.prompt)
+	usage.Output = max(usage.Output, event.output)
+	usage.CacheRead = max(usage.CacheRead, event.cached)
+	usage.Reasoning = max(usage.Reasoning, event.thoughts)
+	usage.Seen = true
+	usage.Partial = !generationFinished
+}
+
 func parseGeminiStreamEvent(data []byte) (*geminiStreamEvent, error) {
 	fields, extra, err := rawObject(data, geminiResponseFields...)
 	if err != nil {
@@ -459,13 +471,7 @@ func (s *geminiToChatStream) event(data []byte) error {
 	if s.id == "" && parsed.responseID != "" {
 		s.id = parsed.responseID
 	}
-	if parsed.hasUsage {
-		s.usage.Input = max(s.usage.Input, parsed.prompt)
-		s.usage.Output = max(s.usage.Output, parsed.output)
-		s.usage.CacheRead = max(s.usage.CacheRead, parsed.cached)
-		s.usage.Reasoning = max(s.usage.Reasoning, parsed.thoughts)
-		s.usage.Seen = true
-	}
+	parsed.observeUsage(&s.usage, s.finishReason != "" || parsed.finishReason != "")
 	for key, value := range parsed.metadata {
 		if s.metadata == nil {
 			s.metadata = make(map[string]json.RawMessage)
@@ -661,11 +667,7 @@ func (s *geminiToAnthropicStream) event(data []byte) error {
 	if s.writer.id == "" && parsed.responseID != "" {
 		s.writer.id = parsed.responseID
 	}
-	if parsed.hasUsage {
-		s.writer.usage.Input = max(s.writer.usage.Input, parsed.prompt)
-		s.writer.usage.Output = max(s.writer.usage.Output, parsed.output)
-		s.writer.usage.Seen = true
-	}
+	parsed.observeUsage(&s.writer.usage, s.finishReason != "" || parsed.finishReason != "")
 	for key, value := range parsed.metadata {
 		if s.metadata == nil {
 			s.metadata = make(map[string]json.RawMessage)

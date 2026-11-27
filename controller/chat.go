@@ -16,7 +16,9 @@ import (
 	"github.com/infinmalum/a1o-platform/agent"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
+	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/infinmalum/a1o-platform/relay/billing"
 )
 
 // maxChatTextFileBytes caps inline text attachments; anything larger would
@@ -417,7 +419,9 @@ func RunChatTurn(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
+	c.Header("X-A1O-Run-Id", strconv.Itoa(run.Id))
 	c.Status(http.StatusOK)
+	flusher.Flush()
 
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
@@ -440,7 +444,93 @@ func RunChatTurn(c *gin.Context) {
 		Executor:       &agent.ModelExecutor{UserID: userId, TokenID: token.Id, TokenName: token.Name},
 		ContextBudget:  session.ContextBudget,
 	}
-	_ = agent.Default().RunChat(ctx, emit, turn)
+	runErr := agent.Default().RunChat(ctx, emit, turn)
+	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		if err := model.UpdateAgentRunStatus(run.Id, model.RunStatusCancelled, ""); err != nil {
+			logger.SysError("failed to mark chat run cancelled: " + err.Error())
+		}
+	}
+}
+
+func GetChatTurnSettlement(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	userID := c.GetInt(ctxkey.Id)
+	sessionID, sessionErr := strconv.Atoi(c.Param("id"))
+	runID, runErr := strconv.Atoi(c.Param("runId"))
+	if sessionErr != nil || runErr != nil || sessionID <= 0 || runID <= 0 {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	run, err := model.GetAgentRun(runID, userID)
+	if err != nil || run.Kind != "chat" || run.SessionId != sessionID {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if !studioRunTerminal(run.Status) {
+		c.Status(http.StatusAccepted)
+		return
+	}
+	invocations, err := model.GetRunInvocations(runID)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	var summary struct {
+		Quota            int64  `json:"quota"`
+		PromptTokens     int64  `json:"prompt_tokens"`
+		CompletionTokens int64  `json:"completion_tokens"`
+		UsageState       string `json:"usage_state"`
+		ChargeBasis      string `json:"charge_basis"`
+		Interrupted      bool   `json:"interrupted"`
+	}
+	var settled, reported, partial int
+	for _, invocation := range invocations {
+		if invocation.Status == model.InvocationStatusPending {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		if invocation.Usage == nil {
+			continue
+		}
+		var charge billing.Settlement
+		if err := json.Unmarshal([]byte(*invocation.Usage), &charge); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if charge.ChargeBasis == "" {
+			continue
+		}
+		settled++
+		summary.Quota += charge.Quota
+		summary.PromptTokens += charge.Input
+		summary.CompletionTokens += charge.Output
+		summary.Interrupted = summary.Interrupted || charge.Interrupted
+		switch charge.UsageState {
+		case "reported":
+			reported++
+		case "partial":
+			partial++
+		}
+		if charge.ChargeBasis == "reservation" {
+			summary.ChargeBasis = "reservation"
+		}
+	}
+	if settled == 0 {
+		c.Status(http.StatusNoContent)
+		return
+	}
+	switch {
+	case reported == settled:
+		summary.UsageState = "reported"
+	case reported+partial > 0:
+		summary.UsageState = "partial"
+	default:
+		summary.UsageState = "missing"
+	}
+	if summary.ChargeBasis == "" {
+		summary.ChargeBasis = "usage"
+	}
+	c.JSON(http.StatusOK, summary)
 }
 
 // filterSkillsInAgentScope narrows the session's selected skills to the

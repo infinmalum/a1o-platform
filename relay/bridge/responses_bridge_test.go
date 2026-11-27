@@ -119,6 +119,31 @@ func TestResponsesChatStream(t *testing.T) {
 	}
 }
 
+func TestChatToResponsesDistinguishesFinishFromMissingSettlementUsage(t *testing.T) {
+	finish := "data: {\"id\":\"resp\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\n"
+	finalUsage := "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":7}}\n\n"
+	for _, tc := range []struct {
+		name, tail     string
+		complete, seen bool
+	}{
+		{"missing Usage and DONE", "", false, false},
+		{"Usage received before EOF", finalUsage, true, true},
+		{"DONE received with no Usage", "data: [DONE]\n\n", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := &testStreamWriter{}
+			usage, err := (responsesChat{}).Stream(writer, strings.NewReader(finish+tc.tail), "alias")
+			if err != nil || usage.Complete != tc.complete || usage.Seen != tc.seen {
+				t.Fatalf("usage=%+v err=%v", usage, err)
+			}
+			if !strings.Contains(writer.String(), "response.completed") ||
+				strings.Contains(writer.String(), `"usage":`) != tc.seen {
+				t.Fatalf("unexpected Responses stream: %s", writer.String())
+			}
+		})
+	}
+}
+
 // TestResponsesAnthropicConverter covers the Responses→Anthropic pair.
 func TestResponsesAnthropicConverter(t *testing.T) {
 	converter, err := For(native.OpenAIResponses, native.Anthropic)

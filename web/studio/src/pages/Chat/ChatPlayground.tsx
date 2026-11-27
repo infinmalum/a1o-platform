@@ -9,11 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { renderQuota } from '@/helpers/render';
 import type { ChatSession } from './chatApi';
+import SettlementDetails from './SettlementDetails';
+import { waitForSettlement, type SettledUsage } from './settlementApi';
 import {
-  buildRequest, exportCurl, getPlaygroundUsage, protocols, requestTemplate, runPlayground,
-  type PlaygroundRequest, type PlaygroundUsage, type Protocol,
+  buildRequest, exportCurl, protocols, requestTemplate, runPlayground,
+  type PlaygroundRequest, type Protocol,
 } from './playgroundApi';
 
 const maxPreviewCharacters = 256 * 1024;
@@ -27,7 +28,8 @@ type RunResult = {
   truncated?: boolean;
   error?: string;
   stopped?: boolean;
-  usage?: PlaygroundUsage;
+  usage?: SettledUsage;
+  checkingUsage?: boolean;
   requestId?: string;
 };
 
@@ -51,8 +53,12 @@ export default function ChatPlayground({ onSettled, models, currentModel, sessio
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const settlementRef = useRef<AbortController | null>(null);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    settlementRef.current?.abort();
+  }, []);
 
   const model = models.includes(selectedModel)
     ? selectedModel
@@ -87,7 +93,9 @@ export default function ChatPlayground({ onSettled, models, currentModel, sessio
     }
 
     const abort = new AbortController();
+    const settlement = new AbortController();
     abortRef.current = abort;
+    settlementRef.current = settlement;
     setError('');
     setResults(runs);
     setRunning(true);
@@ -108,10 +116,13 @@ export default function ChatPlayground({ onSettled, models, currentModel, sessio
         }
         const started = performance.now();
         const elapsed = () => Math.round(performance.now() - started);
+        let requestId: string | undefined;
+        let status: number | undefined;
         try {
           const response = await runPlayground(run.request, abort.signal);
-          const requestId = response.headers.get('X-A1O-Request-Id') ?? undefined;
-          update(index, { status: response.status, requestId });
+          requestId = response.headers.get('X-A1O-Request-Id') ?? undefined;
+          status = response.status;
+          update(index, { status, requestId });
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
           let output = '';
@@ -143,24 +154,36 @@ export default function ChatPlayground({ onSettled, models, currentModel, sessio
           }
           update(index, { output, truncated, elapsed: elapsed() });
 
-          if (requestId && response.ok && response.status !== 202) {
-            try {
-              const usage = await getPlaygroundUsage(requestId, abort.signal);
-              if (usage) update(index, { usage });
-            } catch {
-              // The completed response is usable when usage is unavailable.
-            }
-          }
         } catch {
           update(index, abort.signal.aborted
             ? { stopped: true, elapsed: elapsed() }
             : { error: t('playground.requestFailed'), elapsed: elapsed() });
+        } finally {
+          if (requestId && !settlement.signal.aborted) {
+            update(index, { checkingUsage: true });
+            try {
+              const retry = status !== undefined && status !== 202 && (status < 300 || status >= 500);
+              const usage = await waitForSettlement(
+                `/api/chat/playground/usage/${encodeURIComponent(requestId)}`,
+                settlement.signal,
+                retry ? 404 : undefined,
+              );
+              if (usage) update(index, { usage });
+            } catch {
+              // The model output stays available even if the settlement lookup fails.
+            } finally {
+              if (!settlement.signal.aborted) update(index, { checkingUsage: false });
+            }
+          }
         }
       }
     } finally {
       abortRef.current = null;
-      setRunning(false);
-      onSettled();
+      settlementRef.current = null;
+      if (!settlement.signal.aborted) {
+        setRunning(false);
+        onSettled();
+      }
     }
   };
 
@@ -283,7 +306,7 @@ export default function ChatPlayground({ onSettled, models, currentModel, sessio
 
 function Result({ result }: { result: RunResult }) {
   const { t } = useTranslation();
-  const { model, request, status, elapsed, output, stopped, truncated, error, usage, requestId } = result;
+  const { model, request, status, elapsed, output, stopped, truncated, error, usage, requestId, checkingUsage } = result;
   return (
     <section className='grid min-w-0 content-start gap-2 rounded-md border p-3'>
       <h3 className='break-all text-sm font-medium'>{model}</h3>
@@ -291,12 +314,9 @@ function Result({ result }: { result: RunResult }) {
         {status !== undefined && <span>HTTP {status}</span>}
         {elapsed !== undefined && <span>{elapsed} ms</span>}
         {stopped && <span>{t('playground.stopped')}</span>}
-        {usage ? (
-          <>
-            <span>{t('playground.tokens', { input: usage.prompt_tokens, output: usage.completion_tokens })}</span>
-            <span>{t('playground.cost', { amount: renderQuota(usage.quota, t, 6) })}</span>
-          </>
-        ) : elapsed !== undefined && <span>{t('playground.usageUnavailable')}</span>}
+        {usage ? <SettlementDetails usage={usage} /> : elapsed !== undefined && (
+          <span>{t(checkingUsage ? 'playground.checkingUsage' : 'playground.usageUnavailable')}</span>
+        )}
       </p>
       {error && <p role='alert' className='text-destructive text-xs'>{error}</p>}
       {truncated && <p className='text-muted-foreground text-xs'>{t('playground.truncated')}</p>}

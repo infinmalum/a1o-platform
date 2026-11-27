@@ -2,12 +2,17 @@ package router
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -16,6 +21,7 @@ import (
 	"github.com/infinmalum/a1o-platform/common/client"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/helper"
+	"github.com/infinmalum/a1o-platform/controller"
 	"github.com/infinmalum/a1o-platform/middleware"
 	"github.com/infinmalum/a1o-platform/model"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
@@ -37,7 +43,9 @@ func TestPlaygroundUsesGatewayAndPrivateBilling(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{},
+		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatFile{}, &model.ChatSkill{}, &model.ChatMCPServer{},
+		&model.AgentRun{}, &model.ModelInvocation{}, &model.RunEvent{}))
 
 	previousDB, previousLogDB, previousClient := model.DB, model.LOG_DB, client.HTTPClient
 	previousSQLite, previousRedis, previousCache := common.UsingSQLite, common.RedisEnabled, config.MemoryCacheEnabled
@@ -75,6 +83,8 @@ func TestPlaygroundUsesGatewayAndPrivateBilling(t *testing.T) {
 		c.Status(http.StatusNoContent)
 	})
 	SetRelayRouter(engine)
+	engine.POST("/api/chat/sessions/:id/run", middleware.UserAuth(), controller.RunChatTurn)
+	engine.GET("/api/chat/sessions/:id/runs/:runId/settlement", middleware.UserAuth(), controller.GetChatTurnSettlement)
 
 	send := func(method, path, body string, session *http.Cookie) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -110,7 +120,7 @@ func TestPlaygroundUsesGatewayAndPrivateBilling(t *testing.T) {
 			`{"content":[],"usage":{"input_tokens":3,"output_tokens":4}}`, channeltype.Anthropic},
 		{"gemini-upstream", "/v1beta/models/gemini-upstream:streamGenerateContent?alt=sse", "/v1beta/models/gemini-upstream:streamGenerateContent?alt=sse",
 			`{"contents":[{"parts":[{"text":"hello"}]}],"custom":42}`,
-			"data: {\"candidates\":[],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":4}}\n\n", channeltype.Gemini},
+			"data: {\"candidates\":[{\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":4}}\n\n", channeltype.Gemini},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			baseURL := "https://upstream.example"
@@ -147,10 +157,138 @@ func TestPlaygroundUsesGatewayAndPrivateBilling(t *testing.T) {
 			require.NotEmpty(t, requestID)
 			usage := send(http.MethodGet, prefix+"/usage/"+requestID, "", session)
 			require.Equal(t, http.StatusOK, usage.Code)
-			require.JSONEq(t, `{"prompt_tokens":3,"completion_tokens":4,"quota":30}`, usage.Body.String())
+			require.JSONEq(t, `{"prompt_tokens":3,"completion_tokens":4,"quota":30,"usage_state":"reported","charge_basis":"usage"}`, usage.Body.String())
 			require.Equal(t, http.StatusNotFound, send(http.MethodGet, prefix+"/usage/"+requestID, "", otherSession).Code)
 		})
 	}
+	t.Run("Gemini EOF without finish retains the reservation", func(t *testing.T) {
+		before, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		frames := "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"partial\"}]}}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":4}}\n\n"
+		client.HTTPClient = &http.Client{Transport: playgroundTransport(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(frames))}, nil
+		})}
+		response := send(http.MethodPost, prefix+"/v1beta/models/gemini-upstream:streamGenerateContent?alt=sse",
+			`{"contents":[{"parts":[{"text":"hello"}]}],"generationConfig":{"maxOutputTokens":32}}`, session)
+		require.Equal(t, http.StatusOK, response.Code)
+		require.Equal(t, frames, response.Body.String())
+		after, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		// The fixture's model ratio is 2 and its group ratio is 1.
+		charged := int64(config.PreConsumedQuota+32) * 2
+		require.Equal(t, charged, before-after)
+		usage := send(http.MethodGet, prefix+"/usage/"+response.Header().Get(helper.RequestIdKey), "", session)
+		require.Equal(t, http.StatusOK, usage.Code)
+		require.JSONEq(t, fmt.Sprintf(`{"quota":%d,"prompt_tokens":3,"completion_tokens":4,"usage_state":"partial","charge_basis":"reservation","interrupted":true}`, charged), usage.Body.String())
+	})
+	t.Run("cancelled stream has a queryable final charge", func(t *testing.T) {
+		before, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		upstream, feed := io.Pipe()
+		defer feed.Close()
+		client.HTTPClient = &http.Client{Transport: playgroundTransport(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: upstream}, nil
+		})}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		req := httptest.NewRequest(http.MethodPost, prefix+"/v1/chat/completions",
+			strings.NewReader(`{"model":"chat-upstream","messages":[{"role":"user","content":"hello"}],"stream":true,"max_tokens":16}`)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(session)
+		recorder := &firstWriteRecorder{ResponseRecorder: httptest.NewRecorder(), wrote: make(chan struct{}, 1)}
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			engine.ServeHTTP(recorder, req)
+		}()
+		go func() {
+			_, _ = io.WriteString(feed, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n")
+		}()
+		select {
+		case <-recorder.wrote:
+		case <-time.After(3 * time.Second):
+			t.Fatal("stream did not write before cancellation")
+		}
+		requestID := recorder.Header().Get(helper.RequestIdKey)
+		require.NotEmpty(t, requestID)
+		cancel()
+		path := prefix + "/usage/" + requestID
+		require.Equal(t, http.StatusNotFound, send(http.MethodGet, path, "", session).Code)
+		require.NoError(t, feed.CloseWithError(context.Canceled))
+		select {
+		case <-finished:
+		case <-time.After(3 * time.Second):
+			t.Fatal("settlement did not finish")
+		}
+		after, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		require.Less(t, after, before)
+		usage := send(http.MethodGet, path, "", session)
+		require.Equal(t, http.StatusOK, usage.Code)
+		var payload struct {
+			Quota       int64  `json:"quota"`
+			UsageState  string `json:"usage_state"`
+			ChargeBasis string `json:"charge_basis"`
+			Interrupted bool   `json:"interrupted"`
+		}
+		require.NoError(t, json.Unmarshal(usage.Body.Bytes(), &payload))
+		require.Equal(t, before-after, payload.Quota)
+		require.Equal(t, "missing", payload.UsageState)
+		require.Equal(t, "reservation", payload.ChargeBasis)
+		require.True(t, payload.Interrupted)
+	})
+	t.Run("chat cancellation changes the turn from pending to settled", func(t *testing.T) {
+		chat := &model.ChatSession{UserId: user.Id, Model: "responses-upstream", Title: "test chat", MaxTokens: 16}
+		require.NoError(t, model.CreateChatSession(chat))
+		before, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		upstream, feed := io.Pipe()
+		defer feed.Close()
+		client.HTTPClient = &http.Client{Transport: playgroundTransport(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: upstream}, nil
+		})}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		base := "/api/chat/sessions/" + strconv.Itoa(chat.Id)
+		req := httptest.NewRequest(http.MethodPost, base+"/run", strings.NewReader(`{"content":"hello"}`)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(session)
+		recorder := httptest.NewRecorder()
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			engine.ServeHTTP(recorder, req)
+		}()
+		frameRead := make(chan struct{})
+		go func() {
+			defer close(frameRead)
+			_, _ = io.WriteString(feed, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"mock\"}}\n\n")
+		}()
+		select {
+		case <-frameRead:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Chat did not begin reading the upstream")
+		}
+		runID := recorder.Header().Get("X-A1O-Run-Id")
+		require.NotEmpty(t, runID)
+		path := base + "/runs/" + runID + "/settlement"
+		require.Equal(t, http.StatusAccepted, send(http.MethodGet, path, "", session).Code)
+		require.Equal(t, http.StatusNotFound, send(http.MethodGet, path, "", otherSession).Code)
+		cancel()
+		require.NoError(t, feed.CloseWithError(context.Canceled))
+		select {
+		case <-finished:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Chat did not finish after cancellation")
+		}
+		after, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		require.Less(t, after, before)
+		usage := send(http.MethodGet, path, "", session)
+		require.Equal(t, http.StatusOK, usage.Code)
+		require.JSONEq(t, fmt.Sprintf(`{"quota":%d,"prompt_tokens":0,"completion_tokens":0,"usage_state":"missing","charge_basis":"reservation","interrupted":true}`, before-after), usage.Body.String())
+	})
 	t.Run("studio audio accepts bounded multipart without exposing billing credentials", func(t *testing.T) {
 		baseURL := "https://upstream.example"
 		channel := model.Channel{

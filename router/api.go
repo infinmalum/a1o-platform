@@ -163,6 +163,7 @@ func SetApiRouter(router *gin.Engine) {
 			chatRoute.DELETE("/sessions/:id", controller.DeleteChatSession)
 			chatRoute.GET("/sessions/:id/messages", controller.GetChatSessionMessages)
 			chatRoute.POST("/sessions/:id/run", controller.RunChatTurn)
+			chatRoute.GET("/sessions/:id/runs/:runId/settlement", controller.GetChatTurnSettlement)
 			chatRoute.POST("/sessions/:id/branches", controller.BranchChatTurn)
 			chatRoute.GET("/files", controller.GetChatFiles)
 			chatRoute.POST("/files", controller.UploadChatFile)

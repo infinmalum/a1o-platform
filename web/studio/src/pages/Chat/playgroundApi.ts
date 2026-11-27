@@ -9,7 +9,6 @@ export const protocols = {
 
 export type Protocol = keyof typeof protocols;
 export type PlaygroundRequest = { path: string; body: string; headers: Record<string, string> };
-export type PlaygroundUsage = { quota: number; prompt_tokens: number; completion_tokens: number };
 
 export function requestTemplate(
   protocol: Protocol,
@@ -90,13 +89,4 @@ export function runPlayground(request: PlaygroundRequest, signal: AbortSignal) {
     body: request.body,
     signal,
   }, true);
-}
-
-export async function getPlaygroundUsage(requestId: string, signal: AbortSignal) {
-  const response = await studioFetch(`/api/chat/playground/usage/${encodeURIComponent(requestId)}`, {
-    credentials: 'same-origin',
-    cache: 'no-store',
-    signal,
-  });
-  if (response.ok) return await response.json() as PlaygroundUsage;
 }

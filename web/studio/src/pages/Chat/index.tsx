@@ -37,6 +37,8 @@ import ChatComposer from './ChatComposer';
 import ChatSettingsModal, { type ChatSettingsValue } from './ChatSettingsModal';
 import ChatToolsModal from './ChatToolsModal';
 import ChatPlayground from './ChatPlayground';
+import SettlementDetails from './SettlementDetails';
+import { waitForSettlement, type SettledUsage } from './settlementApi';
 import { agentsApi, type AgentView } from '@/pages/Agents/agentsApi';
 import { knowledgeApi, type KnowledgeLibrary } from '@/pages/Workspace/knowledgeApi';
 import {
@@ -91,20 +93,32 @@ const Chat = () => {
   const [renameValue, setRenameValue] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ChatSession | null>(null);
   const [quota, setQuota] = React.useState(Number(user?.quota) || 0);
+  const [turnSettlement, setTurnSettlement] = React.useState<{
+    sessionId: number;
+    runId: number;
+    state: 'pending' | 'unavailable' | 'settled';
+    usage?: SettledUsage;
+  }>();
   const [branching, setBranching] = React.useState(false);
   const [confirmBranch, setConfirmBranch] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
+  const settlementRef = React.useRef<AbortController | null>(null);
+  const quotaRequest = React.useRef(0);
   const activeSessionRef = React.useRef(0);
   const lastUser = latestUser(messages);
-  React.useEffect(() => () => abortRef.current?.abort(), []);
+  React.useEffect(() => () => {
+    abortRef.current?.abort();
+    settlementRef.current?.abort();
+  }, []);
 
   // Chat spends the same balance as the API, so show it where the user is
   // rather than making them open a separate page to find out.
   const loadQuota = React.useCallback(async () => {
+    const request = ++quotaRequest.current;
     try {
       const res = await API.get('/api/user/self');
       const { success, data } = res.data;
-      if (success && data) {
+      if (request === quotaRequest.current && success && data) {
         setQuota(data.quota ?? 0);
       }
     } catch {
@@ -318,6 +332,20 @@ const Chat = () => {
     await reloadSessions();
   };
 
+  const loadTurnSettlement = async (sessionId: number, runId: number, signal: AbortSignal) => {
+    setTurnSettlement({ sessionId, runId, state: 'pending' });
+    const usage = await waitForSettlement(
+      `/api/chat/sessions/${sessionId}/runs/${runId}/settlement`, signal, 202,
+    ).catch(() => undefined);
+    if (signal.aborted) return;
+    if (usage === undefined) {
+      setTurnSettlement({ sessionId, runId, state: 'unavailable' });
+      return;
+    }
+    setTurnSettlement(usage ? { sessionId, runId, state: 'settled', usage } : undefined);
+    await loadQuota();
+  };
+
   const streamTurn = async (
     sessionId: number, content: string, fileIds: number[],
     options: { previousUserId?: number; retryMessageId?: number; skillIds: number[] },
@@ -326,39 +354,47 @@ const Chat = () => {
     setStreaming(true);
     setStreamError('');
     setTurnFailed(false);
+    setTurnSettlement(undefined);
+    settlementRef.current?.abort();
     const controller = new AbortController();
+    const settlement = new AbortController();
     abortRef.current = controller;
+    settlementRef.current = settlement;
     let failed = false;
+    let runId: number | undefined;
     try {
-      await runTurn(sessionId, content, fileIds, skillIds, handleEvent, controller.signal, retryMessageId);
+      await runTurn(sessionId, content, fileIds, skillIds, handleEvent, controller.signal, retryMessageId, (id) => {
+        runId = id;
+      });
     } catch (error) {
       if (!controller.signal.aborted) {
         failed = true;
         setTurnFailed(true);
         setStreamError(error instanceof Error ? error.message : t('chat.requestFailed'));
       }
-    } finally {
-      try {
-        const rows = await loadMessages(sessionId);
-        if (activeSessionRef.current === sessionId) {
-          setMessages(rows);
-          const latest = latestUser(rows);
-          if (failed && !retryMessageId && latest?.id === previousUserId) {
-            setTurnFailed(false);
-            setInput((draft) => draft || content);
-            setSelectedFileIds((draft) => draft.length ? draft : fileIds);
-          }
-        }
-      } catch {
-        // Preserve the visible answer when the follow-up history read fails.
-        setMessages((current) => current.map((message) => message.streaming ? { ...message, streaming: false } : message));
-      }
-      setStreaming(false);
-      abortRef.current = null;
-      void reloadSessions();
-      void loadQuota();
-      void chatApi.listSkills().then(setSkills).catch(() => undefined);
     }
+    if (settlement.signal.aborted) return;
+    if (runId) void loadTurnSettlement(sessionId, runId, settlement.signal);
+    else void loadQuota();
+    try {
+      const rows = await loadMessages(sessionId);
+      if (activeSessionRef.current === sessionId) {
+        setMessages(rows);
+        const latest = latestUser(rows);
+        if (failed && !retryMessageId && latest?.id === previousUserId) {
+          setTurnFailed(false);
+          setInput((draft) => draft || content);
+          setSelectedFileIds((draft) => draft.length ? draft : fileIds);
+        }
+      }
+    } catch {
+      // Preserve the visible answer when the follow-up history read fails.
+      setMessages((current) => current.map((message) => message.streaming ? { ...message, streaming: false } : message));
+    }
+    setStreaming(false);
+    abortRef.current = null;
+    void reloadSessions();
+    void chatApi.listSkills().then(setSkills).catch(() => undefined);
   };
 
   const send = async () => {
@@ -745,6 +781,21 @@ const Chat = () => {
             </div>
           </div>
           <ChatMessageList messages={messages} emptyHint={emptyHint} />
+          {turnSettlement && turnSettlement.sessionId === activeSession?.id && (
+            <div className='text-muted-foreground flex flex-wrap items-center gap-x-3 px-4 py-1 text-xs' role='status'>
+              {turnSettlement.usage ? <SettlementDetails usage={turnSettlement.usage} /> : (
+                <span>{t(turnSettlement.state === 'pending' ? 'playground.checkingUsage' : 'playground.usageUnavailable')}</span>
+              )}
+              {turnSettlement.state === 'unavailable' && (
+                <Button variant='ghost' size='sm' onClick={() => {
+                  const settlement = new AbortController();
+                  settlementRef.current?.abort();
+                  settlementRef.current = settlement;
+                  void loadTurnSettlement(turnSettlement.sessionId, turnSettlement.runId, settlement.signal);
+                }}>{t('studio.list.retry')}</Button>
+              )}
+            </div>
+          )}
           {streamError && (
             <div className='text-destructive px-4 py-1 text-xs' role='alert'>{streamError}</div>
           )}
