@@ -397,7 +397,7 @@ func RunChatTurn(c *gin.Context) {
 		chatError(c, fmt.Errorf("计费令牌不可用: %w", err))
 		return
 	}
-	history, err := model.GetSessionMessages(session.Id)
+	history, err := model.GetSessionMessagesAfter(session.Id, session.CompactedThrough)
 	if err != nil {
 		chatError(c, err)
 		return

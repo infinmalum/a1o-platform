@@ -29,9 +29,9 @@ func TestBranchChatSessionCopiesHistoryWithoutCopyingLatestReply(t *testing.T) {
 			firstUser = message
 		}
 	}
-	session.Summary = "previous summary"
-	session.CompactedThrough = firstUser.Id
-	require.NoError(t, UpdateChatSession(&session))
+	saved, err := SaveChatCompaction(&session, firstUser.Id, "previous summary")
+	require.NoError(t, err)
+	require.True(t, saved)
 
 	parts := `[{"type":"text","file_id":55}]`
 	prompt := ChatMessage{SessionId: session.Id, Role: ChatRoleUser, Content: "retry this", Parts: &parts}
@@ -39,7 +39,7 @@ func TestBranchChatSessionCopiesHistoryWithoutCopyingLatestReply(t *testing.T) {
 	require.NoError(t, InsertChatMessage(&prompt))
 	require.NoError(t, InsertChatMessage(&reply))
 
-	_, _, err := BranchChatSession(context.Background(), &session, firstUser.Id, "stale")
+	_, _, err = BranchChatSession(context.Background(), &session, firstUser.Id, "stale")
 	require.ErrorIs(t, err, ErrChatBranchUnavailable)
 	branch, messageID, err := BranchChatSession(context.Background(), &session, prompt.Id, "retry")
 	require.NoError(t, err)

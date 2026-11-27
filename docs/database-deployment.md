@@ -20,11 +20,11 @@ The default Compose file always connects the app to its bundled PostgreSQL. To u
 
 The public image is published for `linux/amd64`. Use the Compose files from a checkout that supports `A1O_IMAGE`. For a new installation, copy `.env.example` to `.env` and configure the database and session secret as described in the README. For an existing installation, keep its Compose project name, database configuration, and data directories.
 
-1. Set `A1O_IMAGE=ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.3` in the project’s `.env` to pin this release. Use `ghcr.io/infinmalum/a1o-platform:latest` to follow the latest published image, which can be a Beta.
+1. Set `A1O_IMAGE=ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.5` in the project’s `.env` to pin this release. Use `ghcr.io/infinmalum/a1o-platform:latest` to follow the latest published image, which can be a Beta.
 2. Pull and start the pinned image with bundled PostgreSQL. Use the same reference in `docker pull` that you set in `.env`.
 
    ```sh
-   docker pull ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.3 && docker compose up -d --no-build
+   docker pull ghcr.io/infinmalum/a1o-platform:v0.1.0-beta.5 && docker compose up -d --no-build
    ```
 
    For SQLite or an external database, use `docker compose -f docker-compose.external.yml up -d --no-build` after a successful pull. For existing bundled MySQL deployments, use `docker compose -f docker-compose.mysql.yml up -d --no-build` after a successful pull.

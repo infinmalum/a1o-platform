@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,9 @@ import (
 	"github.com/infinmalum/a1o-platform/common/client"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
+	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -401,7 +404,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, chatNormal)
 	}))
 	defer chatServer.Close()
-	chatURL, chatMapping := chatServer.URL + "/v1", `{"chat-alias":"chat-upstream"}`
+	chatURL, chatMapping := chatServer.URL+"/v1", `{"chat-alias":"chat-upstream"}`
 	chatChannel := model.Channel{Type: channeltype.OpenAI, Key: "chat-provider-key", Name: "chat", Status: model.ChannelStatusEnabled, Group: "default", Models: "chat-alias", BaseURL: &chatURL, ModelMapping: &chatMapping}
 	if err := chatChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -537,7 +540,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"chat_reverse","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":"Searching","tool_calls":[{"id":"call_2","type":"function","function":{"name":"search","arguments":"{\"q\":\"next\"}"}}]}}],"usage":{"prompt_tokens":8,"completion_tokens":3,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":2}}}`)
 	}))
 	defer reverseServer.Close()
-	reverseURL, reverseMapping := reverseServer.URL + "/v1", `{"reverse-alias":"reverse-upstream"}`
+	reverseURL, reverseMapping := reverseServer.URL+"/v1", `{"reverse-alias":"reverse-upstream"}`
 	reverseChannel := model.Channel{Type: channeltype.OpenAI, Key: "reverse-provider-key", Name: "reverse", Status: model.ChannelStatusEnabled, Group: "default", Models: "reverse-alias", BaseURL: &reverseURL, ModelMapping: &reverseMapping}
 	if err := reverseChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -634,7 +637,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, embeddingBody)
 	}))
 	defer embeddingServer.Close()
-	embeddingURL, embeddingMapping := embeddingServer.URL + "/v1", `{"embedding-alias":"embedding-upstream"}`
+	embeddingURL, embeddingMapping := embeddingServer.URL+"/v1", `{"embedding-alias":"embedding-upstream"}`
 	embeddingChannel := model.Channel{Type: channeltype.OpenAI, Key: "embedding-provider-key", Name: "embedding", Status: model.ChannelStatusEnabled, Group: "default", Models: "embedding-alias", BaseURL: &embeddingURL, ModelMapping: &embeddingMapping}
 	if err := embeddingChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -706,7 +709,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, moderationBody)
 	}))
 	defer moderationServer.Close()
-	moderationURL, moderationMapping := moderationServer.URL + "/v1", `{"moderation-alias":"moderation-upstream","omni-moderation-latest":"moderation-upstream"}`
+	moderationURL, moderationMapping := moderationServer.URL+"/v1", `{"moderation-alias":"moderation-upstream","omni-moderation-latest":"moderation-upstream"}`
 	moderationPrompt := "should not be added to Moderations"
 	moderationChannel := model.Channel{Type: channeltype.OpenAI, Key: "moderation-provider-key", Name: "moderation", Status: model.ChannelStatusEnabled, Group: "default", Models: "moderation-alias,omni-moderation-latest", BaseURL: &moderationURL, ModelMapping: &moderationMapping, SystemPrompt: &moderationPrompt}
 	if err := moderationChannel.Insert(); err != nil {
@@ -830,7 +833,7 @@ func TestNativeRoutesSelectMatchingProtocolAndPreserveWireData(t *testing.T) {
 		_, _ = io.WriteString(w, responsesNormal)
 	}))
 	defer responsesServer.Close()
-	responsesURL, responsesMapping, responsesPrompt := responsesServer.URL + "/v1", `{"responses-alias":"responses-upstream"}`, "configured"
+	responsesURL, responsesMapping, responsesPrompt := responsesServer.URL+"/v1", `{"responses-alias":"responses-upstream"}`, "configured"
 	responsesChannel := model.Channel{Type: channeltype.OpenAI, Key: "responses-provider-key", Name: "responses", Status: model.ChannelStatusEnabled, Group: "default", Models: "responses-alias", BaseURL: &responsesURL, ModelMapping: &responsesMapping, SystemPrompt: &responsesPrompt}
 	if err := responsesChannel.Insert(); err != nil {
 		t.Fatal(err)
@@ -1073,5 +1076,112 @@ func TestVercelChannelBridgesChatOntoOpenResponses(t *testing.T) {
 	}
 	if upstreamCalls.Load() != 3 {
 		t.Fatalf("upstream call count changed: %d", upstreamCalls.Load())
+	}
+}
+
+func TestCachedClaudeBillingAndChannelAffinity(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+
+	prevDB, prevLogDB, prevClient := model.DB, model.LOG_DB, client.HTTPClient
+	prevSQLite, prevRedis, prevCache, prevLog := common.UsingSQLite, common.RedisEnabled, config.MemoryCacheEnabled, config.LogConsumeEnabled
+	prevInput, prevOutput := billingratio.ModelRatio2JSONString(), billingratio.CompletionRatio2JSONString()
+	prevPrices, prevGroups := billingratio.ModelCachePricesJSON(), billingratio.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB, client.HTTPClient = prevDB, prevLogDB, prevClient
+		common.UsingSQLite, common.RedisEnabled, config.MemoryCacheEnabled, config.LogConsumeEnabled = prevSQLite, prevRedis, prevCache, prevLog
+		_ = billingratio.UpdateModelRatioByJSONString(prevInput)
+		_ = billingratio.UpdateCompletionRatioByJSONString(prevOutput)
+		_ = billingratio.UpdateModelCachePrices(prevPrices)
+		_ = billingratio.UpdateGroupRatioByJSONString(prevGroups)
+		_ = sqlDB.Close()
+	})
+	model.DB, model.LOG_DB = db, db
+	common.UsingSQLite, common.RedisEnabled, config.MemoryCacheEnabled, config.LogConsumeEnabled = true, false, false, true
+	require.NoError(t, billingratio.UpdateModelRatioByJSONString(`{"claude-cache-test":1}`))
+	require.NoError(t, billingratio.UpdateCompletionRatioByJSONString(`{"claude-cache-test":5}`))
+	require.NoError(t, billingratio.UpdateModelCachePrices(`{"claude-cache-test":{"read":0.1,"write":1.25,"write_1h":2}}`))
+	require.NoError(t, billingratio.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	user := model.User{Username: "cache-test", Status: model.UserStatusEnabled, Role: model.RoleCommonUser, Group: "default", Quota: 100000}
+	require.NoError(t, db.Create(&user).Error)
+	token := model.Token{UserId: user.Id, Key: "test-cache-gateway", Name: "cache-test", Status: model.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 100000}
+	require.NoError(t, db.Create(&token).Error)
+	for _, key := range []string{"provider-a", "provider-b"} {
+		base := "https://mock.invalid"
+		channel := model.Channel{Type: channeltype.Anthropic, Key: key, Name: key, Status: model.ChannelStatusEnabled,
+			Group: "default", Models: "claude-cache-test", BaseURL: &base,
+			Config: `{"anthropic_bridge_cache":true,"anthropic_bridge_max_tokens":8192}`}
+		require.NoError(t, channel.Insert())
+	}
+
+	var checks struct {
+		limit  int64
+		cache  bool
+		stop   string
+		before int64
+	}
+	var keys []string
+	client.HTTPClient = &http.Client{Transport: playgroundTransport(func(req *http.Request) (*http.Response, error) {
+		keys = append(keys, req.Header.Get("x-api-key"))
+		var fields struct {
+			MaxTokens int64           `json:"max_tokens"`
+			Cache     json.RawMessage `json:"cache_control"`
+		}
+		require.NoError(t, json.NewDecoder(req.Body).Decode(&fields))
+		require.Equal(t, checks.limit, fields.MaxTokens)
+		require.Equal(t, checks.cache, len(fields.Cache) > 0)
+		remaining, err := model.GetUserQuota(user.Id)
+		require.NoError(t, err)
+		require.Equal(t, config.PreConsumedQuota+checks.limit, checks.before-remaining)
+
+		body := fmt.Sprintf(`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"answer"}],"stop_reason":%q,"usage":{"input_tokens":20,"cache_read_input_tokens":80,"cache_creation_input_tokens":40,"cache_creation":{"ephemeral_5m_input_tokens":30,"ephemeral_1h_input_tokens":10},"output_tokens":3}}`, checks.stop)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	engine := gin.New()
+	SetRelayRouter(engine)
+	for _, tc := range []struct {
+		path, body, stop, response string
+		limit                      int64
+		cache                      bool
+		status                     int
+	}{
+		{"/v1/chat/completions", `"messages":[{"role":"user","content":"stable"}]`, "refusal", `"finish_reason":"content_filter"`, 8192, true, http.StatusOK},
+		{"/v1/chat/completions", `"max_completion_tokens":3500,"messages":[{"role":"user","content":"stable"},{"role":"assistant","content":"answer"},{"role":"user","content":"follow-up"}]`, "model_context_window_exceeded", `"finish_reason":"length"`, 3500, true, http.StatusOK},
+		{"/v1/responses", `"input":"stable"`, "model_context_window_exceeded", `"status":"incomplete"`, 8192, true, http.StatusOK},
+		{"/v1/chat/completions", `"messages":[{"role":"user","content":"stable"}]`, "unknown_stop_reason", "cannot be converted", 8192, true, http.StatusBadGateway},
+		{"/v1/messages", `"max_tokens":2048,"messages":[{"role":"user","content":"stable"}]`, "end_turn", `"stop_reason":"end_turn"`, 2048, false, http.StatusOK},
+	} {
+		t.Run(tc.path+" "+tc.stop, func(t *testing.T) {
+			before, err := model.GetUserQuota(user.Id)
+			require.NoError(t, err)
+			checks.limit, checks.cache, checks.stop, checks.before = tc.limit, tc.cache, tc.stop, before
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(`{"model":"claude-cache-test",`+tc.body+`}`))
+			req.Header.Set("Authorization", "Bearer sk-test-cache-gateway")
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, req)
+			require.Equal(t, tc.status, response.Code, response.Body.String())
+			require.Contains(t, response.Body.String(), tc.response)
+			after, err := model.GetUserQuota(user.Id)
+			require.NoError(t, err)
+			require.EqualValues(t, 101, before-after)
+			var log model.Log
+			require.NoError(t, db.Where("type = ?", model.LogTypeConsume).Last(&log).Error)
+			require.EqualValues(t, 101, log.Quota)
+			require.EqualValues(t, 140, log.PromptTokens)
+			require.EqualValues(t, 80, log.CacheReadTokens)
+			require.EqualValues(t, 40, log.CacheWriteTokens)
+			require.EqualValues(t, 10, log.CacheWrite1hTokens)
+			require.Equal(t, "usage", log.ChargeBasis)
+		})
+	}
+	require.Len(t, keys, 5)
+	for _, key := range keys[1:] {
+		require.Equal(t, keys[0], key)
 	}
 }

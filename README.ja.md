@@ -40,7 +40,7 @@ A1O Platform は [One API](https://github.com/songquanpeng/one-api) から派生
 | 画面 | できること |
 | --- | --- |
 | **Chat → Playground** | OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini のネイティブ形式でリクエストを送信できます。JSON やストリーミングイベントの確認、同じリクエストでの 2 モデルの比較、cURL サンプルのコピーが可能です。 |
-| **Workspace → Knowledge libraries** | 非公開の UTF-8 TXT や Markdown をアップロードし、Chat でライブラリを選択して、回答に引用された箇所を開けます。既存のデータベースでキーワード検索を行うため、埋め込みやベクトルデータベースは不要です。1 ファイルあたり 256 KiB、1 ライブラリあたり 64 ファイルかつ合計 2 MiB までです。 |
+| **Workspace → Knowledge libraries** | 非公開の TXT、Markdown、CSV、TSV、PDF、DOCX、XLSX、PPTX、JPEG、PNG、GIF、WebP をアップロードできます。Chat では抽出したテキストを検索し、引用箇所を開けます。既定では 1 ファイル 16 MiB、1 ライブラリ 256 MiB、最大 64 ファイルです。管理者は容量制限を変更できます。[資料ライブラリのガイド](docs/knowledge-libraries.md) を参照してください。 |
 | **画像生成 → 画像／動画** | Volcengine Ark Seedream や対応する Gemini モデルなどで画像を生成し、プレビュー、原本のダウンロード、Chat や Work への添付ができます。Seedream と対応する Gemini 画像モデルでは PNG、JPEG、WebP の参照画像を指定できます。Ark の Seedance ではテキストから 720p、5～8 秒の動画を生成でき、先頭フレームも指定できます。Gemini の `gemini-omni-1.2-flash` はテキストから 360p、3～8 秒の動画を生成します。 |
 | **音声** | 対応モデルで読み上げ音声の生成、文字起こし、音声から英語への翻訳が可能です。生成音声の再生とダウンロード、文字起こしのテキスト出力に対応します。 |
 | **Account → Redeem** | 引換コードを使うか、サイトで有効になっている Stripe Checkout、Airwallex、EPay V1/V2、NOWPayments、GMPay Edge で買い切りの利用枠を購入できます。 |

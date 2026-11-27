@@ -16,10 +16,11 @@ import (
 // convert their body; the upstream stream action is selected by the
 // transport.
 func ChatToGemini(body []byte, model string) ([]byte, error) {
-	head, err := parseChatRequestHead(body, model, "stop")
-	if err != nil {
-		return nil, err
-	}
+	c := chatGemini{}
+	return c.Request(body, model)
+}
+
+func chatToGemini(head *chatRequestHead, model string) ([]byte, error) {
 	fields := head.fields
 	config := map[string]any{}
 	if head.limit > 0 {
@@ -49,6 +50,9 @@ func ChatToGemini(body []byte, model string) ([]byte, error) {
 		tools, err := chatToolsToGemini(fields["tools"])
 		if err != nil {
 			return nil, err
+		}
+		if len(tools) > 0 && head.parallelTools != nil && !*head.parallelTools && rawString(fields["tool_choice"]) != "none" {
+			return nil, errors.New("Gemini cannot enforce parallel_tool_calls=false")
 		}
 		request["tools"] = tools
 	}

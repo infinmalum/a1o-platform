@@ -75,8 +75,7 @@ type toolSet struct {
 	// passes it to the harness for reminder re-surfacing.
 	todos         *normatool.TodoStore
 	skillPrompt   string
-	skillGuidance map[string]string
-	loadedSkills  []string
+	skillGuidance []positionedSkillGuidance
 }
 
 func newToolSet() *toolSet {

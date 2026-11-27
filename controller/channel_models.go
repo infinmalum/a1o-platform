@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -289,7 +290,10 @@ func persistPriceBook() error {
 	if err := model.UpdateOption("ModelRatio", billingratio.ModelRatio2JSONString()); err != nil {
 		return err
 	}
-	return model.UpdateOption("CompletionRatio", billingratio.CompletionRatio2JSONString())
+	if err := model.UpdateOption("CompletionRatio", billingratio.CompletionRatio2JSONString()); err != nil {
+		return err
+	}
+	return model.UpdateOption("ModelCachePrices", billingratio.ModelCachePricesJSON())
 }
 
 func truncateForError(body []byte) string {
@@ -341,8 +345,11 @@ type openRouterModelList struct {
 	Data []struct {
 		Id      string `json:"id"`
 		Pricing struct {
-			Prompt     string `json:"prompt"`
-			Completion string `json:"completion"`
+			Prompt       string `json:"prompt"`
+			Completion   string `json:"completion"`
+			CacheRead    string `json:"input_cache_read"`
+			CacheWrite   string `json:"input_cache_write"`
+			CacheWrite1h string `json:"input_cache_write_1h"`
 		} `json:"pricing"`
 	} `json:"data"`
 }
@@ -385,10 +392,24 @@ func parseOpenRouterCatalog(body []byte) ([]string, map[string]billingratio.Fetc
 		prices[item.Id] = billingratio.FetchedModelPrice{
 			Input:      prompt * 500000,
 			Completion: completionRatio,
+			Cache: billingratio.CachePrices{
+				Read:    catalogCachePrice(item.Pricing.CacheRead),
+				Write:   catalogCachePrice(item.Pricing.CacheWrite),
+				Write1h: catalogCachePrice(item.Pricing.CacheWrite1h),
+			},
 		}
 	}
 	sort.Strings(models)
 	return models, prices, nil
+}
+
+func catalogCachePrice(value string) *float64 {
+	price, err := strconv.ParseFloat(value, 64)
+	if err != nil || price < 0 || math.IsNaN(price) || math.IsInf(price*500000, 0) {
+		return nil
+	}
+	ratio := price * 500000
+	return &ratio
 }
 
 // vercelModelList parses the Vercel AI Gateway's /v1/models catalog. Every

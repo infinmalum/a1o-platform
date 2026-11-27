@@ -128,6 +128,12 @@ func anthropicUsageEnvelope(usage native.Usage) map[string]any {
 	if usage.CacheRead > 0 {
 		result["cache_read_input_tokens"] = usage.CacheRead
 	}
+	if usage.CacheCreation1h > 0 {
+		result["cache_creation"] = map[string]int64{
+			"ephemeral_1h_input_tokens": usage.CacheCreation1h,
+			"ephemeral_5m_input_tokens": max(0, usage.CacheCreation-usage.CacheCreation1h),
+		}
+	}
 	return result
 }
 

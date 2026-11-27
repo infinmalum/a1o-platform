@@ -165,11 +165,24 @@ func emitChatChunk(dst StreamWriter, id string, created int64, model string, del
 	return writeStreamEvent(dst, payload)
 }
 
+func writeChatUsageChunk(dst StreamWriter, id string, created int64, model string, usage native.Usage) error {
+	payload, err := json.Marshal(map[string]any{
+		"id": id, "object": "chat.completion.chunk", "created": created, "model": model,
+		"choices": []any{}, "usage": chatUsageEnvelope(usage),
+	})
+	if err != nil {
+		return err
+	}
+	return writeStreamEvent(dst, payload)
+}
+
 func mapAnthropicStopReason(reason string) (string, error) {
 	switch reason {
-	case "end_turn", "stop_sequence", "refusal":
+	case "end_turn", "stop_sequence":
 		return "stop", nil
-	case "max_tokens":
+	case "refusal":
+		return "content_filter", nil
+	case "max_tokens", "model_context_window_exceeded":
 		return "length", nil
 	case "tool_use":
 		return "tool_calls", nil

@@ -163,7 +163,7 @@
     "create": "Créer une base",
     "upload": "Importer un document",
     "manage": "Gérer les bases dans l'espace de travail",
-    "limits": "TXT et Markdown UTF-8. 256 Kio max par document, et 64 documents ou 2 Mio par base.",
+    "limits": "{{file}} par fichier · {{used}} sur {{total}} utilisés · {{count}} fichiers par bibliothèque",
     "empty": "Aucun document pour le moment.",
     "deleteLibrary": "Supprimer la base",
     "deleteDocument": "Supprimer le document",
@@ -174,6 +174,8 @@
     "sources": "Sources",
     "source": "Document source",
     "original": "Voir le texte original",
+    "download": "Télécharger le fichier original",
+    "noText": "Ce fichier ne contient aucun texte consultable.",
     "lines": "Lignes {{start}}–{{end}}",
     "noLibraries": "Aucune base pour le moment. Créez-en une ci-dessus."
   },
@@ -445,9 +447,9 @@
       "uploadSave": "Impossible d'enregistrer le fichier. Veuillez réessayer dans un instant.",
       "fileLimit": "Les fichiers doivent faire {{limit}} ou moins.",
       "textFileLimit": "Les pièces jointes texte doivent faire {{limit}} ou moins.",
-      "knowledgeFileLimit": "Chaque document doit faire 256 Kio ou moins.",
-      "knowledgeInvalidFile": "Choisissez un fichier TXT ou Markdown UTF-8 contenant du texte consultable.",
-      "knowledgeCapacity": "Cette base est pleine (64 documents et 2 Mio au total au maximum).",
+      "knowledgeFileLimit": "Chaque fichier doit faire {{limit}} ou moins.",
+      "knowledgeInvalidFile": "Le format est incompatible ou le fichier est illisible.",
+      "knowledgeCapacity": "Cette bibliothèque a atteint sa capacité maximale.",
       "chatBusy": "Cette conversation génère encore une réponse. Attendez la fin.",
       "retryUnavailable": "Ce message n'a pas pu être régénéré. Rouvrez la conversation et réessayez."
     }

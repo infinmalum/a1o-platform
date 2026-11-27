@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FileText, Trash2, Upload } from 'lucide-react';
+import { Download, FileText, Trash2, Upload } from 'lucide-react';
 
 import { ListError, ListLoading, ListPages, studioPageSize, useStudioPage } from '@/components/StudioList';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { knowledgeApi, knowledgeSourceUrl, type KnowledgeDocument } from './knowledgeApi';
+import { knowledgeApi, knowledgeFileUrl, knowledgeSourceUrl, type KnowledgeDocument, type KnowledgeUploadRules } from './knowledgeApi';
 import { formatBytes } from './workspaceApi';
 
 export default function KnowledgeLibraries() {
@@ -19,6 +19,7 @@ export default function KnowledgeLibraries() {
   const [selectedID, setSelected] = useState(0);
   const selected = libraries.find((item) => item.id === selectedID)?.id ?? libraries[0]?.id ?? 0;
   const [docs, setDocs] = useState<{ libraryId: number; items: KnowledgeDocument[]; failed: boolean }>();
+  const [rules, setRules] = useState<KnowledgeUploadRules>();
   const [docAttempt, setDocAttempt] = useState(0);
   const [docPage, setDocPage] = useState(0);
   const [name, setName] = useState('');
@@ -30,8 +31,10 @@ export default function KnowledgeLibraries() {
   useEffect(() => {
     if (!selected) return;
     let active = true;
-    void knowledgeApi.documents(selected).then((items) => {
-      if (active) setDocs({ libraryId: selected, items, failed: false });
+    void Promise.all([knowledgeApi.documents(selected), knowledgeApi.uploadRules()]).then(([items, limits]) => {
+      if (!active) return;
+      setDocs({ libraryId: selected, items, failed: false });
+      setRules(limits);
     }).catch(() => {
       if (active) setDocs({ libraryId: selected, items: [], failed: true });
     });
@@ -54,6 +57,7 @@ export default function KnowledgeLibraries() {
   const currentDocs = docs?.libraryId === selected ? docs : undefined;
   const documents = currentDocs?.items ?? [];
   const docsReady = !!currentDocs && !currentDocs.failed;
+  const usedBytes = documents.reduce((total, document) => total + document.size, 0);
   const updateDocuments = (edit: (items: KnowledgeDocument[]) => KnowledgeDocument[]) => {
     setDocs((current) => current?.libraryId === selected ? { ...current, items: edit(current.items) } : current);
   };
@@ -114,16 +118,21 @@ export default function KnowledgeLibraries() {
                 {libraries.map((library) => <SelectItem key={library.id} value={String(library.id)}>{library.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input ref={uploadRef} type='file' accept='.txt,.md' className='hidden' onChange={(event) => {
+            <Input ref={uploadRef} type='file' accept={rules?.extensions.join(',')} className='hidden' onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
-              if (!file || busy || !docsReady) return;
-              if (!/\.(txt|md)$/i.test(file.name)) {
+              if (!file || busy || !docsReady || !rules) return;
+              const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
+              if (!rules.extensions.includes(extension)) {
                 setError(t('studio.errors.knowledgeInvalidFile'));
                 return;
               }
-              if (file.size > 256 * 1024) {
-                setError(t('studio.errors.knowledgeFileLimit'));
+              if (file.size > rules.file_bytes) {
+                setError(t('studio.errors.knowledgeFileLimit', { limit: formatBytes(rules.file_bytes) }));
+                return;
+              }
+              if (documents.length >= rules.max_documents || usedBytes + file.size > rules.library_bytes) {
+                setError(t('studio.errors.knowledgeCapacity'));
                 return;
               }
               void perform(async () => {
@@ -132,14 +141,22 @@ export default function KnowledgeLibraries() {
                 setDocPage(0);
               });
             }} />
-            <Button variant='outline' disabled={!docsReady || busy} onClick={() => uploadRef.current?.click()}>
+            <Button variant='outline' disabled={!docsReady || !rules || busy} onClick={() => uploadRef.current?.click()}>
               <Upload /> {t('knowledge.upload')}
             </Button>
             <Button variant='ghost' disabled={busy} onClick={() => setRemoveTarget({ libraryId: selected, name: active.name })}>
               <Trash2 /> {t('knowledge.deleteLibrary')}
             </Button>
           </div>
-          <p className='text-muted-foreground text-xs'>{t('knowledge.limits')}</p>
+          {docsReady && rules && (
+            <div className='text-muted-foreground grid gap-1 text-xs'>
+              <p>{t('knowledge.limits', {
+                file: formatBytes(rules.file_bytes), total: formatBytes(rules.library_bytes),
+                used: formatBytes(usedBytes), count: rules.max_documents,
+              })}</p>
+              <p dir='ltr' className='text-start'>{rules.extensions.join(' · ')}</p>
+            </div>
+          )}
           {!currentDocs ? <ListLoading /> : currentDocs.failed ? (
             <ListError retry={() => { setDocs(undefined); setDocAttempt((attempt) => attempt + 1); }} />
           ) : documents.length === 0 ? (
@@ -212,14 +229,14 @@ function KnowledgePreview() {
   const documentId = Number.isSafeInteger(requestedId) && requestedId > 0 ? requestedId : 0;
   const start = Number(params.get('start'));
   const end = Number(params.get('end'));
-  const [preview, setPreview] = useState<{ id: number; name?: string; text?: string; error?: string }>();
+  const [preview, setPreview] = useState<{ id: number; name?: string; text?: string; contentType?: string; error?: string }>();
   const highlight = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!documentId) return;
     let cancelled = false;
     knowledgeApi.document(documentId).then((data) => {
-      if (!cancelled) setPreview({ id: documentId, name: data.document.name, text: data.text });
+      if (!cancelled) setPreview({ id: documentId, name: data.document.name, text: data.text, contentType: data.document.content_type });
     }).catch((cause: Error) => {
       if (!cancelled) setPreview({ id: documentId, error: cause.message });
     });
@@ -227,6 +244,7 @@ function KnowledgePreview() {
   }, [documentId]);
 
   const current = preview?.id === documentId ? preview : undefined;
+  const image = current?.contentType?.startsWith('image/');
   const lines = current?.text?.split('\n');
   const selected = lines && Number.isSafeInteger(start) && Number.isSafeInteger(end) && start > 0 && end >= start && end <= lines.length
     ? lines.slice(start - 1, end).join('\n')
@@ -250,19 +268,29 @@ function KnowledgePreview() {
         <DialogHeader>
           <DialogTitle className='break-all'>{current?.name || t('knowledge.source')}</DialogTitle>
           <DialogDescription>
-            {selected !== undefined ? t('knowledge.lines', { start, end }) : t('knowledge.original')}
+            {selected !== undefined ? t('knowledge.lines', { start, end }) : t(image ? 'knowledge.source' : 'knowledge.original')}
           </DialogDescription>
         </DialogHeader>
         {current?.error ? <p role='alert' className='text-destructive text-sm'>{current.error}</p> : !current ? (
           <p className='text-muted-foreground text-sm'>{t('workspace.loading')}</p>
+        ) : image ? (
+          <img src={knowledgeFileUrl(documentId, true)} alt={current.name}
+            className='max-h-[60dvh] max-w-full rounded-md object-contain' />
+        ) : !current.text?.trim() ? (
+          <p className='text-muted-foreground text-sm'>{t('knowledge.noText')}</p>
         ) : (
-          <pre className='bg-muted max-h-[66dvh] overflow-auto whitespace-pre-wrap break-words rounded-md p-3 text-sm'>
+          <pre className='bg-muted max-h-[60dvh] overflow-auto whitespace-pre-wrap break-words rounded-md p-3 text-sm'>
             {lines && selected !== undefined ? (
               <>{start > 1 && lines.slice(0, start - 1).join('\n') + '\n'}<mark ref={highlight}>{selected}</mark>
                 {end < lines.length && '\n' + lines.slice(end).join('\n')}</>
             ) : current.text}
           </pre>
         )}
+        {current?.name && <DialogFooter>
+          <Button variant='outline' asChild>
+            <a href={knowledgeFileUrl(documentId)} download={current.name}><Download /> {t('knowledge.download')}</a>
+          </Button>
+        </DialogFooter>}
       </DialogContent>
     </Dialog>
   );

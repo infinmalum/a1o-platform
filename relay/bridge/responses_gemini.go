@@ -24,7 +24,7 @@ func (responsesGemini) Request(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens",
+	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens", "prompt_cache_key",
 		"temperature", "top_p", "tools", "tool_choice")
 	if err != nil {
 		return nil, err

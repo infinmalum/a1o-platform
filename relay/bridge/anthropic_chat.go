@@ -17,7 +17,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "messages", "max_tokens", "system", "stream", "temperature", "top_p", "stop_sequences", "tools", "tool_choice")
+	fields, err := messagesObject(body, "model", "messages", "max_tokens", "system", "stream", "temperature", "top_p", "stop_sequences", "tools", "tool_choice")
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 			}
 		}
 		for _, blockRaw := range blocks {
-			block, err := object(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error", "thinking", "signature")
+			block, err := messagesObject(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error", "thinking", "signature")
 			if err != nil {
 				return nil, err
 			}
@@ -183,7 +183,7 @@ func AnthropicToChatRequest(body []byte, model string) ([]byte, error) {
 		}
 		var chatTools []any
 		for _, raw := range tools {
-			tool, err := object(raw, "name", "description", "input_schema")
+			tool, err := messagesObject(raw, "name", "description", "input_schema")
 			if err != nil {
 				return nil, err
 			}
@@ -369,9 +369,21 @@ func messagesText(raw json.RawMessage) (string, error) {
 	if text, ok := chatContentString(raw); ok {
 		return text, nil
 	}
-	parts, err := chatTextPartList(raw)
-	if err != nil {
-		return "", err
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) != nil {
+		return "", errors.New("Messages content must be text or text blocks")
 	}
-	return strings.Join(parts, ""), nil
+	var content strings.Builder
+	for _, rawBlock := range blocks {
+		block, err := messagesObject(rawBlock, "type", "text")
+		if err != nil {
+			return "", err
+		}
+		var text string
+		if rawString(block["type"]) != "text" || json.Unmarshal(block["text"], &text) != nil {
+			return "", errors.New("Messages text block requires text")
+		}
+		content.WriteString(text)
+	}
+	return content.String(), nil
 }

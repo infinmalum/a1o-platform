@@ -44,13 +44,17 @@ func WritePrivacyExport(ctx context.Context, dst io.Writer, userID int) error {
 		},
 		func() error { return exportRows[KnowledgeLibrary](archive, "knowledge-libraries", owned(), nil) },
 		func() error {
-			return exportRows[KnowledgeDocument](archive, "knowledge-documents", db.Where("library_id IN (?)", libraries),
+			return exportRows[KnowledgeDocument](archive, "knowledge-documents", db.Where("library_id IN (?)", libraries).Omit("body", "extracted_text"),
 				func(doc *KnowledgeDocument) error {
 					dst, err := archive.Create(fmt.Sprintf("knowledge/%d", doc.Id))
 					if err != nil {
 						return err
 					}
-					_, err = dst.Write(doc.Body)
+					var original KnowledgeDocument
+					if err := db.Select("body").Where("id = ? AND library_id = ?", doc.Id, doc.LibraryId).Take(&original).Error; err != nil {
+						return err
+					}
+					_, err = dst.Write(original.Body)
 					return err
 				})
 		},

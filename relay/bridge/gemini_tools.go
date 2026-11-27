@@ -81,7 +81,7 @@ func messagesToolsToGemini(raw json.RawMessage) ([]any, error) {
 	}
 	var declarations []any
 	for _, item := range tools {
-		tool, err := object(item, "name", "description", "input_schema")
+		tool, err := messagesObject(item, "name", "description", "input_schema")
 		if err != nil {
 			return nil, err
 		}

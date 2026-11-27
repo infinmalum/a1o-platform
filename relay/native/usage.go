@@ -13,23 +13,41 @@ type Usage struct {
 	Input  int64
 	Output int64
 	// CacheRead, CacheCreation, and Reasoning carry the provider's token
-	// breakdown. Input keeps including the cache tokens so billing math is
-	// unchanged; converters and writers use the detail fields only to render
-	// faithful per-protocol usage envelopes to clients.
-	CacheRead     int64
-	CacheCreation int64
-	Reasoning     int64
-	Seen          bool
-	Partial       bool `json:",omitempty"`
+	// breakdown. Input includes cache reads and writes.
+	CacheRead       int64
+	CacheCreation   int64
+	CacheCreation1h int64 `json:",omitempty"`
+	Reasoning       int64
+	Seen            bool
+	Partial         bool `json:",omitempty"`
 	// Complete marks a protocol-level end event where one exists.
 	Complete bool
 }
 
-type anthropicUsage struct {
+type AnthropicUsage struct {
 	InputTokens              int64 `json:"input_tokens"`
 	OutputTokens             int64 `json:"output_tokens"`
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	CacheCreation            struct {
+		FiveMinutes int64 `json:"ephemeral_5m_input_tokens"`
+		OneHour     int64 `json:"ephemeral_1h_input_tokens"`
+	} `json:"cache_creation"`
+}
+
+func (report AnthropicUsage) Apply(u *Usage) bool {
+	if min(report.InputTokens, report.OutputTokens, report.CacheCreationInputTokens,
+		report.CacheReadInputTokens, report.CacheCreation.FiveMinutes, report.CacheCreation.OneHour) < 0 {
+		return false
+	}
+	uncached := max(u.Input-u.CacheRead-u.CacheCreation, report.InputTokens)
+	u.CacheRead = max(u.CacheRead, report.CacheReadInputTokens)
+	u.CacheCreation = max(u.CacheCreation, report.CacheCreationInputTokens, report.CacheCreation.FiveMinutes+report.CacheCreation.OneHour)
+	u.CacheCreation1h = max(u.CacheCreation1h, report.CacheCreation.OneHour)
+	u.Input = uncached + u.CacheCreation + u.CacheRead
+	u.Output = max(u.Output, report.OutputTokens)
+	u.Seen = true
+	return true
 }
 
 type geminiUsage struct {
@@ -57,9 +75,9 @@ func (u *Usage) observe(protocol Protocol, data []byte, gemini *geminiStreamProg
 	case Anthropic:
 		var result struct {
 			Type    string          `json:"type"`
-			Usage   *anthropicUsage `json:"usage"`
+			Usage   *AnthropicUsage `json:"usage"`
 			Message *struct {
-				Usage *anthropicUsage `json:"usage"`
+				Usage *AnthropicUsage `json:"usage"`
 			} `json:"message"`
 		}
 		if json.Unmarshal(data, &result) != nil {
@@ -75,10 +93,7 @@ func (u *Usage) observe(protocol Protocol, data []byte, gemini *geminiStreamProg
 		if usage == nil {
 			return
 		}
-		input := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
-		u.Input = max(u.Input, input)
-		u.Output = max(u.Output, usage.OutputTokens)
-		u.Seen = true
+		usage.Apply(u)
 	case Gemini:
 		var result struct {
 			Usage      *geminiUsage `json:"usageMetadata"`
@@ -171,15 +186,17 @@ func (u *Usage) observe(protocol Protocol, data []byte, gemini *geminiStreamProg
 		}
 		var result struct {
 			Usage *struct {
-				PromptTokens      int64              `json:"prompt_tokens"`
-				CompletionTokens  int64              `json:"completion_tokens"`
-				PromptDetails     *openAIUsageDetail `json:"prompt_tokens_details"`
-				CompletionDetails *openAIUsageDetail `json:"completion_tokens_details"`
+				PromptTokens         int64              `json:"prompt_tokens"`
+				CompletionTokens     int64              `json:"completion_tokens"`
+				PromptCacheHitTokens int64              `json:"prompt_cache_hit_tokens"`
+				PromptDetails        *openAIUsageDetail `json:"prompt_tokens_details"`
+				CompletionDetails    *openAIUsageDetail `json:"completion_tokens_details"`
 			} `json:"usage"`
 		}
 		if json.Unmarshal(data, &result) == nil && result.Usage != nil {
 			u.Input = max(u.Input, result.Usage.PromptTokens)
 			u.Output = max(u.Output, result.Usage.CompletionTokens)
+			u.CacheRead = max(u.CacheRead, result.Usage.PromptCacheHitTokens)
 			if result.Usage.PromptDetails != nil {
 				u.CacheRead = max(u.CacheRead, result.Usage.PromptDetails.CachedTokens)
 			}
@@ -264,6 +281,16 @@ func (w *errorRecordingWriter) Write(p []byte) (int, error) {
 
 // copyJSONResponse decodes only top-level usage while forwarding the entire
 // response. Large embedding arrays therefore do not need to be buffered.
+// ReadJSONUsage observes counters separately from response conversion.
+func ReadJSONUsage(protocol Protocol, body []byte) Usage {
+	var usage Usage
+	if json.Valid(body) {
+		usage.observe(protocol, body, nil)
+		usage.Complete = usage.Seen
+	}
+	return usage
+}
+
 func copyJSONResponse(dst http.ResponseWriter, src io.Reader, protocol Protocol) (Usage, error) {
 	var usage Usage
 	writer := &errorRecordingWriter{dst: dst}

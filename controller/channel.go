@@ -145,6 +145,10 @@ func AddChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	if _, err := channel.LoadConfig(); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	if err := validateChannelAccountBinding(&channel); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -221,6 +225,10 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	if err := validateChannelType(&channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if _, err := channel.LoadConfig(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}

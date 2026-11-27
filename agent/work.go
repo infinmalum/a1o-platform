@@ -123,6 +123,7 @@ func (e *Engine) RunWork(ctx context.Context, req WorkTurnRequest) error {
 			if err != nil {
 				return InvokeResult{}, nil, fmt.Errorf("运行上下文损坏: %w", err)
 			}
+			tools.placeSkillGuidance(len(preamble) + len(items))
 			inputs, err := e.consumePendingInputs(req)
 			if err != nil {
 				return InvokeResult{}, nil, fmt.Errorf("消费追加输入失败: %w", err)

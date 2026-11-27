@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/relay/native"
 )
 
@@ -24,7 +23,7 @@ func (responsesAnthropic) Request(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens",
+	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens", "prompt_cache_key",
 		"temperature", "top_p", "tools", "tool_choice")
 	if err != nil {
 		return nil, err
@@ -38,7 +37,7 @@ func (responsesAnthropic) Request(body []byte, model string) ([]byte, error) {
 		return nil, errors.New("max_output_tokens must not be negative")
 	}
 	if limit == 0 {
-		limit = 1024
+		limit = DefaultAnthropicBridgeMaxTokens
 	}
 	request := map[string]any{"model": model, "max_tokens": limit}
 	if stream {
@@ -440,7 +439,7 @@ func (responsesAnthropic) Response(body []byte, requestedModel string) ([]byte, 
 	var incompleteDetails any
 	switch rawString(fields["stop_reason"]) {
 	case "end_turn", "stop_sequence", "tool_use", "refusal":
-	case "max_tokens":
+	case "max_tokens", "model_context_window_exceeded":
 		status = "incomplete"
 		incompleteDetails = map[string]string{"reason": "max_output_tokens"}
 	default:
@@ -455,12 +454,9 @@ func (responsesAnthropic) Response(body []byte, requestedModel string) ([]byte, 
 		result["incomplete_details"] = incompleteDetails
 	}
 	if nonNull(fields["usage"]) {
-		details, err := anthropicUsageDetails(fields["usage"])
-		if err != nil {
+		if err := applyAnthropicUsage(fields["usage"], &usage, true, metadata); err != nil {
 			return nil, native.Usage{}, err
 		}
-		usage = details
-		usage.Complete = true
 		result["usage"] = responsesUsageEnvelope(usage)
 	}
 	if m := metadata.value(); m != nil {
@@ -554,36 +550,22 @@ func appendAnthropicBlockAsItem(output []any, sawTool bool, raw json.RawMessage,
 	return output, sawTool, nil
 }
 
-// anthropicUsageDetails reads the Messages usage envelope shared by the sync
-// and streaming Anthropic-to-Responses converters into the shared usage with
-// its cache breakdown. Input keeps including the cache tokens, matching how
-// the gateway bills the request.
-func anthropicUsageDetails(raw json.RawMessage) (native.Usage, error) {
-	usage, extra, err := rawObject(raw, "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+// applyAnthropicUsage merges cumulative counters in an Anthropic snapshot.
+func applyAnthropicUsage(raw json.RawMessage, usage *native.Usage, requireInput bool, metadata *providerMetadata) error {
+	fields, extra, err := rawObject(raw, "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "cache_creation")
 	if err != nil {
-		return native.Usage{}, fmt.Errorf("invalid Anthropic usage: %w", err)
+		return fmt.Errorf("invalid Anthropic usage: %w", err)
 	}
-	if len(extra) > 0 {
-		logger.SysWarnf("Anthropic usage extras folded into provider_metadata: %s", sortExtrasNames(extra))
+	if requireInput && !nonNull(fields["input_tokens"]) {
+		return errors.New("Anthropic usage requires input_tokens")
 	}
-	input, ok := decodeStreamNumber(usage["input_tokens"])
-	if !ok || !nonNull(usage["input_tokens"]) {
-		return native.Usage{}, errors.New("Anthropic usage requires input_tokens")
+	if len(fields) == 0 {
+		return nil
 	}
-	output, ok := decodeStreamNumber(usage["output_tokens"])
-	if !ok {
-		return native.Usage{}, errors.New("Anthropic usage requires output_tokens")
+	var report native.AnthropicUsage
+	if json.Unmarshal(raw, &report) != nil || !report.Apply(usage) {
+		return errors.New("invalid Anthropic usage")
 	}
-	cacheCreation, ok := decodeStreamNumber(usage["cache_creation_input_tokens"])
-	if !ok {
-		return native.Usage{}, errors.New("invalid Anthropic usage")
-	}
-	cacheRead, ok := decodeStreamNumber(usage["cache_read_input_tokens"])
-	if !ok {
-		return native.Usage{}, errors.New("invalid Anthropic usage")
-	}
-	return native.Usage{
-		Input: input + cacheCreation + cacheRead, Output: output,
-		CacheCreation: cacheCreation, CacheRead: cacheRead, Seen: true,
-	}, nil
+	metadata.absorb(extra)
+	return nil
 }

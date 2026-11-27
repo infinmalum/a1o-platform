@@ -44,6 +44,7 @@ type Principal struct {
 	Group             string
 	SpecificChannel   bool
 	SpecificChannelID int
+	Affinity          string
 }
 
 type Request struct {
@@ -91,6 +92,9 @@ type HTTPError struct {
 // It owns reservation, retries, response copying, and settlement; the caller
 // owns request parsing and the client protocol's error envelope.
 func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPError {
+	if input.Principal.Affinity == "" && (input.Protocol == native.OpenAIChat || input.Protocol == native.OpenAIResponses || input.Protocol == native.Anthropic || input.Protocol == native.Gemini) {
+		input.Principal.Affinity = RequestAffinity(input.Body, input.Principal.UserID, input.Principal.TokenID)
+	}
 	upstreamProtocol := input.Protocol
 	if input.UpstreamProtocol != "" {
 		upstreamProtocol = input.UpstreamProtocol
@@ -232,11 +236,30 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				version = attempt.APIVersion
 			}
 			body := input.Body
+			attemptInput := input
 			if converter != nil {
 				var err error
 				body, err = converter.Request(body, mappedModel)
 				if err != nil {
 					return attemptOutcome{err: &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}}
+				}
+				if upstreamProtocol == native.Anthropic {
+					if attemptInput.MaxOutputTokens == 0 {
+						attemptInput.MaxOutputTokens = attempt.Config.AnthropicBridgeMaxTokens
+						if attemptInput.MaxOutputTokens <= 0 {
+							attemptInput.MaxOutputTokens = bridge.DefaultAnthropicBridgeMaxTokens
+						}
+						attemptInput.MaxOutputTokens = bridge.AnthropicBridgeLimit(input.Body, attemptInput.MaxOutputTokens)
+					}
+					cache := attempt.Config.AnthropicBridgeCache
+					blockCache := attempt.Type == channeltype.AwsClaude || attempt.Type == channeltype.VertextAI
+					body, err = bridge.ConfigureAnthropicBridge(body, attemptInput.MaxOutputTokens, cache, blockCache)
+					if err == nil && attempt.Type == channeltype.AwsClaude && version == "converse" {
+						err = native.ValidateConverseToolChoice(body)
+					}
+					if err != nil {
+						return attemptOutcome{err: &HTTPError{Status: http.StatusUnprocessableEntity, Message: err.Error()}}
+					}
 				}
 				if input.Stream && upstreamProtocol == native.OpenAIChat {
 					// Inbound protocols such as Gemini carry the stream intent
@@ -289,7 +312,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				// are not SSE, so the transport returns a synthetic response
 				// (error failures included) that the shared handling below
 				// reads like any upstream.
-				reservation, sendErr = reserveAttempt(ctx, input, attempt, mappedModel, upstreamProtocol)
+				reservation, sendErr = reserveAttempt(ctx, attemptInput, attempt, mappedModel, upstreamProtocol)
 				if sendErr == nil {
 					var invokeErr error
 					if response, invokeErr = native.BedrockInvoke(ctx, nativeRequest); invokeErr != nil {
@@ -301,7 +324,7 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				var req *http.Request
 				req, sendErr = buildAttempt(ctx, nativeRequest)
 				if sendErr == nil {
-					reservation, sendErr = reserveAttempt(ctx, input, attempt, mappedModel, upstreamProtocol)
+					reservation, sendErr = reserveAttempt(ctx, attemptInput, attempt, mappedModel, upstreamProtocol)
 				}
 				if sendErr == nil {
 					var doErr error
@@ -409,7 +432,8 @@ func Forward(ctx context.Context, dst http.ResponseWriter, input Request) *HTTPE
 				}
 				converted, usage, convertErr := converter.Response(body, input.Model)
 				if convertErr != nil {
-					reservation.Settle(settlementContext, native.Usage{}, false, true)
+					usage = native.ReadJSONUsage(upstreamProtocol, body)
+					reservation.Settle(settlementContext, usage, false, !usage.Complete)
 					notifySettlement(input, reservation)
 					return attemptOutcome{err: &HTTPError{Status: http.StatusBadGateway, Message: convertErr.Error()}}
 				}
@@ -663,7 +687,7 @@ func selectInitial(input Request, upstreamProtocol native.Protocol, source model
 			return Channel{}, &HTTPError{Status: http.StatusBadRequest, Message: "invalid channel ID"}
 		}
 	}
-	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Types: requiredTypes, SpecificID: specificID, Source: source})
+	selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Types: requiredTypes, SpecificID: specificID, Source: source, Affinity: input.Principal.Affinity})
 	if selectErr != nil {
 		if selectErr.Status == http.StatusServiceUnavailable {
 			label := "OpenAI"
@@ -782,7 +806,7 @@ func selectRetry(ctx context.Context, input Request, failed Channel, tried map[i
 	// Candidates come from the routing policy's retry preference order, for
 	// example remaining subscriptions before API channels.
 	for _, source := range RetrySources() {
-		selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried, Source: source})
+		selected, selectErr := SelectChannel(Selection{Group: input.Principal.Group, Model: input.Model, Type: failed.Type, Excluded: tried, Source: source, Affinity: input.Principal.Affinity})
 		if selectErr != nil {
 			continue
 		}

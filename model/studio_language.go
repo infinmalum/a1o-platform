@@ -4,7 +4,6 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"gorm.io/gorm/clause"
@@ -13,7 +12,6 @@ import (
 const studioDisabledLanguagesOption = "StudioDisabledLanguages"
 
 var studioLanguageCodes = []string{"zh", "en", "fr", "de", "es", "ru", "uk", "be", "fa", "ar"}
-var studioLanguageUpdateMu sync.Mutex
 
 type StudioLanguage struct {
 	Code    string `json:"code"`
@@ -54,8 +52,8 @@ func updateStudioDisabledLanguages(value string) error {
 	if err := validateStudioDisabledLanguages(value); err != nil {
 		return err
 	}
-	studioLanguageUpdateMu.Lock()
-	defer studioLanguageUpdateMu.Unlock()
+	optionReloadMu.Lock()
+	defer optionReloadMu.Unlock()
 
 	option := Option{Key: studioDisabledLanguagesOption, Value: value}
 	if err := DB.Clauses(clause.OnConflict{

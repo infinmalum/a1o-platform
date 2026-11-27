@@ -14,8 +14,8 @@ import (
 // Thinking text streams as the Chat wire's reasoning_content slot with the
 // signature riding provider_metadata; redacted thinking and citations cannot
 // round-trip and fail the stream instead of being dropped.
-func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
-	state := &anthropicToChatStream{dst: dst, model: requestedModel, created: streamTimestamp(), blockTools: map[int]int{}}
+func (c chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
+	state := &anthropicToChatStream{dst: dst, model: requestedModel, created: streamTimestamp(), blockTools: map[int]int{}, includeUsage: c.includeUsage}
 	reader := newSSEReader(src)
 	for {
 		data, err := reader.next()
@@ -35,10 +35,16 @@ func (chatAnthropic) Stream(dst StreamWriter, src io.Reader, requestedModel stri
 		_ = writeStreamError(dst, err.Error())
 		return state.usage, err
 	}
+	if c.includeUsage != nil && *c.includeUsage && state.usage.Seen {
+		if err := writeChatUsageChunk(dst, state.id, state.created, state.model, state.usage); err != nil {
+			return state.usage, err
+		}
+	}
 	return state.usage, writeStreamDone(dst)
 }
 
 type anthropicToChatStream struct {
+	includeUsage *bool
 	dst          StreamWriter
 	model        string
 	created      int64
@@ -149,37 +155,12 @@ func (s *anthropicToChatStream) messageStart(data []byte) error {
 		}
 	}
 	if len(message["usage"]) != 0 {
-		if err := s.observeInputUsage(message["usage"]); err != nil {
+		if err := applyAnthropicUsage(message["usage"], &s.usage, true, &s.metadata); err != nil {
 			return err
 		}
 	}
 	s.started = true
 	return emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{"role": "assistant", "content": ""}, "", nil)
-}
-
-func (s *anthropicToChatStream) observeInputUsage(raw json.RawMessage) error {
-	usage, extra, err := rawObject(raw, "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-	if err != nil {
-		return fmt.Errorf("invalid Anthropic usage: %w", err)
-	}
-	s.metadata.absorb(extra)
-	input, ok := decodeStreamNumber(usage["input_tokens"])
-	if !ok || !nonNull(usage["input_tokens"]) {
-		return errors.New("Anthropic usage requires input_tokens")
-	}
-	cacheCreation, ok := decodeStreamNumber(usage["cache_creation_input_tokens"])
-	if !ok {
-		return errors.New("invalid Anthropic usage")
-	}
-	cacheRead, ok := decodeStreamNumber(usage["cache_read_input_tokens"])
-	if !ok {
-		return errors.New("invalid Anthropic usage")
-	}
-	s.usage.CacheCreation = max(s.usage.CacheCreation, cacheCreation)
-	s.usage.CacheRead = max(s.usage.CacheRead, cacheRead)
-	s.usage.Input = max(s.usage.Input, input+cacheCreation+cacheRead)
-	s.usage.Seen = true
-	return nil
 }
 
 func (s *anthropicToChatStream) blockStart(data []byte) error {
@@ -316,7 +297,7 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 		s.metadata.set("matched_stop_sequence", matched)
 	}
 	if len(fields["usage"]) != 0 {
-		if err := s.observeOutputUsage(fields["usage"]); err != nil {
+		if err := applyAnthropicUsage(fields["usage"], &s.usage, false, &s.metadata); err != nil {
 			return err
 		}
 	}
@@ -329,12 +310,16 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 		finish = mapped
 		s.stopSeen = true
 	}
-	if err := emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, nil); err != nil {
+	var extraFields map[string]any
+	if finish != "" && s.includeUsage != nil {
+		extraFields = s.metadata.envelope()
+	}
+	if err := emitChatChunk(s.dst, s.id, s.created, s.model, map[string]any{}, finish, extraFields); err != nil {
 		return err
 	}
 	// The usage chunk closes the stream with the provider's counts and the
 	// cache breakdown, matching what include_usage produces on native Chat.
-	if s.usage.Seen {
+	if s.usage.Seen && s.includeUsage == nil {
 		envelope := map[string]any{
 			"id": s.id, "object": "chat.completion.chunk", "created": s.created, "model": s.model,
 			"choices": []any{},
@@ -348,41 +333,6 @@ func (s *anthropicToChatStream) messageDelta(data []byte) error {
 			return err
 		}
 		return writeStreamEvent(s.dst, encoded)
-	}
-	return nil
-}
-
-func (s *anthropicToChatStream) observeOutputUsage(raw json.RawMessage) error {
-	usage, extra, err := rawObject(raw, "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-	if err != nil {
-		return fmt.Errorf("invalid Anthropic usage: %w", err)
-	}
-	s.metadata.absorb(extra)
-	if nonNull(usage["input_tokens"]) {
-		input, ok := decodeStreamNumber(usage["input_tokens"])
-		if !ok {
-			return errors.New("invalid Anthropic usage")
-		}
-		cacheCreation, ok := decodeStreamNumber(usage["cache_creation_input_tokens"])
-		if !ok {
-			return errors.New("invalid Anthropic usage")
-		}
-		cacheRead, ok := decodeStreamNumber(usage["cache_read_input_tokens"])
-		if !ok {
-			return errors.New("invalid Anthropic usage")
-		}
-		s.usage.CacheCreation = max(s.usage.CacheCreation, cacheCreation)
-		s.usage.CacheRead = max(s.usage.CacheRead, cacheRead)
-		s.usage.Input = max(s.usage.Input, input+cacheCreation+cacheRead)
-		s.usage.Seen = true
-	}
-	if nonNull(usage["output_tokens"]) {
-		output, ok := decodeStreamNumber(usage["output_tokens"])
-		if !ok {
-			return errors.New("invalid Anthropic usage")
-		}
-		s.usage.Output = max(s.usage.Output, output)
-		s.usage.Seen = true
 	}
 	return nil
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
-	"github.com/infinmalum/a1o-platform/common/random"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -252,12 +250,16 @@ func SyncChannelCache(frequency int) {
 }
 
 func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool, source ChannelSource) (*Channel, error) {
+	return CacheGetSatisfiedChannel(group, model, ignoreFirstPriority, source, "")
+}
+
+func CacheGetSatisfiedChannel(group string, model string, ignoreFirstPriority bool, source ChannelSource, affinity string) (*Channel, error) {
 	if !config.MemoryCacheEnabled || !common.RedisEnabled {
-		return GetRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, nil, source)
+		return GetSatisfiedChannel(group, model, nil, ignoreFirstPriority, nil, source, affinity)
 	}
 	version, err := currentChannelCacheVersion()
 	if err != nil {
-		return GetRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, nil, source)
+		return GetSatisfiedChannel(group, model, nil, ignoreFirstPriority, nil, source, affinity)
 	}
 	channelSyncLock.RLock()
 	stale := channelCacheVersion != version
@@ -296,11 +298,11 @@ func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPrior
 			}
 		}
 	}
-	idx := rand.Intn(endIdx)
-	if ignoreFirstPriority {
-		if endIdx < len(channels) { // which means there are more than one priority
-			idx = random.RandRange(endIdx, len(channels))
-		}
+	if ignoreFirstPriority && endIdx < len(channels) {
+		channels = channels[endIdx:]
+	} else {
+		channels = channels[:endIdx]
 	}
+	idx := selectChannelIndex(len(channels), affinity, func(i int) int { return channels[i].Id })
 	return channels[idx], nil
 }

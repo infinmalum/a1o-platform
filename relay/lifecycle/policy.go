@@ -26,6 +26,7 @@ type Selection struct {
 	IgnorePriority bool
 	Excluded       map[int]bool
 	Source         model.ChannelSource
+	Affinity       string
 }
 
 // maxReadinessProbes bounds how many unready subscription channels one
@@ -86,16 +87,14 @@ func SelectChannel(input Selection) (*model.Channel, *HTTPError) {
 
 // selectOnce runs one candidate selection with the given exclusion set.
 func selectOnce(input Selection, excluded map[int]bool) (*model.Channel, error) {
-	if len(input.Types) > 0 {
-		return model.GetRandomSatisfiedChannelByTypesExcluding(input.Group, input.Model, input.Types, input.IgnorePriority, excluded, input.Source)
+	types := input.Types
+	if len(types) == 0 && input.Type >= 0 {
+		types = []int{input.Type}
 	}
-	if input.Type >= 0 {
-		return model.GetRandomSatisfiedChannelByTypeExcluding(input.Group, input.Model, input.Type, input.IgnorePriority, excluded, input.Source)
+	if len(types) == 0 && len(excluded) == 0 {
+		return model.CacheGetSatisfiedChannel(input.Group, input.Model, input.IgnorePriority, input.Source, input.Affinity)
 	}
-	if len(excluded) == 0 {
-		return model.CacheGetRandomSatisfiedChannel(input.Group, input.Model, input.IgnorePriority, input.Source)
-	}
-	return model.GetRandomSatisfiedChannelExcluding(input.Group, input.Model, input.IgnorePriority, excluded, input.Source)
+	return model.GetSatisfiedChannel(input.Group, input.Model, types, input.IgnorePriority, excluded, input.Source, input.Affinity)
 }
 
 // checkChannelReadiness verifies that a channel bound to a subscription

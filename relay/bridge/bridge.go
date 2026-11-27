@@ -27,13 +27,13 @@ func For(inbound, upstream native.Protocol) (Converter, error) {
 		return nil, nil
 	}
 	if inbound == native.OpenAIChat && upstream == native.Anthropic {
-		return chatAnthropic{}, nil
+		return &chatAnthropic{}, nil
 	}
 	if inbound == native.Anthropic && upstream == native.OpenAIChat {
 		return anthropicChat{}, nil
 	}
 	if inbound == native.OpenAIChat && upstream == native.Gemini {
-		return chatGemini{}, nil
+		return &chatGemini{}, nil
 	}
 	if inbound == native.Gemini && upstream == native.OpenAIChat {
 		return geminiChat{}, nil
@@ -59,10 +59,17 @@ func For(inbound, upstream native.Protocol) (Converter, error) {
 	return nil, errors.New("unsupported protocol conversion")
 }
 
-type chatAnthropic struct{}
+const DefaultAnthropicBridgeMaxTokens = 4096
 
-func (chatAnthropic) Request(body []byte, model string) ([]byte, error) {
-	return ChatToAnthropic(body, model)
+type chatAnthropic struct{ includeUsage *bool }
+
+func (c *chatAnthropic) Request(body []byte, model string) ([]byte, error) {
+	head, err := parseChatRequestHead(body, model, "stop", "user", "stream_options", "parallel_tool_calls", "prompt_cache_key")
+	if err != nil {
+		return nil, err
+	}
+	c.includeUsage = head.includeUsage
+	return chatToAnthropic(head, model)
 }
 
 func (chatAnthropic) Response(body []byte, model string) ([]byte, native.Usage, error) {
@@ -79,10 +86,15 @@ func (anthropicChat) Response(body []byte, model string) ([]byte, native.Usage, 
 	return ChatToAnthropicResponse(body, model)
 }
 
-type chatGemini struct{}
+type chatGemini struct{ includeUsage *bool }
 
-func (chatGemini) Request(body []byte, model string) ([]byte, error) {
-	return ChatToGemini(body, model)
+func (c *chatGemini) Request(body []byte, model string) ([]byte, error) {
+	head, err := parseChatRequestHead(body, model, "stop", "user", "stream_options", "parallel_tool_calls", "prompt_cache_key")
+	if err != nil {
+		return nil, err
+	}
+	c.includeUsage = head.includeUsage
+	return chatToGemini(head, model)
 }
 
 func (chatGemini) Response(body []byte, model string) ([]byte, native.Usage, error) {

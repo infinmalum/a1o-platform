@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/model"
+	"github.com/stretchr/testify/require"
 )
 
 func setupChatDB(t *testing.T) {
@@ -267,6 +269,50 @@ func TestCompactIfNeededSurvivesSummarizerFailure(t *testing.T) {
 	}
 }
 
+func TestCompactionSharesChatPrefixAndDoesNotDispatchTools(t *testing.T) {
+	setupChatDB(t)
+	session, run := newCompactFixture(t)
+	session.SystemPrompt = "Keep answers concise."
+	old := &model.ChatMessage{Role: model.ChatRoleUser, Content: strings.Repeat("Historical fact. ", 800)}
+	insertMessages(t, session, old)
+	tools := newToolSet()
+	tools.add(Tool{Name: "lookup"}, func(context.Context, toolRequest) toolResult {
+		t.Fatal("compaction dispatched a tool")
+		return toolResult{}
+	})
+	engine := &Engine{extraTools: tools}
+	first := &fakeExecutor{responses: []InvokeResult{assistantLeg("first answer")}}
+	emit := func(EventEnvelope) error { return nil }
+	turn := ChatTurnRequest{Session: session, Run: run, History: []*model.ChatMessage{old},
+		Executor: first, ContextBudget: 100000}
+	require.NoError(t, engine.RunChat(context.Background(), emit, turn))
+	require.Len(t, first.requests, 1)
+
+	question := &model.ChatMessage{Role: model.ChatRoleUser, Content: "Separate follow-up"}
+	insertMessages(t, session, question)
+	history, err := model.GetSessionMessagesAfter(session.Id, 0)
+	require.NoError(t, err)
+	next := &model.AgentRun{UserId: session.UserId, SessionId: session.Id, Model: session.Model, Kind: "chat", Status: model.RunStatusQueued}
+	require.NoError(t, model.CreateAgentRun(next))
+	summary := assistantLeg("This text must not replace history.")
+	summary.Items = append(summary.Items, Item{Type: ItemFunctionCall, Name: "lookup", CallID: "summary-call", Arguments: "{}"})
+	second := &fakeExecutor{responses: []InvokeResult{summary, assistantLeg("second answer")}}
+	turn.Run, turn.History, turn.Executor, turn.ContextBudget = next, history, second, 600
+	require.NoError(t, engine.RunChat(context.Background(), emit, turn))
+	require.Len(t, second.requests, 2)
+	warm, compact := first.requests[0], second.requests[0]
+	require.Equal(t, warm.Instructions, compact.Instructions)
+	require.Equal(t, warm.Tools, compact.Tools)
+	require.NotEmpty(t, compact.Tools)
+	require.Equal(t, warm.Items, compact.Items[:len(compact.Items)-1])
+	require.Equal(t, compactPrompt, compact.Items[len(compact.Items)-1].Content[0].Text)
+	require.True(t, compact.SkipContextAppend)
+	require.Nil(t, compact.OnTextDelta)
+	require.Empty(t, session.Summary)
+	require.Zero(t, session.CompactedThrough)
+	require.Equal(t, question.Content, second.requests[1].Items[len(second.requests[1].Items)-1].Content[0].Text)
+}
+
 // TestReferenceFileItemsBuildPreamble pins the agent version's reference
 // file preamble: one user item ahead of the conversation carrying a hint
 // part, inlined text payloads, and image data URLs in file order.
@@ -308,4 +354,59 @@ func TestReferenceFileItemsBuildPreamble(t *testing.T) {
 	if empty, err := referenceFileItems(nil); err != nil || empty != nil {
 		t.Fatalf("no files must produce no items: %v %v", empty, err)
 	}
+}
+
+func TestChatReusesSavedCompactionOnFollowUp(t *testing.T) {
+	setupChatDB(t)
+	session, run := newCompactFixture(t)
+	old := &model.ChatMessage{Role: model.ChatRoleUser, Content: "old-marker " + strings.Repeat("老对话内容。", 420)}
+	question := &model.ChatMessage{Role: model.ChatRoleUser, Content: "new question"}
+	insertMessages(t, session, old, question)
+	emit := func(EventEnvelope) error { return nil }
+	engine := &Engine{}
+	const summary = "Important fact from the previous conversation"
+	first := &fakeExecutor{responses: []InvokeResult{assistantLeg(summary), assistantLeg("first answer")}}
+	request := ChatTurnRequest{Session: session, Run: run, History: []*model.ChatMessage{old, question},
+		Executor: first, ContextBudget: 900}
+	require.NoError(t, engine.RunChat(context.Background(), emit, request))
+	require.Len(t, first.requests, 2)
+	require.True(t, first.requests[0].SkipContextAppend)
+	require.Equal(t, old.Id, session.CompactedThrough)
+
+	stored, err := model.GetChatSessionById(session.Id, session.UserId)
+	require.NoError(t, err)
+	insertMessages(t, stored, &model.ChatMessage{Role: model.ChatRoleUser, Content: "short follow-up"})
+	tail, err := model.GetSessionMessagesAfter(session.Id, stored.CompactedThrough)
+	require.NoError(t, err)
+	require.Equal(t, question.Id, tail[0].Id)
+	followUp := &model.AgentRun{UserId: session.UserId, SessionId: session.Id, Kind: "chat", Status: model.RunStatusQueued, Model: session.Model}
+	require.NoError(t, model.CreateAgentRun(followUp))
+	second := &fakeExecutor{responses: []InvokeResult{assistantLeg("second answer")}}
+	request.Session, request.Run, request.History, request.Executor = stored, followUp, tail, second
+	require.NoError(t, engine.RunChat(context.Background(), emit, request))
+	require.Len(t, second.requests, 1)
+
+	for _, call := range []InvokeRequest{first.requests[1], second.requests[0]} {
+		require.Contains(t, call.Items[0].Content[0].Text, summary)
+		wire, err := json.Marshal(call.Items)
+		require.NoError(t, err)
+		require.NotContains(t, string(wire), "old-marker")
+	}
+	require.Equal(t, old.Id, stored.CompactedThrough)
+}
+
+func TestLegacyCompactionKeepsUnpairedToolResultsAsContext(t *testing.T) {
+	history := []*model.ChatMessage{
+		{Id: 1, Role: model.ChatRoleAssistant},
+		{Id: 2, Role: model.ChatRoleTool, Name: "lookup", Content: "persisted result", ToolCallId: "old-call"},
+		{Id: 3, Role: model.ChatRoleUser, Content: "follow up"},
+	}
+	retained := retainedChatHistory(history, 1)
+	require.Len(t, retained, 2)
+	require.Equal(t, model.ChatRoleTool, history[1].Role)
+	items, err := historyToItems(retained, nil, "test")
+	require.NoError(t, err)
+	require.Equal(t, ItemMessage, items[0].items[0].Type)
+	require.Contains(t, items[0].items[0].Content[0].Text, "persisted result")
+	require.Equal(t, history[2], retained[1])
 }

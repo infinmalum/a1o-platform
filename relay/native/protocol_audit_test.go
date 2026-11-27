@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/infinmalum/a1o-platform/relay/channeltype"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWorkersAIRunContract(t *testing.T) {
@@ -165,4 +166,19 @@ func TestCloudflareGatewayURLIsGenerated(t *testing.T) {
 			t.Fatal(req.URL)
 		}
 	}
+}
+
+func TestBedrockConversePreservesCachePointsAndUsage(t *testing.T) {
+	request, err := converseBody([]byte(`{"max_tokens":1024,"messages":[{"role":"user","content":[{"type":"text","text":"hello","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]}`))
+	require.NoError(t, err)
+	require.Contains(t, string(request), `"cachePoint":{"ttl":"1h","type":"default"}`)
+	reply, err := converseResponse([]byte(`{"output":{"message":{"content":[{"text":"ok"}]}},"stopReason":"model_context_window_exceeded","usage":{"inputTokens":4,"outputTokens":5,"cacheReadInputTokens":100,"cacheWriteInputTokens":60,"cacheDetails":[{"ttl":"1h","inputTokens":10},{"ttl":"5m","inputTokens":50}]}}`), "claude")
+	require.NoError(t, err)
+	require.Contains(t, string(reply), "model_context_window_exceeded")
+	usage := ReadJSONUsage(Anthropic, reply)
+	require.EqualValues(t, 164, usage.Input)
+	require.EqualValues(t, 5, usage.Output)
+	require.EqualValues(t, 100, usage.CacheRead)
+	require.EqualValues(t, 60, usage.CacheCreation)
+	require.EqualValues(t, 10, usage.CacheCreation1h)
 }

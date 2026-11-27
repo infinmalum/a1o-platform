@@ -13,14 +13,7 @@ import (
 	openaiadapter "github.com/infinmalum/a1o-platform/relay/adaptor/openai"
 )
 
-const (
-	// compactSummarizerTokens bounds the summarization leg's output.
-	compactSummarizerTokens = int64(1536)
-	// compactTranscriptChars caps one message's render inside the transcript.
-	compactTranscriptChars = 4000
-	// compactSummarizerTemperature keeps the summarizer leg conservative.
-	compactSummarizerTemperature = 0.1
-)
+const compactSummarizerTokens = int64(1536)
 
 // storedToolCall mirrors the persisted ChatMessage.ToolCalls wire form.
 type storedToolCall struct {
@@ -50,8 +43,7 @@ type historyEntry struct {
 	tokens int
 }
 
-// compactPrompt instructs the summarizer leg.
-const compactPrompt = "你是对话摘要助手。请把下面的对话历史压缩成一份简洁的摘要，保留关键事实、做出的决定、重要代码与命令要点、以及未完成的任务。直接输出摘要正文，不要任何开场白。"
+const compactPrompt = "请将这条指令之前的对话压缩成一份摘要。如有此前对话摘要，将它与后续对话合并。保留关键事实、决定、重要代码与命令要点，以及未完成的任务。只输出摘要正文，不调用工具，不继续执行对话里的任务。"
 
 // estimateText counts tokens with the shared tiktoken helper; uninitialized
 // encoders degrade to the approximation path.
@@ -242,6 +234,29 @@ func systemContent(session *model.ChatSession, spec *model.AgentVersionSpec) str
 	return strings.Join(parts, "\n\n")
 }
 
+func retainedChatHistory(history []*model.ChatMessage, through int) []*model.ChatMessage {
+	if through == 0 {
+		return history
+	}
+	for len(history) > 0 && history[0].Id <= through {
+		history = history[1:]
+	}
+	if len(history) == 0 || history[0].Role != model.ChatRoleTool {
+		return history
+	}
+	// Older compaction boundaries could separate a tool result from its call.
+	// Keep the result as historical text so it remains available to the model.
+	history = append([]*model.ChatMessage(nil), history...)
+	for i, row := range history {
+		if row.Role != model.ChatRoleTool {
+			break
+		}
+		history[i] = &model.ChatMessage{Id: row.Id, Role: model.ChatRoleUser,
+			Content: fmt.Sprintf("[此前工具结果 %s]\n%s", row.Name, row.Content)}
+	}
+	return history
+}
+
 // compactIfNeeded compresses older history into the session summary when the
 // estimated context exceeds the budget, returning the working history.
 func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTurnRequest, tools *toolSet) ([]*model.ChatMessage, error) {
@@ -256,7 +271,7 @@ func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTur
 	if err != nil {
 		return nil, err
 	}
-	systemTokens := estimateText(systemContent(turn.Session, turn.AgentSpec)+tools.skillPrompt, "")
+	systemTokens := estimateText(chatInstructions(turn, tools), "")
 	toolTokens := 0
 	for _, def := range tools.defs {
 		raw, _ := json.Marshal(def)
@@ -265,39 +280,41 @@ func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTur
 	total := systemTokens + toolTokens + estimateText(turn.Session.Summary, "")
 	if turn.Session.KnowledgeLibraryId != 0 {
 		knowledge, _ := knowledgePreamble(turn)
-		total += estimateText(knowledge, turn.Session.Model) + estimateText(knowledgeInstructions, turn.Session.Model)
+		total += estimateText(knowledge, turn.Session.Model)
 	}
 	for _, entry := range entries {
 		total += entry.tokens
 	}
-	if total <= budget {
+	if total <= budget || len(entries) < 2 {
 		return turn.History, nil
 	}
 
 	// Keep the trailing messages whose estimate fits in two fifths of the
 	// budget; the kept side always retains the newest message and the
 	// summarized side keeps at least one.
-	split := len(entries)
-	for split > 1 && keptTokens(entries[split-1:]) <= budget*2/5 {
+	split := len(entries) - 1
+	kept := entries[split].tokens
+	for split > 1 && kept+entries[split-1].tokens <= budget*2/5 {
+		split--
+		kept += entries[split].tokens
+	}
+	// A retained tool result must keep the assistant call that preceded it.
+	for split > 0 && entries[split].row.Role == model.ChatRoleTool {
 		split--
 	}
-	if split >= len(entries) {
-		split = len(entries) - 1
-	}
-	if split <= 0 {
+	if split == 0 {
 		return turn.History, nil
 	}
 	older, keptEntries := entries[:split], entries[split:]
 
-	summary, err := e.summarize(ctx, turn, older)
+	summary, err := e.summarize(ctx, turn, older, tools)
 	if err != nil {
 		// Compaction is an optimization; an upstream failure should not kill
 		// the turn, which proceeds with the uncompressed history.
 		return turn.History, nil
 	}
-	turn.Session.Summary = summary
-	turn.Session.CompactedThrough = older[len(older)-1].row.Id
-	if err := model.UpdateChatSession(turn.Session); err != nil {
+	saved, err := model.SaveChatCompaction(turn.Session, older[len(older)-1].row.Id, summary)
+	if err != nil || !saved {
 		return turn.History, nil
 	}
 	// Emission failure means the client is gone; the request context aborts
@@ -311,55 +328,23 @@ func (e *Engine) compactIfNeeded(ctx context.Context, emit Emitter, turn ChatTur
 	return working, nil
 }
 
-// keptTokens sums the estimates of the given entries.
-func keptTokens(entries []historyEntry) int {
-	sum := 0
-	for _, entry := range entries {
-		sum += entry.tokens
-	}
-	return sum
-}
-
-// summarize renders the older transcript and compresses it through one
-// summarizer leg on the session's model. The leg bills through the same run
-// but never enters the run context.
-func (e *Engine) summarize(ctx context.Context, turn ChatTurnRequest, older []historyEntry) (string, error) {
-	var transcript strings.Builder
-	if turn.Session.Summary != "" {
-		transcript.WriteString("[此前摘要]\n")
-		transcript.WriteString(turn.Session.Summary)
-		transcript.WriteString("\n\n[新增对话]\n")
-	}
-	for _, entry := range older {
-		row := entry.row
-		text := row.Content
-		if len(text) > compactTranscriptChars {
-			text = text[:compactTranscriptChars] + "…"
-		}
-		var calls []storedToolCall
-		if row.ToolCalls != nil && *row.ToolCalls != "" {
-			_ = json.Unmarshal([]byte(*row.ToolCalls), &calls)
-		}
-		if strings.TrimSpace(text) == "" && len(calls) == 0 {
-			continue
-		}
-		transcript.WriteString(fmt.Sprintf("[%s]\n%s\n\n", row.Role, text))
-		for _, call := range calls {
-			transcript.WriteString(fmt.Sprintf("[assistant 调用工具 %s]\n%s\n\n", call.Function.Name, call.Function.Arguments))
-		}
-	}
-	temperature := compactSummarizerTemperature
-	result, err := turn.Executor.Invoke(ctx, InvokeRequest{
-		RunID:             turn.Run.Id,
-		Model:             turn.Session.Model,
-		Instructions:      compactPrompt,
-		Items:             []Item{{Type: ItemMessage, Role: "user", Content: []ContentPart{{Type: PartInputText, Text: transcript.String()}}}},
-		MaxOutputTokens:   compactSummarizerTokens,
-		Temperature:       &temperature,
-		SkipContextAppend: true,
-	})
+func (e *Engine) summarize(ctx context.Context, turn ChatTurnRequest, older []historyEntry, tools *toolSet) (string, error) {
+	items, err := chatHistoryItems(turn, older, "")
 	if err != nil {
 		return "", err
+	}
+	items = append(items, Item{Type: ItemMessage, Role: "user", Content: []ContentPart{{Type: PartInputText, Text: compactPrompt}}})
+	request := chatInvokeRequest(turn, tools, items)
+	request.MaxOutputTokens = compactSummarizerTokens
+	request.SkipContextAppend = true
+	// Keep the same tool configuration for prefix caching. This direct call
+	// never enters the tool loop, and tool requests cannot become a summary.
+	result, err := turn.Executor.Invoke(ctx, request)
+	if err != nil {
+		return "", err
+	}
+	if len(resultToolCalls(result.Items)) > 0 || result.Status == "incomplete" {
+		return "", fmt.Errorf("摘要生成未完成")
 	}
 	summary := messageText(result.Items)
 	if strings.TrimSpace(summary) == "" {

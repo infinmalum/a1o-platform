@@ -102,6 +102,9 @@
       "group_placeholder": "Please select groups that can use this channel",
       "group_addition": "Please edit group multipliers in system settings to add new group:",
       "upstream_account": "Bound Subscription Account",
+      "anthropic_bridge_limit": "Default output token limit for bridged Claude Messages",
+      "anthropic_bridge_limit_invalid": "Enter a non-negative whole number for the default output limit.",
+      "anthropic_bridge_cache": "Enable five-minute prompt caching for bridged Claude requests",
       "upstream_account_none": "None (regular API-key channel)",
       "upstream_account_tip": "This channel is bound to a subscription account: requests are forwarded with the account's subscription credential and the channel key is not used.",
       "models": "Models",
@@ -688,6 +691,15 @@
       }
     },
     "operation": {
+      "knowledge": {
+        "title": "Knowledge library capacity",
+        "help": "Set 1–64 MiB per file and up to 1024 MiB per library. A library must be at least as large as the per-file limit. Reducing either limit preserves existing files.",
+        "file": "Per-file limit (MiB)",
+        "library": "Total per library (MiB)",
+        "save": "Save capacity",
+        "saved": "Knowledge library capacity saved",
+        "failed": "Could not save knowledge library capacity"
+      },
       "quota": {
         "title": "Quota Settings",
         "new_user": "Initial Quota for New Users",
@@ -728,6 +740,11 @@
           "output": "Output ($/million tokens)",
           "unpriced": "Unpriced",
           "empty": "No matching model",
+          "cache_read": "Cache read",
+          "cache_write": "Cache write",
+          "cache_write_1h": "1-hour cache write",
+          "cache_write_rate": "Default write rate",
+          "cache_input_rate": "Input rate",
           "perMillion": "Prices are in USD per million tokens; the ratio conversion follows the configured quota unit.",
           "groupTitle": "Group ratios",
           "group": "Group",

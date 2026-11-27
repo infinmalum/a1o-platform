@@ -57,6 +57,8 @@ const EditChannel = () => {
     vertex_ai_adc: '',
     cloudflare_gateway_id: '',
     cloudflare_gateway_token: '',
+    anthropic_bridge_max_tokens: 0,
+    anthropic_bridge_cache: false,
   });
 
   const changeInputs = (name, value) => {
@@ -222,6 +224,11 @@ const EditChannel = () => {
       );
     }
     const submitConfig = { ...config };
+    if (!Number.isSafeInteger(submitConfig.anthropic_bridge_max_tokens ?? 0) ||
+        (submitConfig.anthropic_bridge_max_tokens ?? 0) < 0) {
+      showError(t('channel.edit.anthropic_bridge_limit_invalid'));
+      return;
+    }
     if (localInputs.type === 3 && submitConfig.api_version === '') {
       submitConfig.api_version = 'v1';
     }
@@ -534,6 +541,31 @@ const EditChannel = () => {
             autoComplete='new-password'
           />
         </div>
+        {[14, 33, 42, 54].includes(inputs.type) && (
+          <div style={fieldStyle}>
+            <label style={labelStyle} htmlFor='anthropic-bridge-limit'>
+              {t('channel.edit.anthropic_bridge_limit')}
+            </label>
+            <Input
+              id='anthropic-bridge-limit'
+              type='number'
+              min={0}
+              step={1}
+              placeholder='4096'
+              value={config.anthropic_bridge_max_tokens || ''}
+              onChange={(event) =>
+                changeConfig('anthropic_bridge_max_tokens', Number(event.target.value))
+              }
+            />
+            <Checkbox
+              style={{ marginTop: 8 }}
+              checked={config.anthropic_bridge_cache === true}
+              onChange={(event) => changeConfig('anthropic_bridge_cache', event.target.checked)}
+            >
+              {t('channel.edit.anthropic_bridge_cache')}
+            </Checkbox>
+          </div>
+        )}
         {inputs.type === 33 && (
           <>
             <div style={fieldStyle}>

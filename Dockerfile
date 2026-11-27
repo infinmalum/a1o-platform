@@ -34,7 +34,7 @@ RUN go build -trimpath -ldflags "-s -w -X 'github.com/infinmalum/a1o-platform/co
 
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata poppler-utils
 
 COPY --from=builder2 /build/a1o-platform /
 

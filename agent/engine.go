@@ -167,6 +167,7 @@ func marshalInputSchema(schema any) json.RawMessage {
 // surface as run.failed; the turn always ends with run.completed unless the
 // client disappeared.
 func (e *Engine) RunChat(ctx context.Context, emit Emitter, turn ChatTurnRequest) error {
+	turn.History = retainedChatHistory(turn.History, turn.Session.CompactedThrough)
 	if turn.Files == nil {
 		files, err := loadHistoryFiles(turn.Session, turn.History)
 		if err != nil {
@@ -203,21 +204,10 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	if err != nil {
 		return e.fail(turn, emit, err)
 	}
-	// The agent version's reference files ride ahead of the conversation.
-	preamble, err := referenceFileItems(turn.ReferenceFiles)
+	knowledge, sources := knowledgePreamble(turn)
+	items, err := chatHistoryItems(turn, working, knowledge)
 	if err != nil {
 		return e.fail(turn, emit, err)
-	}
-	knowledge, sources := knowledgePreamble(turn)
-	items := make([]Item, 0, len(working)*2+len(preamble))
-	items = append(items, preamble...)
-	for i, entry := range working {
-		if knowledge != "" && i == len(working)-1 && entry.row.Role == model.ChatRoleUser {
-			// Keep this turn's sources adjacent to its question. The original
-			// history and the durable user message contain no source text.
-			entry.items[0].Content = append([]ContentPart{{Type: PartInputText, Text: knowledge}}, entry.items[0].Content...)
-		}
-		items = append(items, entry.items...)
 	}
 
 	// The persisted history must never end with an assistant tool_calls row
@@ -243,6 +233,7 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 
 	totalPrompt, totalCompletion := int64(0), int64(0)
 	err = normaLoop(ctx, turn.Run, tools, maxIterations+1, func(ctx context.Context) (InvokeResult, []Item, error) {
+		tools.placeSkillGuidance(len(items))
 		result, pending, legErr := e.runLeg(ctx, emit, turn, items, tools, sources)
 		pendingCalls = append([]Item(nil), pending...)
 		totalPrompt += result.Usage.Input
@@ -283,6 +274,46 @@ func (e *Engine) turnLoop(ctx context.Context, emit Emitter, turn ChatTurnReques
 	return nil
 }
 
+func chatHistoryItems(turn ChatTurnRequest, history []historyEntry, knowledge string) ([]Item, error) {
+	items, err := referenceFileItems(turn.ReferenceFiles)
+	if err != nil {
+		return nil, err
+	}
+	if turn.Session.Summary != "" {
+		items = append(items, Item{Type: ItemMessage, Role: "user", Content: []ContentPart{
+			{Type: PartInputText, Text: "[此前对话摘要]\n" + turn.Session.Summary},
+		}})
+	}
+	for i, entry := range history {
+		if knowledge != "" && i == len(history)-1 && entry.row.Role == model.ChatRoleUser {
+			question := entry.items[0]
+			question.Content = append([]ContentPart{{Type: PartInputText, Text: knowledge}}, question.Content...)
+			items = append(items, question)
+			continue
+		}
+		items = append(items, entry.items...)
+	}
+	return items, nil
+}
+
+func chatInstructions(turn ChatTurnRequest, tools *toolSet) string {
+	instructions := systemContent(turn.Session, turn.AgentSpec)
+	if tools.skillPrompt != "" {
+		instructions = strings.TrimSpace(instructions + "\n\n" + tools.skillPrompt)
+	}
+	if turn.Session.KnowledgeLibraryId != 0 {
+		instructions = strings.TrimSpace(instructions + "\n\n" + knowledgeInstructions)
+	}
+	return instructions
+}
+
+func chatInvokeRequest(turn ChatTurnRequest, tools *toolSet, items []Item) InvokeRequest {
+	return InvokeRequest{
+		RunID: turn.Run.Id, Model: turn.Session.Model, Instructions: chatInstructions(turn, tools),
+		Items: items, Tools: tools.defs, Temperature: turn.Session.Temperature,
+	}
+}
+
 // runLeg streams one model leg: it pre-creates the assistant row, streams
 // deltas, then persists content, tool calls, opaque reasoning state, and
 // token usage. It returns the function-call items that were actually stored
@@ -302,30 +333,17 @@ func (e *Engine) runLeg(ctx context.Context, emit Emitter, turn ChatTurnRequest,
 		map[string]any{"message_id": row.Id}, true, emit)
 	// The callbacks append the row id so the client can anchor deltas; they
 	// run inside Invoke before the result is complete.
-	instructions := systemContent(turn.Session, turn.AgentSpec)
-	if tools.skillPrompt != "" {
-		instructions = strings.TrimSpace(instructions + "\n\n" + tools.skillPrompt)
+	request := chatInvokeRequest(turn, tools, tools.withSkillGuidance(items))
+	request.MaxOutputTokens = int64(maxTokens)
+	request.OnTextDelta = func(delta string) {
+		_ = e.emitEvent(turn.Run, 0, "response.output_text.delta",
+			map[string]any{"delta": delta, "message_id": row.Id}, false, emit)
 	}
-	if turn.Session.KnowledgeLibraryId != 0 {
-		instructions = strings.TrimSpace(instructions + "\n\n" + knowledgeInstructions)
+	request.OnReasoningDelta = func(delta string) {
+		_ = e.emitEvent(turn.Run, 0, "response.reasoning_summary_text.delta",
+			map[string]any{"delta": delta}, false, emit)
 	}
-	result, legErr := turn.Executor.Invoke(ctx, InvokeRequest{
-		RunID:           turn.Run.Id,
-		Model:           turn.Session.Model,
-		Instructions:    instructions,
-		Items:           tools.withSkillGuidance(items),
-		Tools:           tools.defs,
-		MaxOutputTokens: int64(maxTokens),
-		Temperature:     turn.Session.Temperature,
-		OnTextDelta: func(delta string) {
-			_ = e.emitEvent(turn.Run, 0, "response.output_text.delta",
-				map[string]any{"delta": delta, "message_id": row.Id}, false, emit)
-		},
-		OnReasoningDelta: func(delta string) {
-			_ = e.emitEvent(turn.Run, 0, "response.reasoning_summary_text.delta",
-				map[string]any{"delta": delta}, false, emit)
-		},
-	})
+	result, legErr := turn.Executor.Invoke(ctx, request)
 
 	text := messageText(result.Items)
 	calls := resultToolCalls(result.Items)

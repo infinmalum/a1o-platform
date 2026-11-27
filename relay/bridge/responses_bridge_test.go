@@ -38,11 +38,14 @@ func TestResponsesChatConverter(t *testing.T) {
 		ToolChoice    any   `json:"tool_choice"`
 		Temperature   any   `json:"temperature"`
 		InstructionsX any   `json:"instructions"`
+		StreamOptions struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
 	}
 	if err := json.Unmarshal(request, &chat); err != nil {
 		t.Fatal(err)
 	}
-	if chat.Model != "gpt-upstream" || !chat.Stream || chat.MaxTokens != 64 || chat.Temperature == nil {
+	if chat.Model != "gpt-upstream" || !chat.Stream || !chat.StreamOptions.IncludeUsage || chat.MaxTokens != 64 || chat.Temperature == nil {
 		t.Fatalf("request head converted wrong: %s", request)
 	}
 	if len(chat.Messages) != 3 || chat.Messages[0].Role != "system" || chat.Messages[2].Role != "user" {

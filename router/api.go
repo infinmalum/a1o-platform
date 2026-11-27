@@ -150,7 +150,9 @@ func SetApiRouter(router *gin.Engine) {
 		knowledgeRoute.GET("/libraries/:libraryId/documents", controller.ListKnowledgeDocuments)
 		knowledgeRoute.POST("/libraries/:libraryId/documents", controller.UploadKnowledgeDocument)
 		knowledgeRoute.DELETE("/libraries/:libraryId/documents/:documentId", controller.DeleteKnowledgeDocument)
+		knowledgeRoute.GET("/upload-rules", controller.GetKnowledgeUploadRules)
 		knowledgeRoute.GET("/documents/:documentId", controller.GetKnowledgeDocument)
+		knowledgeRoute.GET("/documents/:documentId/file", controller.DownloadKnowledgeDocument)
 		chatRoute := apiRouter.Group("/chat")
 		chatRoute.Use(middleware.UserAuth())
 		{

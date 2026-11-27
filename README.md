@@ -41,7 +41,7 @@ Configure a provider channel and enable the model for your group in the admin co
 | --- | --- |
 | **Chat → Playground** | Send native OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini requests. Inspect raw JSON or streaming events, compare two models with the same request, and copy a cURL example. |
 | **Chat → Tools & Skills** | Create a personal Skill or import a single `SKILL.md` up to 64 KiB into an editable form. Select Skills in Chat or bind them to an agent for Chat or Work. A tool-capable model sees their names and descriptions and loads instructions as needed. |
-| **Workspace → Knowledge libraries** | Upload private UTF-8 TXT or Markdown files, select a library in Chat, and open cited passages from replies. Keyword search runs against the existing database without embeddings or a vector store. Each library holds up to 64 documents and 2 MiB total, with a 256 KiB limit per document. |
+| **Workspace → Knowledge libraries** | Upload private TXT, Markdown, CSV, TSV, PDF, DOCX, XLSX, PPTX, JPEG, PNG, GIF or WebP files. Chat searches extracted text and links to cited passages. Default limits are 16 MiB per file and 256 MiB per library, with up to 64 files. An administrator can change both size limits. See the [knowledge library guide](docs/knowledge-libraries.md). |
 | **Image generation → Image / Video** | Generate images with supported models, including Volcengine Ark Seedream and compatible Gemini models. Preview or download originals and attach images to Chat or Work. Seedream and compatible Gemini image models accept PNG, JPEG, and WebP references. Seedance on Ark generates 720p clips of 5–8 seconds from text with an optional first frame. Gemini `gemini-omni-1.2-flash` generates 360p text-to-video clips of 3–8 seconds. |
 | **Audio** | Select a compatible model to generate speech, transcribe an audio file, or translate speech into English. Play and download generated audio or export the transcript. |
 | **Account → Redeem** | Redeem a code or buy a one-time quota package through Stripe Checkout, Airwallex, EPay V1/V2, NOWPayments, or GMPay Edge when enabled. |
@@ -132,9 +132,19 @@ curl http://localhost:3000/v1/chat/completions \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
+### Prompt caching and protocol conversion
+
+- In **Channels**, enable five-minute prompt caching on a channel that accepts bridged Claude requests when the upstream model supports it. The setting is off by default. Bedrock and Vertex Claude use block-level cache markers. Chat Completions text blocks may carry an explicit Claude `cache_control` marker. Native Anthropic Messages clients control caching in their own requests.
+- In **Operation Settings → Model Prices**, set separate prices per million tokens for cache reads, cache writes, and one-hour cache writes. Blank read and write fields inherit the input price. A blank one-hour write price inherits the default write price. A price of zero explicitly makes that category free. Fetching OpenRouter models fills missing cache prices when the catalog publishes them and preserves configured prices. The consume log reports total input alongside the cache token breakdown.
+- OpenAI-format requests converted to Claude Messages default to 4,096 output tokens when the caller leaves the limit unspecified. Operators can set a different default on the channel. An explicit caller limit takes precedence, and the gateway uses the effective limit for the provisional charge.
+- Chat and Work use the session or task when choosing between eligible channels of the same priority. API chat requests use an explicit `prompt_cache_key` or the first user message. Use a consistent key on requests that no longer carry the original first message. Disabled or unavailable channels can be bypassed according to the existing routing policy.
+- When Chat compacts its history, the summary request reuses the session's instructions, tool definitions, and the conversation prefix being compacted. The summary instruction follows that prefix. Cache hits depend on the upstream and which parts of the prefix are still cached.
+- Chat Completions streaming through Claude or Gemini supports `stream_options.include_usage`. The Chat `user` hint is accepted on these bridges and stays out of the upstream request. Anthropic Messages cache hints are dropped when the request is converted to OpenAI or Gemini, whose cache configuration has a different format. With tools enabled, bridges to Gemini and Bedrock Converse reject `parallel_tool_calls: false` because those target wires cannot enforce it.
+
 ## Documentation
 
 - [Frontend development](web/README.md)
+- [Knowledge library formats, limits, and deployment](docs/knowledge-libraries.md)
 - [Account privacy, memory, and data deletion](docs/privacy.md)
 
 ## Development

@@ -4,14 +4,15 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/infinmalum/norma-e/memory"
 	"github.com/infinmalum/a1o-platform/common/blacklist"
+	"github.com/infinmalum/norma-e/memory"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -45,6 +46,15 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.NoError(t, db.Create(&RunEvent{RunId: run.Id, Sequence: 1, Type: "privacy-test"}).Error)
 	require.NoError(t, db.Create(&Token{UserId: owner.Id, Key: "secret-api-token"}).Error)
 	file, err := SaveChatFilePayload(owner.Id, ChatFileKindText, "example.txt", []byte("original attachment"))
+	require.NoError(t, err)
+	ownerLibrary, err := CreateKnowledgeLibrary(t.Context(), owner.Id, "owned library")
+	require.NoError(t, err)
+	otherLibrary, err := CreateKnowledgeLibrary(t.Context(), other.Id, "other library")
+	require.NoError(t, err)
+	original := knowledgeTestPNG(t)
+	ownerDoc, err := ImportKnowledgeDocument(t.Context(), owner.Id, ownerLibrary.Id, "picture.png", original)
+	require.NoError(t, err)
+	otherDoc, err := ImportKnowledgeDocument(t.Context(), other.Id, otherLibrary.Id, "private.txt", []byte("someone else's document"))
 	require.NoError(t, err)
 
 	store := UserMemoryStore(owner.Id)
@@ -88,6 +98,8 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.Contains(t, entriesByName["messages.jsonl"], "active title body")
 	require.Contains(t, entriesByName["memory.json"], "note to export")
 	require.Equal(t, "original attachment", entriesByName["attachments/1"])
+	require.Equal(t, string(original), entriesByName[fmt.Sprintf("knowledge/%d", ownerDoc.Id)])
+	require.NotContains(t, entriesByName, fmt.Sprintf("knowledge/%d", otherDoc.Id))
 	require.NoError(t, DeleteUserMemory(t.Context(), owner.Id, entries[0].ID))
 	_, entries, err = ListUserMemory(t.Context(), owner.Id)
 	require.NoError(t, err)
@@ -110,6 +122,8 @@ func TestPrivacyRetentionAndExport(t *testing.T) {
 	require.NoError(t, pruner.prune(t.Context(), deleted.PrivacyPurgeAt))
 	require.ErrorIs(t, db.Take(&ChatSession{}, active.Id).Error, gorm.ErrRecordNotFound)
 	require.ErrorIs(t, db.Take(&ChatSession{}, retained.Id).Error, gorm.ErrRecordNotFound)
+	require.ErrorIs(t, db.Take(&KnowledgeDocument{}, ownerDoc.Id).Error, gorm.ErrRecordNotFound)
+	require.NoError(t, db.Take(&KnowledgeDocument{}, otherDoc.Id).Error)
 	require.ErrorIs(t, db.Take(&AgentRun{}, run.Id).Error, gorm.ErrRecordNotFound)
 	var copies int64
 	require.NoError(t, db.Model(&RunEvent{}).Where("run_id = ?", run.Id).Count(&copies).Error)

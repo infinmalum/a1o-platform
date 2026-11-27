@@ -163,7 +163,7 @@
     "create": "Crear biblioteca",
     "upload": "Subir documento",
     "manage": "Gestionar bibliotecas en el Workspace",
-    "limits": "TXT y Markdown UTF-8. Hasta 256 KiB por documento y 64 documentos o 2 MiB por biblioteca.",
+    "limits": "{{file}} por archivo · {{used}} de {{total}} en uso · {{count}} archivos por biblioteca",
     "empty": "Aún no hay documentos.",
     "deleteLibrary": "Eliminar biblioteca",
     "deleteDocument": "Eliminar documento",
@@ -174,6 +174,8 @@
     "sources": "Fuentes",
     "source": "Documento de origen",
     "original": "Ver texto original",
+    "download": "Descargar original",
+    "noText": "Este archivo no contiene texto que se pueda buscar.",
     "lines": "Líneas {{start}}–{{end}}",
     "noLibraries": "Aún no hay bibliotecas. Crea una arriba."
   },
@@ -445,9 +447,9 @@
       "uploadSave": "No se pudo guardar el archivo. Inténtalo en breve.",
       "fileLimit": "Los archivos deben ser de {{limit}} o menos.",
       "textFileLimit": "Los adjuntos de texto deben ser de {{limit}} o menos.",
-      "knowledgeFileLimit": "Cada documento debe ser de 256 KiB o menos.",
-      "knowledgeInvalidFile": "Elige un archivo TXT o Markdown UTF-8 con texto buscable.",
-      "knowledgeCapacity": "Esta biblioteca está llena (hasta 64 documentos y 2 MiB en total).",
+      "knowledgeFileLimit": "El tamaño máximo por archivo es {{limit}}.",
+      "knowledgeInvalidFile": "El formato no es compatible o no se pudo leer el archivo.",
+      "knowledgeCapacity": "La biblioteca ha alcanzado su capacidad máxima.",
       "chatBusy": "Esta conversación sigue generando una respuesta. Espera a que termine.",
       "retryUnavailable": "No se pudo regenerar este mensaje. Abre la conversación de nuevo e inténtalo."
     }

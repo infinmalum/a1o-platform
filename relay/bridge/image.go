@@ -26,7 +26,7 @@ func chatInputBlocks(raw json.RawMessage, allowImage bool) ([]any, error) {
 	}
 	var result []any
 	for _, rawPart := range parts {
-		part, err := object(rawPart, "type", "text", "image_url")
+		part, err := object(rawPart, "type", "text", "image_url", "cache_control")
 		if err != nil {
 			return nil, err
 		}
@@ -35,10 +35,17 @@ func chatInputBlocks(raw json.RawMessage, allowImage bool) ([]any, error) {
 		switch kind {
 		case "text":
 			var value string
-			if len(part) != 2 || json.Unmarshal(part["text"], &value) != nil {
+			if nonNull(part["image_url"]) || json.Unmarshal(part["text"], &value) != nil {
 				return nil, errors.New("Chat text part requires text")
 			}
-			result = append(result, map[string]string{"type": "text", "text": value})
+			block := map[string]any{"type": "text", "text": value}
+			if err := validateCacheControl(part["cache_control"]); err != nil {
+				return nil, err
+			}
+			if nonNull(part["cache_control"]) {
+				block["cache_control"] = part["cache_control"]
+			}
+			result = append(result, block)
 		case "image_url":
 			if !allowImage || len(part) != 2 {
 				return nil, errors.New("Chat image is only supported in user content")

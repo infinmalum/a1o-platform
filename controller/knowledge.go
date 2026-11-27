@@ -2,10 +2,12 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
@@ -20,6 +22,9 @@ func knowledgeResponse(c *gin.Context, data any, err error) {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "code": "knowledge_not_found", "message": err.Error()})
 		} else if errors.Is(err, model.ErrKnowledgeLimit) {
 			c.JSON(http.StatusOK, gin.H{"success": false, "code": "knowledge_capacity", "message": err.Error()})
+		} else if errors.Is(err, model.ErrKnowledgeFileTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"success": false, "code": "knowledge_file_too_large",
+				"limit": fmt.Sprintf("%d MiB", model.GetKnowledgeLimits().FileMiB)})
 		} else if errors.Is(err, model.ErrKnowledgeInvalidDocument) {
 			c.JSON(http.StatusOK, gin.H{"success": false, "code": "knowledge_invalid_file", "message": err.Error()})
 		} else {
@@ -64,14 +69,9 @@ func UploadKnowledgeDocument(c *gin.Context) {
 		c.JSON(http.StatusUnsupportedMediaType, gin.H{"success": false, "message": "请选择要上传的资料文件"})
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, model.KnowledgeDocumentLimit))
-	if err != nil {
-		var limit *http.MaxBytesError
-		if errors.As(err, &limit) {
-			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"success": false, "message": "单份资料不能超过 256 KiB", "code": "knowledge_file_too_large"})
-		} else {
-			chatError(c, err)
-		}
+	limits := model.GetKnowledgeLimits()
+	if c.Request.ContentLength > int64(limits.FileBytes()) {
+		knowledgeResponse(c, nil, model.ErrKnowledgeFileTooLarge)
 		return
 	}
 	select {
@@ -81,19 +81,58 @@ func UploadKnowledgeDocument(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": "正在导入其他资料，请稍后重试"})
 		return
 	}
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, int64(limits.FileBytes())))
+	if err != nil {
+		var limit *http.MaxBytesError
+		if errors.As(err, &limit) {
+			knowledgeResponse(c, nil, model.ErrKnowledgeFileTooLarge)
+		} else {
+			chatError(c, err)
+		}
+		return
+	}
 	data, err := model.ImportKnowledgeDocument(c.Request.Context(), c.GetInt(ctxkey.Id),
 		knowledgeID(c, "libraryId"), c.Query("name"), body)
 	knowledgeResponse(c, data, err)
 }
 
 func GetKnowledgeDocument(c *gin.Context) {
-	document, err := model.GetKnowledgeDocument(c.Request.Context(), c.GetInt(ctxkey.Id), knowledgeID(c, "documentId"))
+	document, text, err := model.GetKnowledgeDocumentPreview(c.Request.Context(), c.GetInt(ctxkey.Id), knowledgeID(c, "documentId"))
 	if err != nil {
 		knowledgeResponse(c, nil, err)
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	knowledgeResponse(c, gin.H{"document": document, "text": string(document.Body)}, nil)
+	knowledgeResponse(c, gin.H{"document": document, "text": text}, nil)
+}
+
+func GetKnowledgeUploadRules(c *gin.Context) {
+	limits := model.GetKnowledgeLimits()
+	c.Header("Cache-Control", "no-store")
+	knowledgeResponse(c, gin.H{
+		"file_bytes": limits.FileBytes(), "library_bytes": limits.LibraryBytes(),
+		"max_documents": model.KnowledgeMaxDocuments, "extensions": model.KnowledgeExtensions(),
+	}, nil)
+}
+
+func DownloadKnowledgeDocument(c *gin.Context) {
+	document, err := model.GetKnowledgeDocument(c.Request.Context(), c.GetInt(ctxkey.Id), knowledgeID(c, "documentId"))
+	if err != nil {
+		knowledgeResponse(c, nil, err)
+		return
+	}
+	contentType := document.ContentType
+	if contentType == "" {
+		contentType = "text/plain; charset=utf-8"
+	}
+	disposition := "attachment"
+	if c.Query("preview") == "1" && strings.HasPrefix(contentType, "image/") {
+		disposition = "inline"
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": document.Name}))
+	c.Data(http.StatusOK, contentType, document.Body)
 }
 
 func DeleteKnowledgeDocument(c *gin.Context) {

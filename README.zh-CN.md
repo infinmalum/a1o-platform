@@ -41,7 +41,7 @@ A1O Platform 是一个独立维护的 AI 网关，最初派生自 [One API](http
 | --- | --- |
 | **对话 → Playground** | 发送原生 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 或 Gemini 请求。查看原始 JSON 或流式事件，用同一份请求对比两个模型，并复制 cURL 示例。 |
 | **对话 → 工具与 Skill** | 创建个人 Skill，或导入一份不超过 64 KiB 的 `SKILL.md` 并编辑后保存。在对话里选择 Skill，或将它绑定到智能体供对话和 Work 使用。支持工具调用的模型会看到名称和描述，并按需加载指令。 |
-| **工作区 → 资料库** | 上传私有 UTF-8 TXT 或 Markdown 文件，在对话中选择资料库，并打开回复引用的原文。关键词检索使用现有数据库，无需嵌入模型或向量库。单份文件上限为 256 KiB，每库最多 64 份且总量不超过 2 MiB。 |
+| **工作区 → 资料库** | 支持私有 TXT、Markdown、CSV、TSV、PDF、DOCX、XLSX、PPTX、JPEG、PNG、GIF 和 WebP。Chat 可检索已提取的文本并打开引用。默认单文件 16 MiB、单库 256 MiB，每库最多 64 份。管理员可以修改两项容量限制。参见 [资料库说明](docs/knowledge-libraries.md)。 |
 | **图像生成 → 图片／视频** | 通过火山引擎方舟 Seedream、兼容的 Gemini 等已支持模型生成图片，可预览、下载原图，并将图片附到对话或 Work。Seedream 和兼容的 Gemini 图像模型支持 PNG、JPEG 和 WebP 参考图。方舟 Seedance 支持文生视频及可选首帧，输出 720p、5–8 秒视频。Gemini `gemini-omni-1.2-flash` 支持生成 360p、3–8 秒的文生视频。 |
 | **音频** | 使用兼容模型合成语音、转写音频或将语音翻译成英文。可试听、下载生成的音频，也可导出转写文本。 |
 | **账户 → 兑换码** | 使用兑换码，或通过站点已启用的 Stripe Checkout、Airwallex、易支付 V1/V2、NOWPayments 或 GMPay Edge 购买一次性额度套餐。 |
@@ -132,9 +132,16 @@ curl http://localhost:3000/v1/chat/completions \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
+### 提示词缓存与计费
+
+- Chat 压缩长对话时，摘要请求沿用会话指令、工具定义和待压缩历史，以复用上游缓存。摘要会作为后续对话的上下文。
+- 对支持提示词缓存的 Claude 渠道，可在管理端的**渠道**设置中为桥接流量启用五分钟缓存。该开关默认关闭。
+- 在**运营设置 → 模型价格**可分别设置缓存读取、写入和一小时缓存写入价格。未配置读写价格时沿用普通输入价，消费日志会显示缓存用量。导入 OpenRouter 模型时会补齐目录提供的缓存价格，保留站长已保存的设置。
+
 ## 文档
 
 - [前端开发说明](web/README.md)
+- [资料库格式、容量与部署](docs/knowledge-libraries.md)
 - [账号隐私、长期记忆和数据删除](docs/privacy.md)
 
 ## 开发

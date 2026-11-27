@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,17 +48,19 @@ type Channel struct {
 }
 
 type ChannelConfig struct {
-	CloudflareGatewayID    string `json:"cloudflare_gateway_id,omitempty"`
-	CloudflareGatewayToken string `json:"cloudflare_gateway_token,omitempty"`
-	Region                 string `json:"region,omitempty"`
-	SK                     string `json:"sk,omitempty"`
-	AK                     string `json:"ak,omitempty"`
-	UserID                 string `json:"user_id,omitempty"`
-	APIVersion             string `json:"api_version,omitempty"`
-	LibraryID              string `json:"library_id,omitempty"`
-	Plugin                 string `json:"plugin,omitempty"`
-	VertexAIProjectID      string `json:"vertex_ai_project_id,omitempty"`
-	VertexAIADC            string `json:"vertex_ai_adc,omitempty"`
+	AnthropicBridgeCache     bool   `json:"anthropic_bridge_cache,omitempty"`
+	AnthropicBridgeMaxTokens int64  `json:"anthropic_bridge_max_tokens,omitempty"`
+	CloudflareGatewayID      string `json:"cloudflare_gateway_id,omitempty"`
+	CloudflareGatewayToken   string `json:"cloudflare_gateway_token,omitempty"`
+	Region                   string `json:"region,omitempty"`
+	SK                       string `json:"sk,omitempty"`
+	AK                       string `json:"ak,omitempty"`
+	UserID                   string `json:"user_id,omitempty"`
+	APIVersion               string `json:"api_version,omitempty"`
+	LibraryID                string `json:"library_id,omitempty"`
+	Plugin                   string `json:"plugin,omitempty"`
+	VertexAIProjectID        string `json:"vertex_ai_project_id,omitempty"`
+	VertexAIADC              string `json:"vertex_ai_adc,omitempty"`
 }
 
 func GetAllChannels(startIdx int, num int, scope string) ([]*Channel, error) {
@@ -227,6 +230,9 @@ func (channel *Channel) LoadConfig() (ChannelConfig, error) {
 	err := json.Unmarshal([]byte(channel.Config), &cfg)
 	if err != nil {
 		return cfg, err
+	}
+	if cfg.AnthropicBridgeMaxTokens < 0 {
+		return cfg, errors.New("anthropic_bridge_max_tokens must be non-negative")
 	}
 	return cfg, nil
 }

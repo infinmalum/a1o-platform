@@ -22,6 +22,7 @@ func TestSkillLoadsOnDemandInChatAndWork(t *testing.T) {
 					{Type: ItemFunctionCall, CallID: "bad", Name: skillToolName, Arguments: `{"name":"skill-8"}`},
 					{Type: ItemFunctionCall, CallID: "load", Name: skillToolName, Arguments: `{"name":"skill-7"}`},
 				}},
+				{Items: []Item{{Type: ItemFunctionCall, CallID: "another", Name: skillToolName, Arguments: `{"name":"skill-8"}`}}},
 				assistantLeg("Verified."),
 			}}
 			engine := &Engine{}
@@ -41,7 +42,7 @@ func TestSkillLoadsOnDemandInChatAndWork(t *testing.T) {
 				openWorkTestDB(t)
 				task, run := newWorkFixture(t, 1)
 				fencing := claimFixture(t, run)
-				executor.responses[1].Items = append(executor.responses[1].Items, Item{
+				executor.responses[2].Items = append(executor.responses[2].Items, Item{
 					Type: ItemFunctionCall, CallID: "done", Name: CompleteTaskToolName, Arguments: `{"summary":"Verified."}`,
 				})
 				require.NoError(t, engine.RunWork(context.Background(), WorkTurnRequest{
@@ -52,7 +53,7 @@ func TestSkillLoadsOnDemandInChatAndWork(t *testing.T) {
 				require.Equal(t, model.RunStatusCompleted, stored.Status)
 				require.NotContains(t, *stored.ContextItems, instructions)
 			}
-			require.Len(t, executor.requests, 2)
+			require.Len(t, executor.requests, 3)
 			first, next := executor.requests[0], executor.requests[1]
 			require.Contains(t, first.Instructions, "skill-7: 报告校验")
 			require.NotContains(t, first.Instructions, instructions)
@@ -64,6 +65,11 @@ func TestSkillLoadsOnDemandInChatAndWork(t *testing.T) {
 			require.Equal(t, "user", guidance.Role)
 			require.Len(t, guidance.Content, 1)
 			require.Contains(t, guidance.Content[0].Text, instructions)
+			followUp := executor.requests[2].Items
+			require.Greater(t, len(followUp), len(next.Items))
+			require.Equal(t, next.Items, followUp[:len(next.Items)])
+			require.Equal(t, "another", followUp[len(followUp)-1].CallID)
+			require.Equal(t, ItemFunctionCallOutput, followUp[len(followUp)-1].Type)
 			require.NotContains(t, next.Instructions, instructions)
 			for _, tool := range first.Tools {
 				require.Contains(t, []string{skillToolName, CompleteTaskToolName}, tool.Name)

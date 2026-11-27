@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestRatioConcurrentReadWrite drives every reader and writer of the ratio
@@ -143,4 +145,28 @@ func TestMergeFetchedModelPricesFillsOnlyMissing(t *testing.T) {
 	if ratio, ok := LookupModelRatio("vendor/backwards-model"); ok {
 		t.Fatalf("unexpressible price merged: %v", ratio)
 	}
+}
+
+func TestFetchedCachePricesFillMissingRatesAndPreserveZero(t *testing.T) {
+	previousModel, previousCompletion, previousCache := ModelRatio2JSONString(), CompletionRatio2JSONString(), ModelCachePricesJSON()
+	t.Cleanup(func() {
+		_ = UpdateModelRatioByJSONString(previousModel)
+		_ = UpdateCompletionRatioByJSONString(previousCompletion)
+		_ = UpdateModelCachePrices(previousCache)
+	})
+	require.NoError(t, UpdateModelRatioByJSONString(`{"cache-catalog":5}`))
+	require.NoError(t, UpdateCompletionRatioByJSONString(`{"cache-catalog":2}`))
+	require.NoError(t, UpdateModelCachePrices(`{"cache-catalog":{"read":0}}`))
+	read, write, oneHour := 0.2, 1.25, 2.0
+	fetched := map[string]FetchedModelPrice{"cache-catalog": {Input: 1, Completion: 5,
+		Cache: CachePrices{Read: &read, Write: &write, Write1h: &oneHour}}}
+	require.Equal(t, 1, MergeFetchedModelPrices(fetched))
+	require.Equal(t, 0, MergeFetchedModelPrices(fetched))
+	price := LookupCachePrices("cache-catalog")
+	require.Equal(t, 0.0, *price.Read)
+	require.Equal(t, 1.25, *price.Write)
+	require.Equal(t, 2.0, *price.Write1h)
+	input, err := GetModelRatio("cache-catalog")
+	require.NoError(t, err)
+	require.Equal(t, 5.0, input)
 }

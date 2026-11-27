@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infinmalum/a1o-platform/common"
 	"github.com/infinmalum/a1o-platform/common/ctxkey"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	"github.com/infinmalum/a1o-platform/model"
@@ -41,7 +43,15 @@ func Distribute() func(c *gin.Context) {
 			channel = selected
 		} else {
 			requestModel = c.GetString(ctxkey.RequestModel)
-			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: requestModel, Type: -1, Source: source})
+			var affinity string
+			path := c.Request.URL.Path
+			if c.Request.Method == http.MethodPost &&
+				(strings.HasSuffix(path, "/chat/completions") || strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/messages")) {
+				if body, err := common.GetRequestBody(c); err == nil {
+					affinity = lifecycle.RequestAffinity(body, userId, c.GetInt(ctxkey.TokenId))
+				}
+			}
+			selected, selectErr := lifecycle.SelectChannel(lifecycle.Selection{Group: userGroup, Model: requestModel, Type: -1, Source: source, Affinity: affinity})
 			if selectErr != nil {
 				message := fmt.Sprintf("当前分组 %s 下对于模型 %s 无可用渠道", userGroup, requestModel)
 				abortWithMessage(c, http.StatusServiceUnavailable, message)

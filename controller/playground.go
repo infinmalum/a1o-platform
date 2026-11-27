@@ -11,15 +11,18 @@ import (
 
 func GetPlaygroundUsage(c *gin.Context) {
 	var usage struct {
-		Quota            int    `json:"quota"`
-		PromptTokens     int    `json:"prompt_tokens"`
-		CompletionTokens int    `json:"completion_tokens"`
-		UsageState       string `json:"usage_state,omitempty"`
-		ChargeBasis      string `json:"charge_basis,omitempty"`
-		Interrupted      bool   `json:"interrupted,omitempty"`
+		Quota              int    `json:"quota"`
+		PromptTokens       int    `json:"prompt_tokens"`
+		CompletionTokens   int    `json:"completion_tokens"`
+		CacheReadTokens    int64  `json:"cache_read_tokens,omitempty"`
+		CacheWriteTokens   int64  `json:"cache_write_tokens,omitempty"`
+		CacheWrite1hTokens int64  `json:"cache_write_1h_tokens,omitempty" gorm:"column:cache_write_1h_tokens"`
+		UsageState         string `json:"usage_state,omitempty"`
+		ChargeBasis        string `json:"charge_basis,omitempty"`
+		Interrupted        bool   `json:"interrupted,omitempty"`
 	}
 	result := model.LOG_DB.WithContext(c.Request.Context()).Model(&model.Log{}).
-		Select("quota", "prompt_tokens", "completion_tokens", "usage_state", "charge_basis", "interrupted").
+		Select("quota", "prompt_tokens", "completion_tokens", "cache_read_tokens", "cache_write_tokens", "cache_write_1h_tokens", "usage_state", "charge_basis", "interrupted").
 		Where("user_id = ? AND type = ? AND token_name = ? AND request_id = ? AND created_at >= ?",
 			c.GetInt(ctxkey.Id), model.LogTypeConsume, model.ChatTokenName, c.Param("requestId"), time.Now().Add(-time.Hour).Unix()).
 		Limit(1).Find(&usage)

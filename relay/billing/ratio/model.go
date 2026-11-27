@@ -91,13 +91,12 @@ func LookupCompletionRatio(name string) (float64, bool) {
 type FetchedModelPrice struct {
 	Input      float64
 	Completion float64
+	Cache      CachePrices
 }
 
 // MergeFetchedModelPrices fills the price book with upstream-published
-// prices for models that do not have an entry yet. The operator's own
-// entries — including deliberate markups — are never overwritten, so
-// re-running a sync only prices newly introduced models. It returns how
-// many models were priced. A model with free input but paid output is
+// prices for new models and missing cache prices for existing models. Existing
+// prices are preserved. It returns the number of models with new prices. A model with free input but paid output is
 // skipped: the charge formula multiplies the whole bill by the input ratio,
 // so such a price cannot be expressed.
 func MergeFetchedModelPrices(prices map[string]FetchedModelPrice) int {
@@ -107,9 +106,6 @@ func MergeFetchedModelPrices(prices map[string]FetchedModelPrice) int {
 	defer completionRatioLock.Unlock()
 	added := 0
 	for name, price := range prices {
-		if _, exists := ModelRatio[name]; exists {
-			continue
-		}
 		if _, _, seeded := contractRatio(name); seeded {
 			continue
 		}
@@ -119,9 +115,28 @@ func MergeFetchedModelPrices(prices map[string]FetchedModelPrice) int {
 		if price.Input == 0 && price.Completion > 0 {
 			continue
 		}
-		ModelRatio[name] = price.Input
-		CompletionRatio[name] = price.Completion
-		added++
+		_, exists := ModelRatio[name]
+		if !exists {
+			ModelRatio[name] = price.Input
+			CompletionRatio[name] = price.Completion
+		}
+		cache := modelCachePrices[name]
+		changed := !exists
+		if cache.Read == nil && price.Cache.Read != nil {
+			cache.Read, changed = price.Cache.Read, true
+		}
+		if cache.Write == nil && price.Cache.Write != nil {
+			cache.Write, changed = price.Cache.Write, true
+		}
+		if cache.Write1h == nil && price.Cache.Write1h != nil {
+			cache.Write1h, changed = price.Cache.Write1h, true
+		}
+		if changed {
+			if cache.Read != nil || cache.Write != nil || cache.Write1h != nil {
+				modelCachePrices[name] = cache
+			}
+			added++
+		}
 	}
 	return added
 }

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/stretchr/testify/require"
 )
 
 func TestChatToAnthropicPreservesToolsAndConversation(t *testing.T) {
@@ -141,5 +144,37 @@ func TestAnthropicToChatAcceptsStopSequence(t *testing.T) {
 	}
 	if !strings.Contains(string(converted), `"finish_reason":"stop"`) {
 		t.Fatalf("stop_sequence response did not convert to finish stop: %s", converted)
+	}
+}
+
+func TestClaudeBridgeCacheControlsAndToolChoice(t *testing.T) {
+	input := []byte(`{"messages":[{"role":"system","content":[{"type":"text","text":"instructions","cache_control":{"type":"ephemeral","ttl":"1h"}}]},{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"search","parameters":{}}}],"parallel_tool_calls":false}`)
+	converted, err := ChatToAnthropic(input, "claude")
+	require.NoError(t, err)
+	require.Contains(t, string(converted), `"disable_parallel_tool_use":true`)
+	require.Contains(t, string(converted), `"max_tokens":4096`)
+	converted, err = ConfigureAnthropicBridge(converted, 8192, true, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(converted), `"cache_control"`))
+	require.Contains(t, string(converted), `"ttl":"1h"`)
+
+	plain, err := ChatToAnthropic([]byte(`{"messages":[{"role":"user","content":"hello"}]}`), "claude")
+	require.NoError(t, err)
+	bedrock, err := ConfigureAnthropicBridge(plain, 4096, true, true)
+	require.NoError(t, err)
+	require.Contains(t, string(bedrock), `"content":[{"cache_control":{"type":"ephemeral"}`)
+	gemini, err := For(native.OpenAIChat, native.Gemini)
+	require.NoError(t, err)
+	_, err = gemini.Request([]byte(`{"messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"search","parameters":{}}}],"parallel_tool_calls":false}`), "gemini")
+	require.ErrorContains(t, err, "cannot enforce")
+
+	marked := []byte(`{"max_tokens":1024,"system":[{"type":"text","text":"instructions","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"search","input_schema":{"type":"object","properties":{"cache_control":{"type":"string"}}},"cache_control":{"type":"ephemeral"}}],"cache_control":{"type":"ephemeral"}}`)
+	for _, target := range []native.Protocol{native.OpenAIChat, native.OpenAIResponses, native.Gemini} {
+		converter, err := For(native.Anthropic, target)
+		require.NoError(t, err)
+		out, err := converter.Request(marked, "target")
+		require.NoError(t, err)
+		require.Equal(t, 1, strings.Count(string(out), `"cache_control"`), "tool schema property must be preserved")
+		require.NotContains(t, string(out), "ephemeral")
 	}
 }

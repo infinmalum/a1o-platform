@@ -12,6 +12,14 @@ export interface KnowledgeDocument {
   id: number;
   name: string;
   size: number;
+  content_type?: string;
+}
+
+export interface KnowledgeUploadRules {
+  file_bytes: number;
+  library_bytes: number;
+  max_documents: number;
+  extensions: string[];
 }
 
 export interface KnowledgeSource {
@@ -28,7 +36,12 @@ const request = <T>(path: string, init?: RequestInit) => studioRequest<T>(path, 
 
 const base = '/api/knowledge';
 
+export function knowledgeFileUrl(id: number, preview = false) {
+  return `${base}/documents/${id}/file${preview ? '?preview=1' : ''}`;
+}
+
 export const knowledgeApi = {
+  uploadRules: () => request<KnowledgeUploadRules>(base + '/upload-rules'),
   list: () => request<KnowledgeLibrary[]>(base + '/libraries'),
   listPage: (page: number) => request<KnowledgeLibrary[]>(base + '/libraries?' + pageQuery(page)),
   create: (name: string) => request<KnowledgeLibrary>(base + '/libraries', {

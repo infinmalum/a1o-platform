@@ -3,11 +3,13 @@ package bridge
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/infinmalum/a1o-platform/relay/native"
+	"github.com/stretchr/testify/require"
 )
 
 type recordingWriter struct {
@@ -297,7 +299,7 @@ func TestAnthropicStreamKeepsInitialBlockText(t *testing.T) {
 
 func TestGeminiStreamPreservesUnknownTopLevelFields(t *testing.T) {
 	fixture := "data: {\"responseId\":\"r1\",\"future\":{\"flag\":true},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1}}\n\n"
-	for _, converter := range []StreamConverter{chatGemini{}, messagesGemini{}} {
+	for _, converter := range []StreamConverter{&chatGemini{}, messagesGemini{}} {
 		writer := &recordingWriter{}
 		if _, err := converter.Stream(writer, strings.NewReader(fixture), "alias"); err != nil {
 			t.Fatal(err)
@@ -780,3 +782,40 @@ func TestBridgeForWiresGeminiMessages(t *testing.T) {
 }
 
 var _ = io.EOF
+
+func TestBridgedChatHonorsUsageOptionAndKeepsAccounting(t *testing.T) {
+	for _, fixture := range []struct {
+		protocol    native.Protocol
+		stream      string
+		inputTokens int64
+		stop        string
+	}{
+		{native.Anthropic, strings.Replace(anthropicStreamFixture(), `"stop_reason":"tool_use"`, `"stop_reason":"model_context_window_exceeded"`, 1), 5, "length"},
+		{native.Gemini, geminiStreamFixture(), 2, "stop"},
+	} {
+		for _, opt := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/%t", fixture.protocol, opt), func(t *testing.T) {
+				converter, err := For(native.OpenAIChat, fixture.protocol)
+				require.NoError(t, err)
+				request := fmt.Sprintf(`{"stream":true,"stream_options":{"include_usage":%t},"parallel_tool_calls":true,"user":"opaque","messages":[{"role":"user","content":"hi"}]}`, opt)
+				_, err = converter.Request([]byte(request), "test")
+				require.NoError(t, err)
+				writer := &recordingWriter{}
+				usage, err := converter.(StreamConverter).Stream(writer, strings.NewReader(fixture.stream), "test")
+				require.NoError(t, err)
+				require.True(t, usage.Complete)
+				require.True(t, usage.Seen)
+				require.Equal(t, fixture.inputTokens, usage.Input)
+				require.Contains(t, writer.buffer.String(), `"finish_reason":"`+fixture.stop+`"`)
+				events := writer.events(t)
+				require.Equal(t, "[DONE]", events[len(events)-1])
+				if opt {
+					require.Contains(t, events[len(events)-2], `"choices":[]`)
+					require.Contains(t, events[len(events)-2], `"usage":`)
+				} else {
+					require.NotContains(t, writer.buffer.String(), `"usage":`)
+				}
+			})
+		}
+	}
+}

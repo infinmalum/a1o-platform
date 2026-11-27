@@ -427,8 +427,8 @@ func writeGeminiStreamError(dst StreamWriter, message string) error {
 // wire's reasoning_content slot with the signature riding provider_metadata.
 // The stream ends when the upstream connection closes; Gemini has no terminal
 // event, so a missing finish reason fails the conversion.
-func (chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
-	state := &geminiToChatStream{dst: dst, model: requestedModel, created: streamTimestamp()}
+func (c chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string) (native.Usage, error) {
+	state := &geminiToChatStream{dst: dst, model: requestedModel, created: streamTimestamp(), includeUsage: c.includeUsage}
 	reader := newSSEReader(src)
 	for {
 		data, err := reader.next()
@@ -451,6 +451,7 @@ func (chatGemini) Stream(dst StreamWriter, src io.Reader, requestedModel string)
 }
 
 type geminiToChatStream struct {
+	includeUsage *bool
 	dst          StreamWriter
 	model        string
 	created      int64
@@ -605,7 +606,7 @@ func (s *geminiToChatStream) complete() error {
 		s.id = generated
 	}
 	extra := map[string]any{}
-	if s.usage.Seen {
+	if s.usage.Seen && s.includeUsage == nil {
 		extra["usage"] = chatUsageEnvelope(s.usage)
 	}
 	if len(s.metadata) > 0 {
@@ -615,6 +616,11 @@ func (s *geminiToChatStream) complete() error {
 		return err
 	}
 	s.usage.Complete = true
+	if s.includeUsage != nil && *s.includeUsage && s.usage.Seen {
+		if err := writeChatUsageChunk(s.dst, s.id, s.created, s.model, s.usage); err != nil {
+			return err
+		}
+	}
 	return writeStreamDone(s.dst)
 }
 

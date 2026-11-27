@@ -47,17 +47,6 @@ type anthropicToResponsesStream struct {
 	stopSeen       bool
 	terminalReason string
 	blockKinds     map[int]string
-	inputTokens    int64
-	cacheCreation  int64
-	cacheRead      int64
-}
-
-// foldUsage recomputes the emitter usage from the raw counts, keeping the
-// Anthropic fold (input includes cache tokens) that billing uses.
-func (s *anthropicToResponsesStream) foldUsage() {
-	s.emitter.usage.Input = s.inputTokens + s.cacheCreation + s.cacheRead
-	s.emitter.usage.CacheCreation = s.cacheCreation
-	s.emitter.usage.CacheRead = s.cacheRead
 }
 
 func (s *anthropicToResponsesStream) event(data []byte) error {
@@ -150,18 +139,9 @@ func (s *anthropicToResponsesStream) messageStart(data []byte) error {
 		}
 	}
 	if nonNull(message["usage"]) {
-		details, err := anthropicUsageDetails(message["usage"])
-		if err != nil {
+		if err := applyAnthropicUsage(message["usage"], &s.emitter.usage, true, &s.emitter.metadata); err != nil {
 			return err
 		}
-		// message_start carries the authoritative input-side counts; output
-		// grows through message_delta.
-		s.inputTokens = details.Input - details.CacheCreation - details.CacheRead
-		s.cacheCreation = details.CacheCreation
-		s.cacheRead = details.CacheRead
-		s.emitter.usage.Output = max(s.emitter.usage.Output, details.Output)
-		s.foldUsage()
-		s.emitter.usage.Seen = true
 	}
 	return s.emitter.ensureCreated()
 }
@@ -292,46 +272,9 @@ func (s *anthropicToResponsesStream) messageDelta(data []byte) error {
 	}
 	s.emitter.metadata.absorb(deltaExtra)
 	if nonNull(fields["usage"]) {
-		// message_delta reports only the counters it has updated; a delta
-		// carrying just the output count is the common shape.
-		usage, usageExtra, err := rawObject(fields["usage"], "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-		if err != nil {
-			return fmt.Errorf("invalid Anthropic usage: %w", err)
+		if err := applyAnthropicUsage(fields["usage"], &s.emitter.usage, false, &s.emitter.metadata); err != nil {
+			return err
 		}
-		s.emitter.metadata.absorb(usageExtra)
-		if nonNull(usage["input_tokens"]) {
-			input, ok := decodeStreamNumber(usage["input_tokens"])
-			if !ok {
-				return errors.New("invalid Anthropic usage")
-			}
-			s.inputTokens = max(s.inputTokens, input)
-			s.emitter.usage.Seen = true
-		}
-		if nonNull(usage["output_tokens"]) {
-			output, ok := decodeStreamNumber(usage["output_tokens"])
-			if !ok {
-				return errors.New("invalid Anthropic usage")
-			}
-			s.emitter.usage.Output = max(s.emitter.usage.Output, output)
-			s.emitter.usage.Seen = true
-		}
-		if nonNull(usage["cache_creation_input_tokens"]) {
-			creation, ok := decodeStreamNumber(usage["cache_creation_input_tokens"])
-			if !ok {
-				return errors.New("invalid Anthropic usage")
-			}
-			s.cacheCreation = max(s.cacheCreation, creation)
-			s.emitter.usage.Seen = true
-		}
-		if nonNull(usage["cache_read_input_tokens"]) {
-			read, ok := decodeStreamNumber(usage["cache_read_input_tokens"])
-			if !ok {
-				return errors.New("invalid Anthropic usage")
-			}
-			s.cacheRead = max(s.cacheRead, read)
-			s.emitter.usage.Seen = true
-		}
-		s.foldUsage()
 	}
 	if matched := rawString(delta["stop_sequence"]); matched != "" {
 		s.emitter.metadata.set("matched_stop_sequence", matched)
@@ -340,7 +283,7 @@ func (s *anthropicToResponsesStream) messageDelta(data []byte) error {
 		switch reason {
 		case "end_turn", "stop_sequence", "tool_use", "refusal":
 			s.stopSeen, s.terminalReason = true, ""
-		case "max_tokens":
+		case "max_tokens", "model_context_window_exceeded":
 			s.stopSeen, s.terminalReason = true, "max_output_tokens"
 		default:
 			return fmt.Errorf("Anthropic stop reason %q cannot be converted", reason)

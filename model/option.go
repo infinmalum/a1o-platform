@@ -2,14 +2,17 @@ package model
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/infinmalum/a1o-platform/common/config"
 	"github.com/infinmalum/a1o-platform/common/logger"
 	billingratio "github.com/infinmalum/a1o-platform/relay/billing/ratio"
-	"strconv"
-	"strings"
-	"time"
 )
+
+var optionReloadMu sync.Mutex
 
 type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
@@ -27,6 +30,7 @@ func InitOptionMap() {
 	config.OptionMapRWMutex.Lock()
 	config.OptionMap = make(map[string]string)
 	config.OptionMap[studioDisabledLanguagesOption] = ""
+	config.OptionMap[knowledgeLimitsOption] = defaultKnowledgeOptions()
 	config.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(config.PasswordLoginEnabled)
 	config.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(config.PasswordRegisterEnabled)
 	config.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(config.EmailVerificationEnabled)
@@ -67,6 +71,7 @@ func InitOptionMap() {
 	config.OptionMap["QuotaRemindThreshold"] = strconv.FormatInt(config.QuotaRemindThreshold, 10)
 	config.OptionMap["PreConsumedQuota"] = strconv.FormatInt(config.PreConsumedQuota, 10)
 	config.OptionMap["ModelRatio"] = billingratio.ModelRatio2JSONString()
+	config.OptionMap["ModelCachePrices"] = billingratio.ModelCachePricesJSON()
 	config.OptionMap["GroupRatio"] = billingratio.GroupRatio2JSONString()
 	config.OptionMap["CompletionRatio"] = billingratio.CompletionRatio2JSONString()
 	config.OptionMap["TopUpLink"] = config.TopUpLink
@@ -94,8 +99,8 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
-	studioLanguageUpdateMu.Lock()
-	defer studioLanguageUpdateMu.Unlock()
+	optionReloadMu.Lock()
+	defer optionReloadMu.Unlock()
 	options, _ := AllOption()
 	for _, option := range options {
 		err := updateOptionMap(option.Key, option.Value)
@@ -116,6 +121,17 @@ func SyncOptions(frequency int) {
 func UpdateOption(key string, value string) error {
 	if key == studioDisabledLanguagesOption {
 		return updateStudioDisabledLanguages(value)
+	}
+	if key == knowledgeLimitsOption {
+		if _, err := parseKnowledgeLimits(value); err != nil {
+			return err
+		}
+		optionReloadMu.Lock()
+		defer optionReloadMu.Unlock()
+		if err := DB.Save(&Option{Key: key, Value: value}).Error; err != nil {
+			return err
+		}
+		return updateOptionMap(key, value)
 	}
 	// Apply to the in-memory state first: a value the bindings reject is
 	// reported back without ever reaching the database, so no half-valid
@@ -219,9 +235,10 @@ var floatOptionBindings = map[string]*float64{
 // customOptionSetters holds the keys whose update does more than assign one
 // config variable.
 var customOptionSetters = map[string]func(value string) error{
-	"CompletionRatio": billingratio.UpdateCompletionRatioByJSONString,
-	"GroupRatio":      billingratio.UpdateGroupRatioByJSONString,
-	"ModelRatio":      billingratio.UpdateModelRatioByJSONString,
+	"CompletionRatio":  billingratio.UpdateCompletionRatioByJSONString,
+	"GroupRatio":       billingratio.UpdateGroupRatioByJSONString,
+	"ModelRatio":       billingratio.UpdateModelRatioByJSONString,
+	"ModelCachePrices": billingratio.UpdateModelCachePrices,
 	"EmailDomainWhitelist": func(value string) error {
 		config.EmailDomainWhitelist = strings.Split(value, ",")
 		return nil
@@ -240,6 +257,11 @@ var customOptionSetters = map[string]func(value string) error{
 // untouched, so bad input can neither silently zero a setting nor linger in
 // the display state for the next sync to trip over.
 func updateOptionMap(key string, value string) (err error) {
+	if key == knowledgeLimitsOption {
+		if _, err := parseKnowledgeLimits(value); err != nil {
+			return err
+		}
+	}
 	if key == studioDisabledLanguagesOption {
 		if err := validateStudioDisabledLanguages(value); err != nil {
 			return err

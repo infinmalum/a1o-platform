@@ -102,6 +102,9 @@
       "group_placeholder": "请选择可以使用该渠道的分组",
       "group_addition": "请在系统设置页面编辑分组倍率以添加新的分组：",
       "upstream_account": "绑定订阅账号",
+      "anthropic_bridge_limit": "转发为 Claude Messages 时的默认输出 token 上限",
+      "anthropic_bridge_limit_invalid": "请输入非负整数作为默认输出上限。",
+      "anthropic_bridge_cache": "为转换后的 Claude 请求开启 5 分钟提示词缓存",
       "upstream_account_none": "不绑定（普通 API Key 渠道）",
       "upstream_account_tip": "该渠道已绑定订阅账号：请求将使用账号的订阅凭据转发，渠道密钥不会被使用。",
       "models": "模型",
@@ -688,6 +691,15 @@
       }
     },
     "operation": {
+      "knowledge": {
+        "title": "资料库容量",
+        "help": "单文件可设为 1–64 MiB，单库最多 1024 MiB，且不能小于单文件上限。调低上限后，已有资料仍可查看和下载。",
+        "file": "单文件上限（MiB）",
+        "library": "单库总容量（MiB）",
+        "save": "保存资料库容量",
+        "saved": "资料库容量已保存",
+        "failed": "资料库容量保存失败"
+      },
       "quota": {
         "title": "额度设置",
         "new_user": "新用户初始额度",
@@ -728,6 +740,11 @@
           "output": "输出价（$/百万 token）",
           "unpriced": "未定价",
           "empty": "没有匹配的模型",
+          "cache_read": "缓存读取",
+          "cache_write": "缓存写入",
+          "cache_write_1h": "1 小时缓存写入",
+          "cache_write_rate": "同默认写入价",
+          "cache_input_rate": "同输入价",
           "perMillion": "价格单位为美元/百万 token，换算倍率时按当前额度单位自动处理。",
           "groupTitle": "分组倍率",
           "group": "分组",

@@ -26,6 +26,9 @@ type NativeReservation struct {
 	ModelRatio        float64
 	GroupRatio        float64
 	CompletionRatio   float64
+	CacheReadRatio    float64
+	CacheWriteRatio   float64
+	CacheWrite1hRatio float64
 	SystemPromptReset bool
 	StartedAt         time.Time
 	quota             *Reservation
@@ -67,6 +70,18 @@ func ReserveNativeQuota(ctx context.Context, reservation *NativeReservation, max
 	reservation.ModelRatio = modelRatio
 	reservation.GroupRatio = ratio.GetGroupRatio(reservation.Group)
 	reservation.CompletionRatio = completionRatio
+	cache := ratio.LookupCachePrices(reservation.ModelName)
+	reservation.CacheReadRatio, reservation.CacheWriteRatio = modelRatio, modelRatio
+	if cache.Read != nil {
+		reservation.CacheReadRatio = *cache.Read
+	}
+	if cache.Write != nil {
+		reservation.CacheWriteRatio = *cache.Write
+	}
+	reservation.CacheWrite1hRatio = reservation.CacheWriteRatio
+	if cache.Write1h != nil {
+		reservation.CacheWrite1hRatio = *cache.Write1h
+	}
 	reservation.StartedAt = time.Now()
 	reservation.Reserved = int64(math.Ceil(float64(config.PreConsumedQuota+maxOutputTokens) * reservation.ModelRatio * reservation.GroupRatio))
 	if reservation.Reserved < 0 {
@@ -139,10 +154,14 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 			settlement.UsageState = "partial"
 		}
 		settlement.ChargeBasis = "usage"
-		quota = int64(math.Ceil((float64(usage.Input) + float64(usage.Output)*r.CompletionRatio) * r.ModelRatio * r.GroupRatio))
-		if quota == 0 && r.ModelRatio*r.GroupRatio > 0 && usage.Input+usage.Output > 0 {
-			quota = 1
-		}
+		totalInput := max(0, usage.Input)
+		read := min(max(0, usage.CacheRead), totalInput)
+		write := min(max(0, usage.CacheCreation), totalInput-read)
+		write1h := min(max(0, usage.CacheCreation1h), write)
+		input := float64(totalInput-read-write)*r.ModelRatio + float64(read)*r.CacheReadRatio +
+			float64(write-write1h)*r.CacheWriteRatio + float64(write1h)*r.CacheWrite1hRatio
+		output := float64(usage.Output) * r.CompletionRatio * r.ModelRatio
+		quota = int64(math.Ceil((input + output) * r.GroupRatio))
 	}
 	if (interrupted || settlement.UsageState == "partial") && quota < r.Reserved {
 		quota = r.Reserved
@@ -166,20 +185,23 @@ func (r *NativeReservation) Settle(ctx context.Context, usage native.Usage, stre
 		content += "; response interrupted"
 	}
 	log := &model.Log{
-		UserId:            r.UserID,
-		ChannelId:         r.ChannelID,
-		PromptTokens:      int(usage.Input),
-		CompletionTokens:  int(usage.Output),
-		ModelName:         r.ModelName,
-		TokenName:         r.TokenName,
-		Quota:             int(quota),
-		UsageState:        settlement.UsageState,
-		ChargeBasis:       settlement.ChargeBasis,
-		Interrupted:       interrupted,
-		Content:           content,
-		IsStream:          streamed,
-		ElapsedTime:       time.Since(r.StartedAt).Milliseconds(),
-		SystemPromptReset: r.SystemPromptReset,
+		UserId:             r.UserID,
+		ChannelId:          r.ChannelID,
+		PromptTokens:       int(usage.Input),
+		CacheReadTokens:    usage.CacheRead,
+		CacheWriteTokens:   usage.CacheCreation,
+		CacheWrite1hTokens: usage.CacheCreation1h,
+		CompletionTokens:   int(usage.Output),
+		ModelName:          r.ModelName,
+		TokenName:          r.TokenName,
+		Quota:              int(quota),
+		UsageState:         settlement.UsageState,
+		ChargeBasis:        settlement.ChargeBasis,
+		Interrupted:        interrupted,
+		Content:            content,
+		IsStream:           streamed,
+		ElapsedTime:        time.Since(r.StartedAt).Milliseconds(),
+		SystemPromptReset:  r.SystemPromptReset,
 	}
 	model.RecordConsumeLog(ctx, log)
 	// RecordConsumeLog may be disabled or fail; a zero id means the

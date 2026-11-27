@@ -163,7 +163,7 @@
     "create": "Create library",
     "upload": "Upload document",
     "manage": "Manage libraries in Workspace",
-    "limits": "UTF-8 TXT and Markdown. Up to 256 KiB per document and 64 documents or 2 MiB per library.",
+    "limits": "{{file}} per file · {{used}} of {{total}} used · {{count}} files per library",
     "empty": "No documents yet.",
     "deleteLibrary": "Delete library",
     "deleteDocument": "Delete document",
@@ -174,6 +174,8 @@
     "sources": "Sources",
     "source": "Source document",
     "original": "View original text",
+    "download": "Download original",
+    "noText": "This file has no searchable text.",
     "lines": "Lines {{start}}–{{end}}",
     "noLibraries": "No libraries yet. Create one above."
   },
@@ -445,9 +447,9 @@
       "uploadSave": "Could not save the file. Please try again shortly.",
       "fileLimit": "Files must be {{limit}} or smaller.",
       "textFileLimit": "Text attachments must be {{limit}} or smaller.",
-      "knowledgeFileLimit": "Each document must be 256 KiB or smaller.",
-      "knowledgeInvalidFile": "Choose a UTF-8 TXT or Markdown file containing searchable text.",
-      "knowledgeCapacity": "This library is full (up to 64 documents and 2 MiB total).",
+      "knowledgeFileLimit": "Each file must be {{limit}} or smaller.",
+      "knowledgeInvalidFile": "The file format is unsupported or the file could not be read.",
+      "knowledgeCapacity": "This library has reached its capacity.",
       "chatBusy": "This conversation is still generating a reply. Wait for it to finish.",
       "retryUnavailable": "This message could not be regenerated. Reopen the conversation and try again."
     }

@@ -14,19 +14,22 @@ import (
 // requests convert their body; the response stream uses the paired
 // StreamConverter.
 func ChatToAnthropic(body []byte, model string) ([]byte, error) {
-	head, err := parseChatRequestHead(body, model, "stop")
-	if err != nil {
-		return nil, err
-	}
+	c := chatAnthropic{}
+	return c.Request(body, model)
+}
+
+func chatToAnthropic(head *chatRequestHead, model string) ([]byte, error) {
 	fields, messages := head.fields, head.messages
 	request := map[string]any{"model": model, "max_tokens": head.limit}
 	if head.limit == 0 {
-		request["max_tokens"] = 1024
+		request["max_tokens"] = DefaultAnthropicBridgeMaxTokens
 	}
 	if head.stream {
 		request["stream"] = true
 	}
 	var system []string
+	var systemBlocks []any
+	var structuredSystem bool
 	var converted []any
 	for _, raw := range messages {
 		message, err := object(raw, "role", "content", "tool_calls", "tool_call_id", "reasoning_content")
@@ -39,14 +42,20 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 		}
 		switch role {
 		case "system", "developer":
-			var text string
-			if err := json.Unmarshal(message["content"], &text); err != nil {
-				return nil, errors.New("system and developer content must be text for Anthropic conversion")
-			}
 			if len(converted) > 0 {
 				return nil, errors.New("system and developer messages must precede conversation messages")
 			}
-			system = append(system, text)
+			var text string
+			if json.Unmarshal(message["content"], &text) == nil {
+				system = append(system, text)
+			} else {
+				structuredSystem = true
+			}
+			blocks, err := chatInputBlocks(message["content"], false)
+			if err != nil {
+				return nil, fmt.Errorf("invalid Chat system content: %w", err)
+			}
+			systemBlocks = append(systemBlocks, blocks...)
 		case "user", "assistant":
 			if len(message["tool_call_id"]) != 0 {
 				return nil, errors.New("tool_call_id is only valid on tool messages")
@@ -99,7 +108,9 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 		}
 	}
 	request["messages"] = converted
-	if len(system) > 0 {
+	if structuredSystem {
+		request["system"] = systemBlocks
+	} else if len(system) > 0 {
 		request["system"] = joinSystem(system)
 	}
 	for _, key := range []string{"temperature", "top_p"} {
@@ -181,6 +192,21 @@ func ChatToAnthropic(body []byte, model string) ([]byte, error) {
 			request["tool_choice"] = map[string]string{"type": "tool", "name": name}
 		}
 	}
+	if tools, ok := request["tools"].([]any); head.parallelTools != nil && !*head.parallelTools && ok && len(tools) > 0 {
+		choice, _ := request["tool_choice"].(map[string]string)
+		if choice == nil {
+			choice = map[string]string{"type": "auto"}
+			request["tool_choice"] = choice
+		}
+		if choice["type"] != "none" {
+			converted := make(map[string]any, len(choice)+1)
+			for key, value := range choice {
+				converted[key] = value
+			}
+			converted["disable_parallel_tool_use"] = true
+			request["tool_choice"] = converted
+		}
+	}
 	return json.Marshal(request)
 }
 
@@ -212,12 +238,7 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 			Data      string            `json:"data"`
 			Citations []json.RawMessage `json:"citations"`
 		} `json:"content"`
-		Usage *struct {
-			InputTokens              int64 `json:"input_tokens"`
-			OutputTokens             int64 `json:"output_tokens"`
-			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
-		} `json:"usage"`
+		Usage *native.AnthropicUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil || response.Type != "message" || response.ID == "" {
 		return nil, native.Usage{}, errors.New("invalid Anthropic message response")
@@ -226,9 +247,7 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 	if len(fields["role"]) != 0 && (json.Unmarshal(fields["role"], &role) != nil || role != "assistant") {
 		return nil, native.Usage{}, errors.New("Anthropic response role must be assistant")
 	}
-	if response.Usage != nil && (response.Usage.InputTokens < 0 || response.Usage.OutputTokens < 0 || response.Usage.CacheCreationInputTokens < 0 || response.Usage.CacheReadInputTokens < 0) {
-		return nil, native.Usage{}, errors.New("invalid Anthropic usage")
-	}
+
 	var seenTool bool
 	for _, block := range response.Content {
 		if block.Type == "tool_use" {
@@ -237,16 +256,9 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 			return nil, native.Usage{}, errors.New("interleaved Anthropic text and tool blocks cannot be converted")
 		}
 	}
-	finish := ""
-	switch response.StopReason {
-	case "end_turn", "stop_sequence":
-		finish = "stop"
-	case "max_tokens":
-		finish = "length"
-	case "tool_use":
-		finish = "tool_calls"
-	default:
-		return nil, native.Usage{}, fmt.Errorf("Anthropic stop reason %q cannot be converted", response.StopReason)
+	finish, err := mapAnthropicStopReason(response.StopReason)
+	if err != nil {
+		return nil, native.Usage{}, err
 	}
 	message := map[string]any{"role": "assistant", "content": nil}
 	var text, reasoning string
@@ -295,12 +307,8 @@ func AnthropicToChat(body []byte, requestedModel string) ([]byte, native.Usage, 
 		message["tool_calls"] = toolCalls
 	}
 	usage := native.Usage{Complete: true}
-	if response.Usage != nil {
-		usage.Input = response.Usage.InputTokens + response.Usage.CacheCreationInputTokens + response.Usage.CacheReadInputTokens
-		usage.Output = response.Usage.OutputTokens
-		usage.CacheCreation = response.Usage.CacheCreationInputTokens
-		usage.CacheRead = response.Usage.CacheReadInputTokens
-		usage.Seen = true
+	if response.Usage != nil && !response.Usage.Apply(&usage) {
+		return nil, native.Usage{}, errors.New("invalid Anthropic usage")
 	}
 	result := map[string]any{
 		"id": response.ID, "object": "chat.completion", "created": time.Now().Unix(), "model": requestedModel,

@@ -123,9 +123,6 @@ func nativeOpenAIChat(c *gin.Context, upstream native.Protocol) {
 		return
 	}
 	limit := max(fields.MaxTokens, fields.MaxCompletion)
-	if upstream == native.Anthropic && limit == 0 {
-		limit = 1024
-	}
 	if upstream == native.OpenAIChat {
 		// The upstream protocol follows the routing policy: subscription
 		// profiles serve Responses, so subscription-first routing bridges
@@ -329,7 +326,7 @@ func forwardNative(c *gin.Context, input nativeInput) {
 			ID: metadata.ChannelId, Type: metadata.ChannelType,
 			BaseURL: metadata.BaseURL, APIKey: metadata.APIKey,
 			ModelMapping: metadata.ModelMapping, SystemPrompt: metadata.ForcedSystemPrompt,
-			APIVersion: metadata.Config.APIVersion, UpstreamAccountID: metadata.UpstreamAccountID,
+			APIVersion: metadata.Config.APIVersion, UpstreamAccountID: metadata.UpstreamAccountID, Config: metadata.Config,
 		},
 		Principal: lifecycle.Principal{
 			UserID: metadata.UserId, TokenID: metadata.TokenId,

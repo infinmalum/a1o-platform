@@ -187,12 +187,15 @@ func GetUserAvailableModels(c *gin.Context) {
 // quota per million tokens so the console renders them with the same helper as
 // every other figure, honouring DisplayInCurrencyEnabled and QuotaPerUnit.
 type modelPrice struct {
-	Name                  string  `json:"name"`
-	Priced                bool    `json:"priced"`
-	ModelRatio            float64 `json:"model_ratio"`
-	CompletionRatio       float64 `json:"completion_ratio"`
-	QuotaPerMillion       int64   `json:"quota_per_million"`
-	OutputQuotaPerMillion int64   `json:"output_quota_per_million"`
+	Name                        string  `json:"name"`
+	Priced                      bool    `json:"priced"`
+	ModelRatio                  float64 `json:"model_ratio"`
+	CompletionRatio             float64 `json:"completion_ratio"`
+	QuotaPerMillion             int64   `json:"quota_per_million"`
+	OutputQuotaPerMillion       int64   `json:"output_quota_per_million"`
+	CacheReadQuotaPerMillion    *int64  `json:"cache_read_quota_per_million,omitempty"`
+	CacheWriteQuotaPerMillion   *int64  `json:"cache_write_quota_per_million,omitempty"`
+	CacheWrite1hQuotaPerMillion *int64  `json:"cache_write_1h_quota_per_million,omitempty"`
 }
 
 // GetUserPricing lists what the caller's group can use and what that group pays
@@ -239,6 +242,19 @@ func tokenModelPrice(name string, groupRatio float64) modelPrice {
 		entry.CompletionRatio = completion
 		entry.QuotaPerMillion = int64(math.Round(ratio * groupRatio * 1e6))
 		entry.OutputQuotaPerMillion = int64(math.Round(ratio * completion * groupRatio * 1e6))
+		cache := billingratio.LookupCachePrices(name)
+		if cache.Read != nil {
+			quota := int64(math.Round(*cache.Read * groupRatio * 1e6))
+			entry.CacheReadQuotaPerMillion = &quota
+		}
+		if cache.Write != nil {
+			quota := int64(math.Round(*cache.Write * groupRatio * 1e6))
+			entry.CacheWriteQuotaPerMillion = &quota
+		}
+		if cache.Write1h != nil {
+			quota := int64(math.Round(*cache.Write1h * groupRatio * 1e6))
+			entry.CacheWrite1hQuotaPerMillion = &quota
+		}
 	}
 	return entry
 }

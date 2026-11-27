@@ -128,7 +128,7 @@ func TestFetchUpstreamModelsSurfacesUpstreamStatus(t *testing.T) {
 // completion ratio is output over input.
 func TestParseOpenRouterCatalog(t *testing.T) {
 	body := []byte(`{"data":[
-		{"id":"vendor/paid","pricing":{"prompt":"0.000003","completion":"0.000015"}},
+		{"id":"vendor/paid","pricing":{"prompt":"0.000003","completion":"0.000015","input_cache_read":"0.0000003","input_cache_write":"0.00000375","input_cache_write_1h":"0.000006"}},
 		{"id":"vendor/free","pricing":{"prompt":"0","completion":"0"}},
 		{"id":"vendor/backwards","pricing":{"prompt":"0","completion":"0.00001"}},
 		{"id":"vendor/broken","pricing":{"prompt":"not-a-number","completion":"0.00001"}},
@@ -139,7 +139,12 @@ func TestParseOpenRouterCatalog(t *testing.T) {
 	require.Equal(t, []string{"vendor/backwards", "vendor/broken", "vendor/free", "vendor/paid"}, models)
 	require.Len(t, prices, 2)
 	// $3 per million input tokens -> ratio 1.5; output is 5x input.
-	require.Equal(t, billingratio.FetchedModelPrice{Input: 1.5, Completion: 5}, prices["vendor/paid"])
+	paid := prices["vendor/paid"]
+	require.EqualValues(t, 1.5, paid.Input)
+	require.EqualValues(t, 5, paid.Completion)
+	require.InDelta(t, 0.15, *paid.Cache.Read, 1e-10)
+	require.InDelta(t, 1.875, *paid.Cache.Write, 1e-10)
+	require.InDelta(t, 3, *paid.Cache.Write1h, 1e-10)
 	// A free model bills exactly nothing.
 	require.Equal(t, billingratio.FetchedModelPrice{Input: 0, Completion: 0}, prices["vendor/free"])
 	// Free input with paid output cannot be expressed in the charge formula

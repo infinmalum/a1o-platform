@@ -242,8 +242,19 @@ func GetUserChatSessions(userId int) ([]*ChatSession, error) {
 func UpdateChatSession(session *ChatSession) error {
 	session.UpdatedTime = helper.GetTimestamp()
 	return DB.Model(session).Select("title", "model", "system_prompt", "temperature", "top_p",
-		"max_tokens", "sandbox_enabled", "context_budget", "skill_ids", "summary",
-		"compacted_through", "updated_time").Updates(session).Error
+		"max_tokens", "sandbox_enabled", "context_budget", "skill_ids", "updated_time").Updates(session).Error
+}
+
+func SaveChatCompaction(session *ChatSession, through int, summary string) (bool, error) {
+	now := helper.GetTimestamp()
+	result := DB.Model(&ChatSession{}).
+		Where("id = ? AND compacted_through = ? AND privacy_purge_at = 0", session.Id, session.CompactedThrough).
+		Updates(map[string]any{"summary": summary, "compacted_through": through, "updated_time": now})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return false, result.Error
+	}
+	session.Summary, session.CompactedThrough, session.UpdatedTime = summary, through, now
+	return true, nil
 }
 
 func DeleteChatSession(id int, userId int) error {
@@ -266,8 +277,12 @@ func UpdateChatMessage(message *ChatMessage) error {
 }
 
 func GetSessionMessages(sessionId int) ([]*ChatMessage, error) {
+	return GetSessionMessagesAfter(sessionId, 0)
+}
+
+func GetSessionMessagesAfter(sessionId, afterID int) ([]*ChatMessage, error) {
 	var messages []*ChatMessage
-	err := DB.Where("session_id = ?", sessionId).Order("id asc").Find(&messages).Error
+	err := DB.Where("session_id = ? AND id > ?", sessionId, afterID).Order("id asc").Find(&messages).Error
 	return messages, err
 }
 

@@ -9,10 +9,12 @@ import (
 // converter: the strict field whitelist, the stream flag, the mutually
 // consistent token limit, and the message array.
 type chatRequestHead struct {
-	fields   map[string]json.RawMessage
-	stream   bool
-	messages []json.RawMessage
-	limit    int64
+	fields        map[string]json.RawMessage
+	stream        bool
+	messages      []json.RawMessage
+	limit         int64
+	includeUsage  *bool
+	parallelTools *bool
 }
 
 // parseChatRequestHead validates the envelope fields every Chat conversion
@@ -45,7 +47,22 @@ func parseChatRequestHead(body []byte, model string, extraFields ...string) (*ch
 	if json.Unmarshal(fields["messages"], &messages) != nil || len(messages) == 0 {
 		return nil, errors.New("messages must be a non-empty array")
 	}
+	var includeUsage, parallelTools *bool
+	if nonNull(fields["stream_options"]) {
+		options, err := object(fields["stream_options"], "include_usage")
+		if err != nil || decode(options["include_usage"], &includeUsage) != nil {
+			return nil, errors.New("stream_options must contain a boolean include_usage")
+		}
+	}
+	if err := decode(fields["parallel_tool_calls"], &parallelTools); err != nil {
+		return nil, errors.New("parallel_tool_calls must be boolean")
+	}
+	var user string
+	if err := decode(fields["user"], &user); err != nil {
+		return nil, errors.New("user must be text")
+	}
 	return &chatRequestHead{
+		includeUsage: includeUsage, parallelTools: parallelTools,
 		fields:   fields,
 		stream:   stream,
 		messages: messages,

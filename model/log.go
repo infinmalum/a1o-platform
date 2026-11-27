@@ -13,25 +13,28 @@ import (
 )
 
 type Log struct {
-	Id                int    `json:"id"`
-	UserId            int    `json:"user_id" gorm:"index"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"index;default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UsageState        string `json:"usage_state,omitempty"`
-	ChargeBasis       string `json:"charge_basis,omitempty"`
-	Interrupted       bool   `json:"interrupted,omitempty"`
-	ChannelId         int    `json:"channel" gorm:"index"`
-	RequestId         string `json:"request_id" gorm:"default:''"`
-	ElapsedTime       int64  `json:"elapsed_time" gorm:"default:0"` // unit is ms
-	IsStream          bool   `json:"is_stream" gorm:"default:false"`
-	SystemPromptReset bool   `json:"system_prompt_reset" gorm:"default:false"`
+	Id                 int    `json:"id"`
+	UserId             int    `json:"user_id" gorm:"index"`
+	CreatedAt          int64  `json:"created_at" gorm:"bigint;index:idx_created_at_type"`
+	Type               int    `json:"type" gorm:"index:idx_created_at_type"`
+	Content            string `json:"content"`
+	Username           string `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
+	TokenName          string `json:"token_name" gorm:"index;default:''"`
+	ModelName          string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota              int    `json:"quota" gorm:"default:0"`
+	PromptTokens       int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens   int    `json:"completion_tokens" gorm:"default:0"`
+	CacheReadTokens    int64  `json:"cache_read_tokens,omitempty" gorm:"default:0"`
+	CacheWriteTokens   int64  `json:"cache_write_tokens,omitempty" gorm:"default:0"`
+	CacheWrite1hTokens int64  `json:"cache_write_1h_tokens,omitempty" gorm:"column:cache_write_1h_tokens;default:0"`
+	UsageState         string `json:"usage_state,omitempty"`
+	ChargeBasis        string `json:"charge_basis,omitempty"`
+	Interrupted        bool   `json:"interrupted,omitempty"`
+	ChannelId          int    `json:"channel" gorm:"index"`
+	RequestId          string `json:"request_id" gorm:"default:''"`
+	ElapsedTime        int64  `json:"elapsed_time" gorm:"default:0"` // unit is ms
+	IsStream           bool   `json:"is_stream" gorm:"default:false"`
+	SystemPromptReset  bool   `json:"system_prompt_reset" gorm:"default:false"`
 	// Agent run association, back-filled by the agent runtime's executor
 	// after settlement: consume logs stay the settlement source of truth,
 	// and these make the ModelInvocation→ConsumeLogId link queryable from

@@ -23,7 +23,7 @@ func (anthropicResponses) Request(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "messages", "max_tokens", "system", "stream",
+	fields, err := messagesObject(body, "model", "messages", "max_tokens", "system", "stream",
 		"temperature", "top_p", "tools", "tool_choice")
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (anthropicResponses) Request(body []byte, model string) ([]byte, error) {
 		}
 		var converted []any
 		for _, toolRaw := range tools {
-			tool, err := object(toolRaw, "name", "description", "input_schema")
+			tool, err := messagesObject(toolRaw, "name", "description", "input_schema")
 			if err != nil {
 				return nil, err
 			}
@@ -151,7 +151,7 @@ func messagesBlocksToResponses(raw json.RawMessage, role string) ([]any, error) 
 		}
 	}
 	for _, blockRaw := range blocks {
-		block, err := object(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error", "thinking", "signature", "data")
+		block, err := messagesObject(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "is_error", "thinking", "signature", "data")
 		if err != nil {
 			return nil, err
 		}

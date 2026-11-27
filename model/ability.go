@@ -2,9 +2,12 @@ package model
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
@@ -59,6 +62,10 @@ func GetRandomSatisfiedChannelByTypeExcluding(group, model string, channelType i
 // failed during the current native request. The list lets one protocol pick
 // from every channel kind that speaks its wire format.
 func GetRandomSatisfiedChannelByTypesExcluding(group, model string, channelTypes []int, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource) (*Channel, error) {
+	return GetSatisfiedChannel(group, model, channelTypes, ignoreFirstPriority, excluded, source, "")
+}
+
+func GetSatisfiedChannel(group, model string, channelTypes []int, ignoreFirstPriority bool, excluded map[int]bool, source ChannelSource, affinity string) (*Channel, error) {
 	var abilities []Ability
 	groupColumn := "`group`"
 	if common.UsingPostgreSQL {
@@ -104,9 +111,31 @@ func GetRandomSatisfiedChannelByTypesExcluding(group, model string, channelTypes
 		}
 	}
 	if ignoreFirstPriority && end < len(available) {
-		return &available[end+rand.Intn(len(available)-end)], nil
+		available = available[end:]
+	} else {
+		available = available[:end]
 	}
-	return &available[rand.Intn(end)], nil
+	index := selectChannelIndex(len(available), affinity, func(i int) int { return available[i].Id })
+	return &available[index], nil
+}
+
+func selectChannelIndex(count int, affinity string, idAt func(int) int) int {
+	if affinity == "" {
+		return rand.Intn(count)
+	}
+	// Rendezvous hashing keeps the winner stable when an unrelated candidate
+	// is disabled and selects the next eligible candidate on retry.
+	var highest uint64
+	var selected int
+	for i := range count {
+		id := idAt(i)
+		digest := sha256.Sum256([]byte(affinity + ":" + strconv.Itoa(id)))
+		score := binary.BigEndian.Uint64(digest[:8])
+		if i == 0 || score > highest || score == highest && id < idAt(selected) {
+			selected, highest = i, score
+		}
+	}
+	return selected
 }
 
 type Ability struct {

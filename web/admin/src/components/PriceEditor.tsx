@@ -8,10 +8,12 @@ import { API } from '../helpers';
 interface PriceEditorProps {
   modelRatio: string;
   completionRatio: string;
+  modelCachePrices: string;
   groupRatio: string;
   onChange: (patch: {
     ModelRatio?: string;
     CompletionRatio?: string;
+    ModelCachePrices?: string;
     GroupRatio?: string;
   }) => void;
 }
@@ -32,11 +34,11 @@ function priceToRatio(price: number): number {
   return Number(((price * quotaPerUnit()) / 1e6).toFixed(6));
 }
 
-function parseMap(json: string): Record<string, number> {
+function parseMap<T = number>(json: string): Record<string, T> {
   try {
     const parsed = JSON.parse(json);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, number>;
+      return parsed as Record<string, T>;
     }
   } catch {
     // an empty or half-typed document simply shows no rows
@@ -57,6 +59,7 @@ function formatPrice(price: number): string {
 const PriceEditor = ({
   modelRatio,
   completionRatio,
+  modelCachePrices,
   groupRatio,
   onChange,
 }: PriceEditorProps) => {
@@ -112,6 +115,10 @@ const PriceEditor = ({
 
   const ratios = useMemo(() => parseMap(modelRatio), [modelRatio]);
   const completions = useMemo(() => parseMap(completionRatio), [completionRatio]);
+  const cachePrices = useMemo(
+    () => parseMap<Partial<Record<'read' | 'write' | 'write_1h', number>>>(modelCachePrices),
+    [modelCachePrices]
+  );
   const groups = useMemo(() => parseMap(groupRatio), [groupRatio]);
 
   const rows = useMemo(() => {
@@ -189,6 +196,27 @@ const PriceEditor = ({
     onChange({ CompletionRatio: JSON.stringify(next, null, 2) });
   };
 
+  const commitCachePrice = (model: string, kind: 'read' | 'write' | 'write_1h', text: string) => {
+    const price = Number(text);
+    clearDraft(`${model}:cache-${kind}`);
+    if (!Number.isFinite(price) || price < 0) {
+      return;
+    }
+    const next = { ...cachePrices };
+    const entry = { ...next[model] };
+    if (text.trim() === '') {
+      delete entry[kind];
+    } else {
+      entry[kind] = priceToRatio(price);
+    }
+    if (entry.read === undefined && entry.write === undefined && entry.write_1h === undefined) {
+      delete next[model];
+    } else {
+      next[model] = entry;
+    }
+    onChange({ ModelCachePrices: JSON.stringify(next, null, 2) });
+  };
+
   const commitGroupRatio = (group: string, text: string) => {
     const ratio = parseFloat(text);
     if (!Number.isFinite(ratio) || ratio <= 0) {
@@ -221,6 +249,7 @@ const PriceEditor = ({
       <Table
         size='small'
         pagination={false}
+        scroll={{ x: 760 }}
         dataSource={rows}
         rowKey={(model) => model}
         locale={{ emptyText: t('setting.operation.ratio.price.empty') }}
@@ -266,6 +295,32 @@ const PriceEditor = ({
               />
             ),
           },
+          ...(['read', 'write', 'write_1h'] as const).map((kind) => ({
+            title: t(`setting.operation.ratio.price.cache_${kind}`),
+            key: `cache-${kind}`,
+            render: (_: unknown, model: string) => {
+              const key = `${model}:cache-${kind}`;
+              const ratio = cachePrices[model]?.[kind];
+              return (
+                <Input
+                  size='small'
+                  aria-label={`${model} ${t(`setting.operation.ratio.price.cache_${kind}`)}`}
+                  inputMode='decimal'
+                  value={value(key, ratio === undefined ? '' : formatPrice(ratioToPrice(ratio)))}
+                  placeholder={t(kind === 'write_1h' ? 'setting.operation.ratio.price.cache_write_rate' : 'setting.operation.ratio.price.cache_input_rate')}
+                  onChange={(event) => {
+                    const text = event.target.value;
+                    setDrafts((current) => ({ ...current, [key]: text }));
+                  }}
+                  onBlur={(event) => {
+                    if (drafts[key] !== undefined) {
+                      commitCachePrice(model, kind, event.target.value);
+                    }
+                  }}
+                />
+              );
+            },
+          })),
         ]}
       />
       <Typography.Text type='secondary' style={{ fontSize: '0.85em' }}>

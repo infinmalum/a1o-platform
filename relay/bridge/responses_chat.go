@@ -24,7 +24,7 @@ func (responsesChat) Request(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens",
+	fields, err := object(body, "model", "input", "instructions", "stream", "max_output_tokens", "prompt_cache_key",
 		"temperature", "top_p", "tools", "tool_choice")
 	if err != nil {
 		return nil, err
@@ -40,6 +40,7 @@ func (responsesChat) Request(body []byte, model string) ([]byte, error) {
 	converted := map[string]any{"model": model}
 	if stream {
 		converted["stream"] = true
+		converted["stream_options"] = map[string]bool{"include_usage": true}
 	}
 	if limit > 0 {
 		converted["max_tokens"] = limit
@@ -58,7 +59,7 @@ func (responsesChat) Request(body []byte, model string) ([]byte, error) {
 		return nil, err
 	}
 	converted["messages"] = chatMessages
-	for _, key := range []string{"temperature", "top_p"} {
+	for _, key := range []string{"temperature", "top_p", "prompt_cache_key"} {
 		if len(fields[key]) != 0 {
 			converted[key] = json.RawMessage(fields[key])
 		}

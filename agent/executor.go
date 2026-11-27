@@ -87,7 +87,13 @@ func (e *ModelExecutor) Invoke(ctx context.Context, req InvokeRequest) (InvokeRe
 	if err != nil {
 		return InvokeResult{}, fmt.Errorf("load run: %w", err)
 	}
-	channel, upstream, err := e.selectUpstream(req.Model)
+	affinity := fmt.Sprintf("run:%d:%d", e.UserID, run.Id)
+	if run.SessionId > 0 && run.Kind == "chat" {
+		affinity = fmt.Sprintf("chat:%d:%d", e.UserID, run.SessionId)
+	} else if run.TaskId > 0 && run.Kind == "work" {
+		affinity = fmt.Sprintf("work:%d:%d", e.UserID, run.TaskId)
+	}
+	channel, upstream, err := e.selectUpstream(req.Model, affinity)
 	if err != nil {
 		return InvokeResult{}, err
 	}
@@ -135,13 +141,13 @@ func (e *ModelExecutor) Invoke(ctx context.Context, req InvokeRequest) (InvokeRe
 // selectUpstream negotiates the upstream protocol: candidates ordered by the
 // model family, first channel availability wins. The Vercel OpenResponses
 // gateway passes through on the same body the Responses upstream receives.
-func (e *ModelExecutor) selectUpstream(modelName string) (lifecycle.Channel, native.Protocol, error) {
+func (e *ModelExecutor) selectUpstream(modelName, affinity string) (lifecycle.Channel, native.Protocol, error) {
 	candidates := protocolPreference(modelName)
 	var failures []string
 	for _, candidate := range candidates {
 		input := lifecycle.Request{
 			Model:     modelName,
-			Principal: lifecycle.Principal{UserID: e.UserID, TokenID: e.TokenID, TokenName: e.TokenName},
+			Principal: lifecycle.Principal{UserID: e.UserID, TokenID: e.TokenID, TokenName: e.TokenName, Affinity: affinity},
 		}
 		channel, herr := lifecycle.SelectForRequest(input, candidate)
 		if herr == nil {

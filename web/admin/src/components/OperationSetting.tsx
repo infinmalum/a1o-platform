@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Checkbox, Divider, Input, Space, Typography } from 'antd';
+import { Button, Checkbox, Divider, Input, InputNumber, Space, Typography } from 'antd';
 import PriceEditor from './PriceEditor';
 import QuotaInput from './QuotaInput';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../helpers';
 
 const fieldStyle = { marginBottom: 16 };
+const knowledgeLimitsKey = 'KnowledgeLimits';
 const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 500 };
 
 const OperationSetting = () => {
@@ -25,6 +26,7 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     ModelRatio: '',
     CompletionRatio: '',
+    ModelCachePrices: '{}',
     GroupRatio: '',
     TopUpLink: '',
     ChatLink: '',
@@ -38,6 +40,16 @@ const OperationSetting = () => {
     ApproximateTokenEnabled: '',
     RetryTimes: 0,
   });
+  const [knowledgeLimits, setKnowledgeLimits] = useState<{ fileMiB: number | null; libraryMiB: number | null }>({
+    fileMiB: 16, libraryMiB: 256,
+  });
+  const [knowledgeReady, setKnowledgeReady] = useState(false);
+  const [savingKnowledgeLimits, setSavingKnowledgeLimits] = useState(false);
+  const fileMiB = knowledgeLimits.fileMiB;
+  const libraryMiB = knowledgeLimits.libraryMiB;
+  const canSaveKnowledgeLimits = fileMiB !== null && libraryMiB !== null &&
+    Number.isInteger(fileMiB) && Number.isInteger(libraryMiB) && fileMiB >= 1 && fileMiB <= 64 &&
+    libraryMiB >= fileMiB && libraryMiB <= 1024;
   const [originInputs, setOriginInputs] = useState({});
   let [loading, setLoading] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -51,14 +63,20 @@ const OperationSetting = () => {
     if (success) {
       let newInputs = { ...inputs };
       data.forEach((item) => {
+        if (item.key === knowledgeLimitsKey) {
+          setKnowledgeLimits(JSON.parse(item.value));
+          setKnowledgeReady(true);
+          return;
+        }
         if (
           item.key === 'ModelRatio' ||
           item.key === 'GroupRatio' ||
+          item.key === 'ModelCachePrices' ||
           item.key === 'CompletionRatio'
         ) {
           item.value = JSON.stringify(JSON.parse(item.value), null, 2);
         }
-        if (item.value === '{}') {
+        if (item.value === '{}' && item.key !== 'ModelCachePrices') {
           item.value = '';
         }
         newInputs[item.key] = item.value;
@@ -149,6 +167,9 @@ const OperationSetting = () => {
           }
           await updateOption('CompletionRatio', inputs.CompletionRatio);
         }
+        if (originInputs['ModelCachePrices'] !== inputs.ModelCachePrices) {
+          await updateOption('ModelCachePrices', inputs.ModelCachePrices);
+        }
         break;
       case 'quota':
         if (originInputs['QuotaForNewUser'] !== inputs.QuotaForNewUser) {
@@ -238,12 +259,49 @@ const OperationSetting = () => {
         </Button>
       </div>
       <Divider />
+      <Typography.Title level={5}>{t('setting.operation.knowledge.title')}</Typography.Title>
+      <Typography.Paragraph type='secondary'>{t('setting.operation.knowledge.help')}</Typography.Paragraph>
+      <Space size={24} wrap align='start' style={fieldStyle}>
+        <div>
+          <label style={labelStyle} htmlFor='knowledge-file-mib'>{t('setting.operation.knowledge.file')}</label>
+          <InputNumber id='knowledge-file-mib' min={1} max={64} precision={0} value={fileMiB}
+            disabled={!knowledgeReady || savingKnowledgeLimits}
+            onChange={(value) => setKnowledgeLimits((limits) => ({ ...limits, fileMiB: value }))} />
+        </div>
+        <div>
+          <label style={labelStyle} htmlFor='knowledge-library-mib'>{t('setting.operation.knowledge.library')}</label>
+          <InputNumber id='knowledge-library-mib' min={1} max={1024} precision={0} value={libraryMiB}
+            disabled={!knowledgeReady || savingKnowledgeLimits}
+            onChange={(value) => setKnowledgeLimits((limits) => ({ ...limits, libraryMiB: value }))} />
+        </div>
+      </Space>
+      <div>
+        <Button type='primary' loading={savingKnowledgeLimits} disabled={!knowledgeReady || !canSaveKnowledgeLimits}
+          onClick={async () => {
+            setSavingKnowledgeLimits(true);
+            try {
+              const { data } = await API.put('/api/option/', {
+                key: knowledgeLimitsKey, value: JSON.stringify(knowledgeLimits),
+              });
+              if (data.success) showSuccess(t('setting.operation.knowledge.saved'));
+              else showError(t('setting.operation.knowledge.failed'));
+            } catch {
+              showError(t('setting.operation.knowledge.failed'));
+            } finally {
+              setSavingKnowledgeLimits(false);
+            }
+          }}>
+          {t('setting.operation.knowledge.save')}
+        </Button>
+      </div>
+      <Divider />
       <Typography.Title level={5}>
         {t('setting.operation.ratio.title')}
       </Typography.Title>
       <PriceEditor
         modelRatio={inputs.ModelRatio}
         completionRatio={inputs.CompletionRatio}
+        modelCachePrices={inputs.ModelCachePrices}
         groupRatio={inputs.GroupRatio}
         onChange={(patch) => setInputs((current) => ({ ...current, ...patch }))}
       />

@@ -60,6 +60,9 @@ func converseBody(body []byte) ([]byte, error) {
 			default:
 				return nil, fmt.Errorf("Converse conversion cannot represent block %s; use native request forwarding", block["type"])
 			}
+			if point := converseCachePoint(block["cache_control"]); point != nil {
+				content = append(content, point)
+			}
 		}
 		converted = append(converted, map[string]any{"role": message.Role, "content": content})
 	}
@@ -76,6 +79,9 @@ func converseBody(body []byte) ([]byte, error) {
 			var result []any
 			for _, b := range blocks {
 				result = append(result, map[string]any{"text": b["text"]})
+				if point := converseCachePoint(b["cache_control"]); point != nil {
+					result = append(result, point)
+				}
 			}
 			out["system"] = result
 		}
@@ -101,10 +107,19 @@ func converseBody(body []byte) ([]byte, error) {
 				spec["description"] = tool["description"]
 			}
 			converted = append(converted, map[string]any{"toolSpec": spec})
+			if point := converseCachePoint(tool["cache_control"]); point != nil {
+				converted = append(converted, point)
+			}
 		}
 		cfg := map[string]any{"tools": converted}
-		var choice struct{ Type, Name string }
+		var choice struct {
+			Type, Name      string
+			DisableParallel bool `json:"disable_parallel_tool_use"`
+		}
 		_ = json.Unmarshal(fields["tool_choice"], &choice)
+		if choice.DisableParallel {
+			return nil, fmt.Errorf("Converse cannot enforce parallel_tool_calls=false")
+		}
 		if choice.Type == "auto" || choice.Type == "any" {
 			cfg["toolChoice"] = map[string]any{choice.Type: map[string]any{}}
 		} else if choice.Type == "tool" {
@@ -125,6 +140,58 @@ func converseBody(body []byte) ([]byte, error) {
 	}
 	return json.Marshal(out)
 }
+func ValidateConverseToolChoice(body []byte) error {
+	var request struct {
+		ToolChoice struct {
+			DisableParallel bool `json:"disable_parallel_tool_use"`
+		} `json:"tool_choice"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return err
+	}
+	if request.ToolChoice.DisableParallel {
+		return fmt.Errorf("Converse cannot enforce parallel_tool_calls=false")
+	}
+	return nil
+}
+
+func converseCachePoint(raw json.RawMessage) map[string]any {
+	var control struct{ Type, TTL string }
+	if json.Unmarshal(raw, &control) != nil || control.Type != "ephemeral" {
+		return nil
+	}
+	point := map[string]string{"type": "default"}
+	if control.TTL == "1h" {
+		point["ttl"] = control.TTL
+	}
+	return map[string]any{"cachePoint": point}
+}
+
+type converseUsage struct {
+	Input        int64 `json:"inputTokens"`
+	Output       int64 `json:"outputTokens"`
+	CacheRead    int64 `json:"cacheReadInputTokens"`
+	CacheWrite   int64 `json:"cacheWriteInputTokens"`
+	CacheDetails []struct {
+		TTL         string `json:"ttl"`
+		InputTokens int64  `json:"inputTokens"`
+	} `json:"cacheDetails"`
+}
+
+func (u converseUsage) messagesUsage() AnthropicUsage {
+	result := AnthropicUsage{InputTokens: u.Input, OutputTokens: u.Output,
+		CacheReadInputTokens: u.CacheRead, CacheCreationInputTokens: u.CacheWrite}
+	for _, detail := range u.CacheDetails {
+		switch detail.TTL {
+		case "1h":
+			result.CacheCreation.OneHour += detail.InputTokens
+		case "5m":
+			result.CacheCreation.FiveMinutes += detail.InputTokens
+		}
+	}
+	return result
+}
+
 func bedrockConverse(ctx context.Context, input Request) (*http.Response, error) {
 	body, err := converseBody(input.Body)
 	if err != nil {
@@ -217,7 +284,7 @@ func bedrockConverse(ctx context.Context, input Request) (*http.Response, error)
 			switch kind {
 			case "messageStart":
 				started = true
-				output = map[string]any{"type": "message_start", "message": map[string]any{"id": "msg_bedrock", "type": "message", "role": "assistant", "model": input.Model, "content": []any{}, "usage": map[string]int{"input_tokens": 0, "output_tokens": 0}}}
+				output = map[string]any{"type": "message_start", "message": map[string]any{"id": "msg_bedrock", "type": "message", "role": "assistant", "model": input.Model, "content": []any{}}}
 			case "contentBlockStart":
 				opened[string(event["contentBlockIndex"])] = true
 				var start map[string]json.RawMessage
@@ -253,12 +320,11 @@ func bedrockConverse(ctx context.Context, input Request) (*http.Response, error)
 				_ = json.Unmarshal(event["stopReason"], &reason)
 				output = map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": converseStop(reason)}}
 			case "metadata":
-				var u struct {
-					Input  int64 `json:"inputTokens"`
-					Output int64 `json:"outputTokens"`
+				var usage *converseUsage
+				if json.Unmarshal(event["usage"], &usage) != nil || usage == nil {
+					continue
 				}
-				_ = json.Unmarshal(event["usage"], &u)
-				output = map[string]any{"type": "message_delta", "delta": map[string]any{}, "usage": map[string]int64{"input_tokens": u.Input, "output_tokens": u.Output}}
+				output = map[string]any{"type": "message_delta", "delta": map[string]any{}, "usage": usage.messagesUsage()}
 			default:
 				_ = w.CloseWithError(fmt.Errorf("Bedrock event %s: %s", kind, message.Payload))
 				return
@@ -278,8 +344,10 @@ func converseStop(reason string) string {
 	switch reason {
 	case "tool_use":
 		return "tool_use"
-	case "max_tokens":
-		return "max_tokens"
+	case "max_tokens", "model_context_window_exceeded":
+		return reason
+	case "content_filtered", "guardrail_intervened":
+		return "refusal"
 	case "stop_sequence":
 		return "stop_sequence"
 	default:
@@ -293,11 +361,8 @@ func converseResponse(raw []byte, model string) ([]byte, error) {
 				Content []map[string]json.RawMessage `json:"content"`
 			} `json:"message"`
 		} `json:"output"`
-		StopReason string `json:"stopReason"`
-		Usage      struct {
-			Input  int64 `json:"inputTokens"`
-			Output int64 `json:"outputTokens"`
-		} `json:"usage"`
+		StopReason string        `json:"stopReason"`
+		Usage      converseUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
@@ -314,5 +379,5 @@ func converseResponse(raw []byte, model string) ([]byte, error) {
 			return nil, fmt.Errorf("unrepresentable Converse response block")
 		}
 	}
-	return json.Marshal(map[string]any{"id": "msg_bedrock", "type": "message", "role": "assistant", "model": model, "content": blocks, "stop_reason": converseStop(result.StopReason), "usage": map[string]int64{"input_tokens": result.Usage.Input, "output_tokens": result.Usage.Output}})
+	return json.Marshal(map[string]any{"id": "msg_bedrock", "type": "message", "role": "assistant", "model": model, "content": blocks, "stop_reason": converseStop(result.StopReason), "usage": result.Usage.messagesUsage()})
 }

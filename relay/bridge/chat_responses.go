@@ -26,21 +26,12 @@ type chatResponses struct {
 // by the strict field whitelist; profile-level restrictions such as
 // temperature are mapped faithfully and rejected by the account validator.
 func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
-	head, err := parseChatRequestHead(body, model, "stream_options", "parallel_tool_calls", "response_format", "metadata", "user")
+	head, err := parseChatRequestHead(body, model, "stream_options", "parallel_tool_calls", "response_format", "metadata", "user", "prompt_cache_key")
 	if err != nil {
 		return nil, err
 	}
 	fields := head.fields
-	r.includeUsage = false
-	if nonNull(fields["stream_options"]) {
-		options, err := object(fields["stream_options"], "include_usage")
-		if err != nil {
-			return nil, fmt.Errorf("invalid stream_options: %w", err)
-		}
-		if err := decode(options["include_usage"], &r.includeUsage); err != nil {
-			return nil, errors.New("stream_options include_usage must be boolean")
-		}
-	}
+	r.includeUsage = head.includeUsage != nil && *head.includeUsage
 	request := map[string]any{"model": model, "stream": true, "store": false}
 	var instructions []string
 	var input []any
@@ -128,17 +119,13 @@ func (r *chatResponses) Request(body []byte, model string) ([]byte, error) {
 	if limit := head.limit; limit > 0 {
 		request["max_output_tokens"] = limit
 	}
-	for _, key := range []string{"temperature", "top_p", "metadata", "user"} {
+	for _, key := range []string{"temperature", "top_p", "metadata", "user", "prompt_cache_key"} {
 		if nonNull(fields[key]) {
 			request[key] = json.RawMessage(fields[key])
 		}
 	}
-	if nonNull(fields["parallel_tool_calls"]) {
-		var parallel bool
-		if err := decode(fields["parallel_tool_calls"], &parallel); err != nil {
-			return nil, errors.New("parallel_tool_calls must be boolean")
-		}
-		request["parallel_tool_calls"] = parallel
+	if head.parallelTools != nil {
+		request["parallel_tool_calls"] = *head.parallelTools
 	}
 	if nonNull(fields["tools"]) {
 		converted, err := chatFunctionTools(fields["tools"])

@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,18 +15,17 @@ import (
 )
 
 const (
-	KnowledgeDocumentLimit = 256 << 10
-	KnowledgeLibraryLimit  = 2 << 20
-	knowledgeMaxDocuments  = 64
-	knowledgeMaxChunks     = 1024
-	knowledgeChunkRunes    = 400
-	knowledgeMaxResults    = 5
+	KnowledgeMaxDocuments = 64
+	knowledgeMaxChunks    = 4096
+	knowledgeChunkRunes   = 400
+	knowledgeMaxResults   = 5
 )
 
 var (
 	ErrKnowledgeNotFound        = errors.New("资料库或来源不存在")
 	ErrKnowledgeInvalidDocument = errors.New("无效的资料文件")
-	ErrKnowledgeLimit           = errors.New("资料库容量不足（最多 64 份文档，合计 2 MiB）")
+	ErrKnowledgeLimit           = errors.New("资料库容量不足")
+	ErrKnowledgeFileTooLarge    = errors.New("资料文件超过大小上限")
 )
 
 type KnowledgeLibrary struct {
@@ -40,12 +38,14 @@ type KnowledgeLibrary struct {
 }
 
 type KnowledgeDocument struct {
-	Id          int    `json:"id"`
-	LibraryId   int    `json:"library_id" gorm:"index"`
-	Name        string `json:"name" gorm:"size:255"`
-	Size        int    `json:"size"`
-	CreatedTime int64  `json:"created_time"`
-	Body        []byte `json:"-"`
+	Id            int    `json:"id"`
+	LibraryId     int    `json:"library_id" gorm:"index"`
+	Name          string `json:"name" gorm:"size:255"`
+	Size          int    `json:"size"`
+	CreatedTime   int64  `json:"created_time"`
+	Body          []byte `json:"-"`
+	ContentType   string `json:"content_type,omitempty" gorm:"size:120"`
+	ExtractedText string `json:"-"`
 }
 
 type KnowledgeChunk struct {
@@ -97,16 +97,36 @@ func ListKnowledgeDocuments(ctx context.Context, userId, libraryId int) ([]Knowl
 		return nil, err
 	}
 	documents := []KnowledgeDocument{}
-	err := db.Omit("body").Where("library_id = ?", libraryId).Order("id DESC").Find(&documents).Error
+	err := db.Omit("body", "extracted_text").Where("library_id = ?", libraryId).Order("id DESC").Find(&documents).Error
 	return documents, err
 }
 
 func GetKnowledgeDocument(ctx context.Context, userId, documentId int) (*KnowledgeDocument, error) {
+	return getKnowledgeDocument(ctx, userId, documentId, "extracted_text")
+}
+
+func GetKnowledgeDocumentPreview(ctx context.Context, userId, documentId int) (*KnowledgeDocument, string, error) {
+	document, err := getKnowledgeDocument(ctx, userId, documentId, "body")
+	if err != nil {
+		return nil, "", err
+	}
+	if document.ContentType != "" {
+		return document, document.ExtractedText, nil
+	}
+	// Records created before binary imports contain the UTF-8 text in Body.
+	legacy, err := GetKnowledgeDocument(ctx, userId, documentId)
+	if err != nil {
+		return nil, "", err
+	}
+	return legacy, string(legacy.Body), nil
+}
+
+func getKnowledgeDocument(ctx context.Context, userId, documentId int, omit string) (*KnowledgeDocument, error) {
 	var document KnowledgeDocument
 	err := DB.WithContext(ctx).
 		Joins("JOIN knowledge_libraries ON knowledge_libraries.id = knowledge_documents.library_id").
 		Where("knowledge_documents.id = ? AND knowledge_libraries.user_id = ?", documentId, userId).
-		Take(&document).Error
+		Omit(omit).Take(&document).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrKnowledgeNotFound
 	}
@@ -116,29 +136,34 @@ func GetKnowledgeDocument(ctx context.Context, userId, documentId int) (*Knowled
 func ImportKnowledgeDocument(ctx context.Context, userId, libraryId int, name string, body []byte) (*KnowledgeDocument, error) {
 	name = filepath.Base(strings.ReplaceAll(strings.TrimSpace(name), "\\", "/"))
 	ext := strings.ToLower(filepath.Ext(name))
-	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > 255 || (ext != ".md" && ext != ".txt") {
-		return nil, fmt.Errorf("%w: 请选择 TXT 或 Markdown 文件", ErrKnowledgeInvalidDocument)
+	contentType, supported := knowledgeFormats[ext]
+	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > 255 || !supported {
+		return nil, ErrKnowledgeInvalidDocument
 	}
-	if len(body) > KnowledgeDocumentLimit {
-		return nil, errors.New("单份资料不能超过 256 KiB")
+	limits := GetKnowledgeLimits()
+	if len(body) > limits.FileBytes() {
+		return nil, ErrKnowledgeFileTooLarge
 	}
-	if !utf8.Valid(body) || strings.ContainsRune(string(body), 0) {
-		return nil, fmt.Errorf("%w: 资料须为 UTF-8 文本", ErrKnowledgeInvalidDocument)
+	if err := getKnowledgeLibrary(DB.WithContext(ctx), userId, libraryId); err != nil {
+		return nil, err
 	}
-	chunks := splitKnowledgeText(string(body), ext == ".md")
-	if len(chunks) > knowledgeMaxChunks {
-		return nil, fmt.Errorf("%w: 资料分段过多，请拆成较小的文档", ErrKnowledgeInvalidDocument)
+	text, err := knowledgeText(ctx, ext, body)
+	if err != nil {
+		return nil, err
 	}
-	if len(chunks) == 0 {
-		return nil, fmt.Errorf("%w: 资料没有可检索的文本", ErrKnowledgeInvalidDocument)
+	chunks := splitKnowledgeText(text, ext == ".md")
+	if len(chunks) == 0 && strings.HasPrefix(contentType, "text/") {
+		return nil, ErrKnowledgeInvalidDocument
 	}
+	chunks = chunks[:min(len(chunks), knowledgeMaxChunks)]
 	document := &KnowledgeDocument{
 		LibraryId: libraryId, Name: name, Size: len(body), Body: body, CreatedTime: helper.GetTimestamp(),
+		ContentType: contentType, ExtractedText: text,
 	}
-	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&KnowledgeLibrary{}).
 			Where("id = ? AND user_id = ? AND size <= ? AND document_count < ?",
-				libraryId, userId, KnowledgeLibraryLimit-document.Size, knowledgeMaxDocuments).
+				libraryId, userId, limits.LibraryBytes()-document.Size, KnowledgeMaxDocuments).
 			Updates(map[string]any{
 				"size": gorm.Expr("size + ?", document.Size), "document_count": gorm.Expr("document_count + 1"),
 			})
@@ -157,7 +182,10 @@ func ImportKnowledgeDocument(ctx context.Context, userId, libraryId int, name st
 		for i := range chunks {
 			chunks[i].LibraryId, chunks[i].DocumentId = libraryId, document.Id
 		}
-		return tx.CreateInBatches(&chunks, 100).Error
+		if len(chunks) > 0 {
+			return tx.CreateInBatches(&chunks, 100).Error
+		}
+		return nil
 	})
 	return document, err
 }
@@ -248,7 +276,7 @@ func splitKnowledgeText(body string, markdown bool) []KnowledgeChunk {
 		count = 0
 	}
 	for index, raw := range strings.Split(body, "\n") {
-		if len(chunks) > knowledgeMaxChunks {
+		if len(chunks) >= knowledgeMaxChunks {
 			return chunks
 		}
 		line := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))

@@ -18,7 +18,7 @@ func MessagesToGemini(body []byte, model string) ([]byte, error) {
 	if model == "" {
 		return nil, errors.New("model is required")
 	}
-	fields, err := object(body, "model", "messages", "max_tokens", "system", "stream", "temperature", "top_p", "top_k", "stop_sequences", "tools", "tool_choice")
+	fields, err := messagesObject(body, "model", "messages", "max_tokens", "system", "stream", "temperature", "top_p", "top_k", "stop_sequences", "tools", "tool_choice")
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func messagesBlocksToGemini(raw json.RawMessage, assistant bool, toolNames map[s
 	}
 	var parts []map[string]any
 	for _, blockRaw := range blocks {
-		block, err := object(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "thinking", "signature")
+		block, err := messagesObject(blockRaw, "type", "text", "source", "id", "name", "input", "tool_use_id", "content", "thinking", "signature")
 		if err != nil {
 			return nil, err
 		}
